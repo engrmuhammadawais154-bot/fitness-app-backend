@@ -1,6 +1,8 @@
 // Basic Express server for the fitness app backend
 const express = require('express');
 const cors = require('cors');
+const fs = require('fs');
+const path = require('path');
 const app = express();
 const PORT = process.env.PORT || 5000;
 
@@ -26,9 +28,67 @@ app.get('/', (req, res) => {
   });
 });
 
-// In-memory storage (in production, use a real database)
-const users = new Map();
-const sessions = new Map();
+// File paths for persistent storage
+const DATA_DIR = path.join(__dirname, 'data');
+const USERS_FILE = path.join(DATA_DIR, 'users.json');
+const SESSIONS_FILE = path.join(DATA_DIR, 'sessions.json');
+
+// Ensure data directory exists
+if (!fs.existsSync(DATA_DIR)) {
+  fs.mkdirSync(DATA_DIR, { recursive: true });
+}
+
+// Load data from files
+function loadData() {
+  try {
+    if (fs.existsSync(USERS_FILE)) {
+      const data = fs.readFileSync(USERS_FILE, 'utf8');
+      const usersArray = JSON.parse(data);
+      return new Map(usersArray);
+    }
+  } catch (error) {
+    console.error('Error loading users:', error);
+  }
+  return new Map();
+}
+
+function loadSessions() {
+  try {
+    if (fs.existsSync(SESSIONS_FILE)) {
+      const data = fs.readFileSync(SESSIONS_FILE, 'utf8');
+      const sessionsArray = JSON.parse(data);
+      return new Map(sessionsArray);
+    }
+  } catch (error) {
+    console.error('Error loading sessions:', error);
+  }
+  return new Map();
+}
+
+// Save data to files
+function saveUsers() {
+  try {
+    const usersArray = Array.from(users.entries());
+    fs.writeFileSync(USERS_FILE, JSON.stringify(usersArray, null, 2));
+  } catch (error) {
+    console.error('Error saving users:', error);
+  }
+}
+
+function saveSessions() {
+  try {
+    const sessionsArray = Array.from(sessions.entries());
+    fs.writeFileSync(SESSIONS_FILE, JSON.stringify(sessionsArray, null, 2));
+  } catch (error) {
+    console.error('Error saving sessions:', error);
+  }
+}
+
+// Persistent storage (saved to JSON files)
+const users = loadData();
+const sessions = loadSessions();
+
+console.log(`Loaded ${users.size} users and ${sessions.size} sessions from disk`);
 
 // Helper function to generate session token
 function generateToken() {
@@ -75,10 +135,12 @@ app.post('/api/auth/register', (req, res) => {
   };
   
   users.set(email, user);
+  saveUsers(); // Persist to disk
   
   // Create session
   const token = generateToken();
   sessions.set(token, email);
+  saveSessions(); // Persist to disk
   
   res.json({ 
     token, 
@@ -110,6 +172,7 @@ app.post('/api/auth/login', (req, res) => {
   // Create session
   const token = generateToken();
   sessions.set(token, email);
+  saveSessions(); // Persist to disk
   
   res.json({ 
     token,
@@ -129,6 +192,7 @@ app.post('/api/auth/login', (req, res) => {
 app.post('/api/auth/logout', authenticate, (req, res) => {
   const token = req.headers.authorization?.replace('Bearer ', '');
   sessions.delete(token);
+  saveSessions(); // Persist to disk
   res.json({ message: 'Logged out successfully' });
 });
 
@@ -168,6 +232,8 @@ app.put('/api/user/profile', authenticate, (req, res) => {
   if (heightInches !== undefined) user.heightInches = parseInt(heightInches);
   if (targetWeight) user.targetWeight = parseFloat(targetWeight);
   
+  saveUsers(); // Persist to disk
+  
   res.json({
     email: user.email,
     name: user.name,
@@ -191,6 +257,8 @@ app.post('/api/user/steps', authenticate, (req, res) => {
   
   user.steps = parseInt(steps);
   user.dailySteps[today] = parseInt(steps);
+  
+  saveUsers(); // Persist to disk
   
   res.json({ steps: user.steps });
 });
@@ -289,6 +357,50 @@ app.post('/api/suggestions', (req, res) => {
   }
   // In a real app, use weight/height for more personalized suggestions
   res.json({ groups });
+});
+
+// Add routine to user's workout log
+app.post('/api/user/add-routine', authenticate, (req, res) => {
+  const user = users.get(req.userId);
+  if (!user) {
+    return res.status(404).json({ error: 'User not found' });
+  }
+
+  const { date, muscleGroup, location, exercises, completed } = req.body;
+  
+  // Initialize routines array if doesn't exist
+  if (!user.routines) {
+    user.routines = [];
+  }
+
+  const routine = {
+    id: Date.now().toString(),
+    date,
+    muscleGroup,
+    location,
+    exercises,
+    completed: completed || false,
+    createdAt: new Date()
+  };
+
+  user.routines.push(routine);
+
+  res.json({ 
+    message: 'Routine added successfully',
+    routine 
+  });
+});
+
+// Get user's workout history
+app.get('/api/user/routines', authenticate, (req, res) => {
+  const user = users.get(req.userId);
+  if (!user) {
+    return res.status(404).json({ error: 'User not found' });
+  }
+
+  res.json({ 
+    routines: user.routines || [] 
+  });
 });
 
 app.listen(PORT, () => {
