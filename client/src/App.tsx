@@ -3150,17 +3150,25 @@ const DietPlanScreen = ({ goal, setGoal, showPlanModal, setShowPlanModal, userDa
                 {goal && (() => {
                   // Use smart meal engine for premium, simple suggestions for free
                   if (isPremium) {
-                    // Get user's fitness goal from preferences (or fallback to weight-based calculation)
-                    const userGoal = userData?.dietPreferences?.fitnessGoal || (() => {
-                      const current = userData?.weight || 80;
+                    // CRITICAL FIX: Prioritize user's explicit preference over auto-calculation
+                    const preferenceGoal = userData?.dietPreferences?.fitnessGoal;
+                    
+                    let userGoal = 'maintenance'; // Default fallback
+                    
+                    if (preferenceGoal) {
+                      // User has explicitly selected a goal - USE IT
+                      userGoal = preferenceGoal;
+                    } else {
+                      // Fallback: Auto-calculate from weight ONLY if no preference set
+                      const current = userData?.weight || 70;
                       const target = userData?.targetWeight || 75;
-                      return current > target + 2 ? 'weight-loss' : current < target - 2 ? 'muscle-gain' : 'maintenance';
-                    })();
+                      userGoal = current > target + 2 ? 'weight-loss' : current < target - 2 ? 'muscle-gain' : 'maintenance';
+                    }
                     
                     // DEBUG: Log to console
                     console.log('🎯 Goal Detection:', { 
                       preferenceGoal: userData?.dietPreferences?.fitnessGoal,
-                      calculatedGoal: userGoal,
+                      finalGoal: userGoal,
                       weight: userData?.weight,
                       target: userData?.targetWeight
                     });
@@ -3355,12 +3363,22 @@ const PremiumWeeklyPlansScreen = ({ onBack, userData, isPremium }: { onBack: () 
 
   // Smart Meal Generation Engine - Different logic for free vs premium
   const generateDailyMealPlan = (week: number, day: number, isPremium: boolean) => {
-    // Get user's fitness goal from preferences or calculate from weight
-    const userGoal = userData?.dietPreferences?.fitnessGoal || (() => {
-      const current = userData?.weight || 80;
+    // CRITICAL FIX: Prioritize user's explicit preference over auto-calculation
+    const preferenceGoal = userData?.dietPreferences?.fitnessGoal;
+    
+    let userGoal = 'maintenance'; // Default fallback
+    
+    if (preferenceGoal) {
+      // User has explicitly selected a goal in preferences - USE IT
+      userGoal = preferenceGoal;
+      console.log('🎯 Using user preference goal:', preferenceGoal);
+    } else {
+      // Fallback: Auto-calculate from weight ONLY if user hasn't selected a preference
+      const current = userData?.weight || 70;
       const target = userData?.targetWeight || 75;
-      return current > target + 2 ? 'weight-loss' : current < target - 2 ? 'muscle-gain' : 'maintenance';
-    })();
+      userGoal = current > target + 2 ? 'weight-loss' : current < target - 2 ? 'muscle-gain' : 'maintenance';
+      console.log('⚖️ Auto-calculated goal from weight:', { current, target, userGoal });
+    }
     
     // Select the appropriate meal plan database based on user's goal
     const mealDatabase = userGoal === 'weight-loss' ? WEEK_1_WEIGHT_LOSS :
@@ -3451,6 +3469,47 @@ const PremiumWeeklyPlansScreen = ({ onBack, userData, isPremium }: { onBack: () 
       return true;
     };
 
+    // ENHANCEMENT: Smart filtering with fallback mechanism
+    const smartFilterMeal = (meal: any) => {
+      if (!meal) return { passed: false, filterLevel: 'none' };
+      
+      // Always apply safety filters (religion, diet, allergies)
+      if (!matchesSafetyFilters(meal)) {
+        return { passed: false, filterLevel: 'safety-failed' };
+      }
+      
+      // For premium users, try advanced filters (budget, skill)
+      if (isPremium) {
+        const budget = preferences.budget;
+        const cookingSkill = preferences.cookingSkill;
+        
+        // Attempt strict filtering
+        let passesStrictFilters = true;
+        
+        if (budget && meal.budget && meal.budget !== budget) {
+          passesStrictFilters = false;
+        }
+        
+        if (cookingSkill && meal.cookingSkill) {
+          const skillLevels = ['beginner', 'intermediate', 'advanced'];
+          const userSkillIndex = skillLevels.indexOf(cookingSkill);
+          const mealSkillIndex = skillLevels.indexOf(meal.cookingSkill);
+          if (mealSkillIndex > userSkillIndex) {
+            passesStrictFilters = false;
+          }
+        }
+        
+        if (passesStrictFilters) {
+          return { passed: true, filterLevel: 'strict' };
+        } else {
+          // Fallback: meal passes safety but not preferences
+          return { passed: true, filterLevel: 'relaxed' };
+        }
+      }
+      
+      return { passed: true, filterLevel: 'safety-only' };
+    };
+
     // FREE USER LOGIC: 3 meals only, safety filters only, no calorie adjustment
     if (!isPremium) {
       console.log('🆓 FREE USER: Generating 3 basic meals with safety filters only');
@@ -3517,11 +3576,19 @@ const PremiumWeeklyPlansScreen = ({ onBack, userData, isPremium }: { onBack: () 
 
     console.log('Meals to include:', selectedMealTypes);
 
-    // Filter and adjust meals
+    // Filter and adjust meals with smart fallback
     const premiumMeals: any = {};
+    let usedRelaxedFiltering = false;
+    
     selectedMealTypes.forEach(mealType => {
       const meal = adjustedPlan.meals[mealType];
-      if (meal && matchesSafetyFilters(meal)) {
+      const filterResult = smartFilterMeal(meal);
+      
+      if (filterResult.passed) {
+        if (filterResult.filterLevel === 'relaxed') {
+          usedRelaxedFiltering = true;
+        }
+        
         // Apply calorie adjustment
         const adjustedMeal = {
           ...meal,
@@ -3535,6 +3602,11 @@ const PremiumWeeklyPlansScreen = ({ onBack, userData, isPremium }: { onBack: () 
         premiumMeals[mealType] = adjustedMeal;
       }
     });
+    
+    // Log if we had to use relaxed filtering
+    if (usedRelaxedFiltering) {
+      console.log('ℹ️ Some meals matched using relaxed filters (safety only, not all preferences)');
+    }
 
     // Calculate adjusted total macros
     const totalMacros = {
