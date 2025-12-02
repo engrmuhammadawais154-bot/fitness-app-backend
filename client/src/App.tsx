@@ -14,7 +14,7 @@ import {
 import { doc, setDoc, getDoc, onSnapshot, updateDoc, collection, addDoc, query, where, getDocs, deleteDoc, orderBy, limit } from 'firebase/firestore';
 import { motion, AnimatePresence } from 'framer-motion';
 import toast, { Toaster } from 'react-hot-toast';
-import { WEEK_1_WEIGHT_LOSS, generateShoppingList } from './mealPlans';
+import { WEEK_1_WEIGHT_LOSS, generateShoppingList, type Meal } from './mealPlans';
 
 // --- Custom Hooks ---
 
@@ -3079,8 +3079,36 @@ const DietPlanScreen = ({ goal, setGoal, showPlanModal, setShowPlanModal, userDa
               {/* Disclaimer for meal suggestions */}
               <DisclaimerCard compact={true} />
               
+              {/* Goal-based calorie info for premium */}
+              {isPremium && (() => {
+                const current = userData?.weight || 80;
+                const target = userData?.targetWeight || 75;
+                const userGoal = current > target + 2 ? 'weight-loss' : current < target - 2 ? 'weight-gain' : 'maintenance';
+                const calorieMultiplier = userGoal === 'weight-loss' ? 0.85 : userGoal === 'weight-gain' ? 1.15 : 1.0;
+                const baseCalories = 2000;
+                const adjustedCalories = Math.round(baseCalories * calorieMultiplier);
+                
+                return (
+                  <div className={`p-4 rounded-xl border-2 ${
+                    userGoal === 'weight-loss' ? 'bg-red-50 dark:bg-red-900/20 border-red-300 dark:border-red-600/30' :
+                    userGoal === 'weight-gain' ? 'bg-green-50 dark:bg-green-900/20 border-green-300 dark:border-green-600/30' :
+                    'bg-blue-50 dark:bg-blue-900/20 border-blue-300 dark:border-blue-600/30'
+                  }`}>
+                    <p className="text-sm font-bold mb-1">
+                      {userGoal === 'weight-loss' && '🔥 Weight Loss Plan'}
+                      {userGoal === 'weight-gain' && '💪 Weight Gain Plan'}
+                      {userGoal === 'maintenance' && '⚖️ Maintenance Plan'}
+                    </p>
+                    <p className="text-xs opacity-90">
+                      Daily Target: {adjustedCalories} calories 
+                      {calorieMultiplier !== 1.0 && `(${calorieMultiplier === 0.85 ? '-15%' : '+15%'} adjusted)`}
+                    </p>
+                  </div>
+                );
+              })()}
+              
               <p className="text-gray-700 dark:text-white/70 text-sm italic">
-                Sample 1-Day Plan ({isPremium ? (userData?.dietPreferences?.mealsPerDay || '3') : '3'} meals{!isPremium && ' - basic plan'}) based on your {userData?.dietSurveyCompleted ? 'preferences and ' : ''}goal:
+                {isPremium ? 'Your Personalized Meal Plan' : 'Sample 1-Day Plan (3 basic meals)'}:
               </p>
               
               {/* Free user limitation notice */}
@@ -3091,61 +3119,134 @@ const DietPlanScreen = ({ goal, setGoal, showPlanModal, setShowPlanModal, userDa
                   </svg>
                   <div className="flex-1">
                     <p className="text-sm font-semibold text-amber-900 dark:text-amber-300 mb-1">Free Plan: 3 Basic Meals</p>
-                    <p className="text-xs text-amber-800 dark:text-amber-400">Upgrade to Premium for custom meal counts (3-6 meals), goal-based calorie adjustment, and personalized macros.</p>
+                    <p className="text-xs text-amber-800 dark:text-amber-400">Upgrade to Premium for custom meal counts (3-6 meals), goal-based calorie adjustment, detailed recipes with macros.</p>
                   </div>
                 </div>
               )}
 
               <div className="space-y-3">
                 {goal && (() => {
-                  const allMeals = suggestions[goal as keyof typeof suggestions] || [];
-                  
-                  // FREE USERS: Always show 3 meals (breakfast, lunch, dinner)
-                  // PREMIUM USERS: Show custom meal count based on preference
-                  const mealsPerDay = isPremium ? parseInt(userData?.dietPreferences?.mealsPerDay || '3') : 3;
-                  
-                  // Define meal selection based on meals per day
-                  // 2 meals: Breakfast, Dinner
-                  // 3 meals: Breakfast, Lunch, Dinner
-                  // 4 meals: Breakfast, Mid-Morning, Lunch, Dinner
-                  // 5 meals: Breakfast, Mid-Morning, Lunch, Afternoon, Dinner
-                  // 6 meals: All meals
-                  const mealSelectionMap: { [key: number]: number[] } = {
-                    2: [0, 4], // Breakfast, Dinner
-                    3: [0, 2, 4], // Breakfast, Lunch, Dinner
-                    4: [0, 1, 2, 4], // Breakfast, Mid-Morning, Lunch, Dinner
-                    5: [0, 1, 2, 3, 4], // Breakfast, Mid-Morning, Lunch, Afternoon, Dinner
-                    6: [0, 1, 2, 3, 4, 5], // All meals
-                  };
-                  
-                  // Filter meals based on mealsPerDay setting
-                  const mealIndices = mealSelectionMap[mealsPerDay] || [0, 2, 4];
-                  const filteredMeals = mealIndices
-                    .map(index => allMeals[index])
-                    .filter((m): m is { day: string; meal: string } => m !== undefined);
-                  
-                  return filteredMeals.map((item: { day: string; meal: string }, index: number) => (
-                    <div key={index} className="bg-white dark:bg-gray-800 p-5 rounded-lg shadow-xl border-l-4 border-indigo-500 dark:border-indigo-400 flex flex-col hover:shadow-2xl transition-shadow duration-200">
-                      <p className="text-base font-bold text-indigo-700 dark:text-indigo-400 mb-3">{item.day}</p>
-                      <div className="space-y-2">
-                        {item.meal.split('\n').map((option, optIdx) => (
-                          <p key={optIdx} className="text-gray-900 dark:text-white text-sm leading-relaxed pl-2 border-l-2 border-gray-300 dark:border-gray-600">
-                            {option}
-                          </p>
-                        ))}
+                  // Use smart meal engine for premium, simple suggestions for free
+                  if (isPremium) {
+                    // Get Monday's meal plan from the smart engine
+                    const mondayPlan = WEEK_1_WEIGHT_LOSS.find(p => p.day === 1);
+                    if (!mondayPlan) return null;
+                    
+                    // Determine user's fitness goal
+                    const current = userData?.weight || 80;
+                    const target = userData?.targetWeight || 75;
+                    const userGoal = current > target + 2 ? 'weight-loss' : current < target - 2 ? 'weight-gain' : 'maintenance';
+                    const calorieMultiplier = userGoal === 'weight-loss' ? 0.85 : userGoal === 'weight-gain' ? 1.15 : 1.0;
+                    
+                    // Get meals based on user preference
+                    const mealsPerDay = parseInt(userData?.dietPreferences?.mealsPerDay || '6');
+                    const mealTypes = [
+                      { key: 'breakfast', name: 'Breakfast', emoji: '🌅' },
+                      { key: 'morningSnack', name: 'Morning Snack', emoji: '☕' },
+                      { key: 'lunch', name: 'Lunch', emoji: '🍽️' },
+                      { key: 'afternoonSnack', name: 'Afternoon Snack', emoji: '🥤' },
+                      { key: 'dinner', name: 'Dinner', emoji: '🌙' },
+                      { key: 'eveningSnack', name: 'Evening Snack', emoji: '🍪' },
+                    ];
+                    
+                    // Select meals based on count preference
+                    const selectedMeals = mealsPerDay === 3 ? [mealTypes[0], mealTypes[2], mealTypes[4]] :
+                                         mealsPerDay === 4 ? [mealTypes[0], mealTypes[2], mealTypes[3], mealTypes[4]] :
+                                         mealsPerDay === 5 ? [mealTypes[0], mealTypes[1], mealTypes[2], mealTypes[3], mealTypes[4]] :
+                                         mealTypes;
+                    
+                    return selectedMeals.map((mealType, index) => {
+                      const meal = mondayPlan.meals[mealType.key as keyof typeof mondayPlan.meals] as Meal | null;
+                      if (!meal) return null;
+                      
+                      // Apply calorie adjustment
+                      const adjustedMacros = {
+                        calories: Math.round(meal.macros.calories * calorieMultiplier),
+                        protein: Math.round(meal.macros.protein * calorieMultiplier),
+                        carbs: Math.round(meal.macros.carbs * calorieMultiplier),
+                        fats: Math.round(meal.macros.fats * calorieMultiplier)
+                      };
+                      
+                      return (
+                        <div key={index} className="bg-white dark:bg-gray-800 p-5 rounded-xl shadow-xl border-l-4 border-emerald-500 dark:border-emerald-400">
+                          <div className="flex items-center justify-between mb-3">
+                            <div className="flex items-center gap-2">
+                              <span className="text-2xl">{mealType.emoji}</span>
+                              <div>
+                                <p className="text-base font-bold text-emerald-700 dark:text-emerald-400">{mealType.name}</p>
+                                <p className="text-sm text-gray-600 dark:text-gray-400">{meal.time}</p>
+                              </div>
+                            </div>
+                            <span className="text-xs px-2 py-1 bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400 rounded-full font-semibold">
+                              {adjustedMacros.calories} cal
+                            </span>
+                          </div>
+                          
+                          <p className="text-lg font-semibold text-gray-900 dark:text-white mb-2">{meal.name}</p>
+                          <p className="text-sm text-gray-600 dark:text-gray-400 mb-3 italic">{meal.description}</p>
+                          
+                          {/* Macros Grid */}
+                          <div className="grid grid-cols-3 gap-2 mb-3">
+                            <div className="bg-red-50 dark:bg-red-900/20 p-2 rounded text-center">
+                              <p className="text-xs text-gray-600 dark:text-gray-400">Protein</p>
+                              <p className="text-sm font-bold text-red-600 dark:text-red-400">{adjustedMacros.protein}g</p>
+                            </div>
+                            <div className="bg-blue-50 dark:bg-blue-900/20 p-2 rounded text-center">
+                              <p className="text-xs text-gray-600 dark:text-gray-400">Carbs</p>
+                              <p className="text-sm font-bold text-blue-600 dark:text-blue-400">{adjustedMacros.carbs}g</p>
+                            </div>
+                            <div className="bg-yellow-50 dark:bg-yellow-900/20 p-2 rounded text-center">
+                              <p className="text-xs text-gray-600 dark:text-gray-400">Fats</p>
+                              <p className="text-sm font-bold text-yellow-600 dark:text-yellow-400">{adjustedMacros.fats}g</p>
+                            </div>
+                          </div>
+                          
+                          {/* Ingredients */}
+                          <div className="mb-2">
+                            <p className="text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1">Ingredients:</p>
+                            <div className="text-xs text-gray-600 dark:text-gray-400 space-y-1">
+                              {meal.ingredients.slice(0, 3).map((ing, i) => (
+                                <p key={i}>• {ing}</p>
+                              ))}
+                              {meal.ingredients.length > 3 && (
+                                <p className="text-emerald-600 dark:text-emerald-400 font-semibold">+{meal.ingredients.length - 3} more...</p>
+                              )}
+                            </div>
+                          </div>
+                          
+                          {/* Tags */}
+                          <div className="flex flex-wrap gap-1 mt-2">
+                            {meal.dietTags?.map((tag, i) => (
+                              <span key={i} className="text-xs px-2 py-0.5 bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 rounded-full">
+                                {tag}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      );
+                    }).filter(Boolean);
+                  } else {
+                    // Free users get simple text suggestions
+                    const allMeals = suggestions[goal as keyof typeof suggestions] || [];
+                    const mealIndices = [0, 2, 4]; // Breakfast, Lunch, Dinner
+                    const filteredMeals = mealIndices
+                      .map(index => allMeals[index])
+                      .filter((m): m is { day: string; meal: string } => m !== undefined);
+                    
+                    return filteredMeals.map((item: { day: string; meal: string }, index: number) => (
+                      <div key={index} className="bg-white dark:bg-gray-800 p-5 rounded-lg shadow-xl border-l-4 border-indigo-500 dark:border-indigo-400 flex flex-col">
+                        <p className="text-base font-bold text-indigo-700 dark:text-indigo-400 mb-3">{item.day}</p>
+                        <div className="space-y-2">
+                          {item.meal.split('\n').map((option, optIdx) => (
+                            <p key={optIdx} className="text-gray-900 dark:text-white text-sm leading-relaxed pl-2 border-l-2 border-gray-300 dark:border-gray-600">
+                              {option}
+                            </p>
+                          ))}
+                        </div>
                       </div>
-                    </div>
-                  ));
+                    ));
+                  }
                 })()}
-              </div>
-
-              <div className="pt-4 text-center">
-                <button 
-                  onClick={() => setShowPlanModal(true)}
-                  className="w-full py-3 bg-gradient-to-r from-indigo-500 to-purple-600 dark:bg-indigo-600 hover:from-indigo-600 hover:to-purple-700 dark:hover:bg-indigo-700 rounded-xl text-white font-bold transition duration-300 shadow-lg"
-                >
-                    Get Detailed Weekly Plan
-                </button>
               </div>
             </div>
           )}
@@ -4815,7 +4916,7 @@ const App = () => {
   const [activeSettingsScreen, setActiveSettingsScreen] = useState<'health' | 'history' | 'goals' | 'preferences' | null>(null);
   
   // Premium Subscription State
-  const [isPremium, setIsPremium] = useState(false); // Test free experience first
+  const [isPremium, setIsPremium] = useState(true); // Test premium experience
   const [premiumExpiry, setPremiumExpiry] = useState<number | null>(null);
   
   // Exercise Logging State
