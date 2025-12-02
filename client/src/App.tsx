@@ -2364,8 +2364,8 @@ const QuoteCarousel = ({ quotes }: { quotes: { text: string, author: string }[] 
 };
 
 // Diet Survey Component
-const DietSurveyScreen = ({ onComplete, userData }: { onComplete: () => void; userData: any }) => {
-  const [currentStep, setCurrentStep] = useState(1);
+const DietSurveyScreen = ({ onComplete, userData, initialStep }: { onComplete: () => void; userData: any; initialStep?: number }) => {
+  const [currentStep, setCurrentStep] = useState(initialStep || 1);
   const [surveyData, setSurveyData] = useState({
     fitnessGoal: userData?.dietPreferences?.fitnessGoal || '',
     religion: userData?.dietPreferences?.religion || '',
@@ -3013,6 +3013,7 @@ const DietPlanScreen = ({ goal, setGoal, showPlanModal, setShowPlanModal, userDa
   const swipeHandlersDietDetails = useSwipe(() => setGoal(null));
 
   const [showSurvey, setShowSurvey] = useState(false);
+  const [editStep, setEditStep] = useState<number | null>(null);
 
   // Check if user has completed diet survey
   const hasDietPreferences = userData?.dietSurveyCompleted;
@@ -3020,6 +3021,11 @@ const DietPlanScreen = ({ goal, setGoal, showPlanModal, setShowPlanModal, userDa
   // Show survey first if not completed
   if (!hasDietPreferences && !showSurvey) {
     return <DietSurveyScreen onComplete={() => setShowSurvey(true)} userData={userData} />;
+  }
+
+  // Show survey at specific step for quick edit
+  if (editStep !== null) {
+    return <DietSurveyScreen onComplete={() => setEditStep(null)} userData={userData} initialStep={editStep} />;
   }
 
   return (
@@ -3040,13 +3046,23 @@ const DietPlanScreen = ({ goal, setGoal, showPlanModal, setShowPlanModal, userDa
         <DietSurveyScreen onComplete={() => setShowSurvey(false)} userData={userData} />
       ) : (
         <>
-          {/* User Preferences Summary */}
+          {/* User Preferences Summary with Quick Edit */}
           {hasDietPreferences && (
             <div className="bg-gradient-to-r from-indigo-300 via-purple-300 to-pink-300 dark:from-indigo-900/40 dark:to-purple-900/40 p-4 rounded-xl border-2 border-indigo-400 dark:border-indigo-500/30 shadow-xl">
-              <h3 className="text-sm font-semibold text-indigo-900 dark:text-white mb-2">Your Diet Profile</h3>
-              <div className="flex flex-wrap gap-2 text-xs">
-                {userData.dietPreferences?.fitnessGoal && (
-                  <span className={`px-2 py-1 rounded-full font-semibold border ${
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="text-sm font-semibold text-indigo-900 dark:text-white">Your Diet Profile</h3>
+                <button
+                  onClick={() => setShowSurvey(true)}
+                  className="text-[10px] px-2 py-1 bg-white/90 dark:bg-indigo-700 text-indigo-600 dark:text-white rounded-md hover:bg-white dark:hover:bg-indigo-600 font-semibold"
+                >
+                  Edit All
+                </button>
+              </div>
+              
+              {/* Fitness Goal - Step 1 */}
+              {userData.dietPreferences?.fitnessGoal && (
+                <div className="flex items-center justify-between mb-2 bg-white/40 dark:bg-black/20 rounded-lg p-2">
+                  <span className={`px-2 py-1 rounded-full font-semibold border flex-1 ${
                     userData.dietPreferences.fitnessGoal === 'weight-loss' ? 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300 border-red-300' :
                     userData.dietPreferences.fitnessGoal === 'muscle-gain' ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300 border-green-300' :
                     'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 border-blue-300'
@@ -3055,24 +3071,88 @@ const DietPlanScreen = ({ goal, setGoal, showPlanModal, setShowPlanModal, userDa
                      userData.dietPreferences.fitnessGoal === 'muscle-gain' ? '💪 Muscle Gain' :
                      '⚖️ Maintenance'}
                   </span>
-                )}
+                  <button
+                    onClick={() => setEditStep(1)}
+                    className="ml-2 text-[9px] px-2 py-1 bg-indigo-100 dark:bg-indigo-700 text-indigo-700 dark:text-white rounded hover:bg-indigo-200 dark:hover:bg-indigo-600"
+                  >
+                    Change
+                  </button>
+                </div>
+              )}
+
+              {/* Other Preferences */}
+              <div className="flex flex-wrap gap-2 text-xs">
                 {userData.dietPreferences?.religion && (
-                  <span className="px-2 py-1 bg-white/90 dark:bg-indigo-600/30 rounded-full text-indigo-700 dark:text-indigo-300 font-semibold border border-indigo-300 dark:border-transparent">
-                    {userData.dietPreferences.religion === 'muslim' ? '☪️ Halal' : 
-                     userData.dietPreferences.religion === 'hindu' ? '🕉️ Hindu' :
-                     userData.dietPreferences.religion === 'jewish' ? '✡️ Kosher' :
-                     userData.dietPreferences.religion === 'none' ? '🌍 No Restriction' : '📿 ' + userData.dietPreferences.religion}
-                  </span>
+                  <div className="flex items-center gap-1 bg-white/60 dark:bg-black/20 rounded-full pr-1">
+                    <span className="px-2 py-1 rounded-full text-indigo-700 dark:text-indigo-300 font-semibold">
+                      {userData.dietPreferences.religion === 'muslim' ? '☪️ Halal' : 
+                       userData.dietPreferences.religion === 'hindu' ? '🕉️ Hindu' :
+                       userData.dietPreferences.religion === 'jewish' ? '✡️ Kosher' :
+                       userData.dietPreferences.religion === 'none' ? '🌍 No Restriction' : '📿 ' + userData.dietPreferences.religion}
+                    </span>
+                    <button
+                      onClick={() => setEditStep(2)}
+                      className="text-[8px] px-1.5 py-0.5 bg-indigo-500 text-white rounded-full hover:bg-indigo-600"
+                    >
+                      ✎
+                    </button>
+                  </div>
                 )}
                 {userData.dietPreferences?.dietType && (
-                  <span className="px-2 py-1 bg-white/90 dark:bg-purple-600/30 rounded-full text-purple-700 dark:text-purple-300 font-semibold border border-purple-300 dark:border-transparent">
-                    {userData.dietPreferences.dietType}
-                  </span>
+                  <div className="flex items-center gap-1 bg-white/60 dark:bg-black/20 rounded-full pr-1">
+                    <span className="px-2 py-1 rounded-full text-purple-700 dark:text-purple-300 font-semibold">
+                      {userData.dietPreferences.dietType}
+                    </span>
+                    <button
+                      onClick={() => setEditStep(3)}
+                      className="text-[8px] px-1.5 py-0.5 bg-purple-500 text-white rounded-full hover:bg-purple-600"
+                    >
+                      ✎
+                    </button>
+                  </div>
                 )}
                 {userData.dietPreferences?.mealsPerDay && (
-                  <span className="px-2 py-1 bg-white/90 dark:bg-teal-600/30 rounded-full text-teal-700 dark:text-teal-300 font-semibold border border-teal-300 dark:border-transparent">
-                    {userData.dietPreferences.mealsPerDay} meals/day
-                  </span>
+                  <div className="flex items-center gap-1 bg-white/60 dark:bg-black/20 rounded-full pr-1">
+                    <span className="px-2 py-1 rounded-full text-teal-700 dark:text-teal-300 font-semibold">
+                      {userData.dietPreferences.mealsPerDay} meals/day
+                    </span>
+                    <button
+                      onClick={() => setEditStep(6)}
+                      className="text-[8px] px-1.5 py-0.5 bg-teal-500 text-white rounded-full hover:bg-teal-600"
+                    >
+                      ✎
+                    </button>
+                  </div>
+                )}
+                {userData.dietPreferences?.cookingSkill && (
+                  <div className="flex items-center gap-1 bg-white/60 dark:bg-black/20 rounded-full pr-1">
+                    <span className="px-2 py-1 rounded-full text-amber-700 dark:text-amber-300 font-semibold">
+                      {userData.dietPreferences.cookingSkill === 'beginner' ? '👶 Beginner' :
+                       userData.dietPreferences.cookingSkill === 'intermediate' ? '👨‍🍳 Intermediate' :
+                       '⭐ Advanced'}
+                    </span>
+                    <button
+                      onClick={() => setEditStep(7)}
+                      className="text-[8px] px-1.5 py-0.5 bg-amber-500 text-white rounded-full hover:bg-amber-600"
+                    >
+                      ✎
+                    </button>
+                  </div>
+                )}
+                {userData.dietPreferences?.budget && (
+                  <div className="flex items-center gap-1 bg-white/60 dark:bg-black/20 rounded-full pr-1">
+                    <span className="px-2 py-1 rounded-full text-green-700 dark:text-green-300 font-semibold">
+                      {userData.dietPreferences.budget === 'low' ? '💰 Budget' :
+                       userData.dietPreferences.budget === 'medium' ? '💵 Moderate' :
+                       '💎 Premium'}
+                    </span>
+                    <button
+                      onClick={() => setEditStep(8)}
+                      className="text-[8px] px-1.5 py-0.5 bg-green-500 text-white rounded-full hover:bg-green-600"
+                    >
+                      ✎
+                    </button>
+                  </div>
                 )}
               </div>
             </div>
