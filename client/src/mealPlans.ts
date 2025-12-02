@@ -1,11 +1,13 @@
 // Premium 4-Week Rotating Meal Plan Database
-// Each week has different meals - cycles back to Week 1 after Week 4
+// Separate plans for Weight Loss, Muscle Gain, and Maintenance
+// Each plan respects budget, cooking skill, and dietary preferences
 
 export interface MealPlan {
   id: string;
   week: number;
   day: number;
   dayName: string;
+  goal: 'weight-loss' | 'muscle-gain' | 'maintenance';
   meals: {
     breakfast: Meal;
     morningSnack: Meal;
@@ -40,14 +42,17 @@ export interface Meal {
   dietTags: string[]; // vegetarian, vegan, halal, keto, etc.
 }
 
-// WEEK 1 - Weight Loss Focus
+// ============================================
+// WEIGHT LOSS MEAL PLANS (Lower Calorie, High Protein)
+// ============================================
 export const WEEK_1_WEIGHT_LOSS: MealPlan[] = [
-  // Monday - Week 1
+  // Monday - Week 1 Weight Loss
   {
     id: 'w1-loss-mon',
     week: 1,
     day: 1,
     dayName: 'Monday',
+    goal: 'weight-loss',
     meals: {
       breakfast: {
         name: 'Protein-Packed Veggie Omelet',
@@ -164,6 +169,7 @@ export const WEEK_1_WEIGHT_LOSS: MealPlan[] = [
     week: 1,
     day: 2,
     dayName: 'Tuesday',
+    goal: 'weight-loss',
     meals: {
       breakfast: {
         name: 'Turkish Menemen (Scrambled Eggs with Vegetables)',
@@ -280,6 +286,7 @@ export const WEEK_1_WEIGHT_LOSS: MealPlan[] = [
     week: 1,
     day: 3,
     dayName: 'Wednesday',
+    goal: 'weight-loss',
     meals: {
       breakfast: {
         name: 'Shakshuka (Eggs in Tomato Sauce)',
@@ -407,6 +414,269 @@ thursdayToSunday.forEach(({ day, name, id }) => {
   WEEK_1_WEIGHT_LOSS.push({
     ...sourceDay,
     id: `w1-loss-${id}`,
+    day: day,
+    dayName: name
+  });
+});
+
+// ============================================
+// MUSCLE GAIN MEAL PLANS (Higher Calorie, High Protein)
+// ============================================
+export const WEEK_1_MUSCLE_GAIN: MealPlan[] = [
+  {
+    id: 'w1-gain-mon',
+    week: 1,
+    day: 1,
+    dayName: 'Monday',
+    goal: 'muscle-gain',
+    meals: {
+      breakfast: {
+        name: 'Mass Gainer Pancakes',
+        description: 'Protein-packed pancakes with banana and almond butter',
+        time: '7:00 AM - 8:00 AM',
+        ingredients: ['1.5 cups oat flour', '3 whole eggs', '1 scoop protein powder', '1 banana mashed', '3 tbsp almond butter', '1 cup milk', 'Maple syrup'],
+        instructions: [
+          'Mix dry ingredients in bowl',
+          'Whisk eggs, milk, and mashed banana',
+          'Combine wet and dry ingredients',
+          'Cook pancakes on griddle',
+          'Top with almond butter and syrup'
+        ],
+        macros: { calories: 720, protein: 48, carbs: 82, fats: 24 },
+        prepTime: 20,
+        cookingSkill: 'intermediate',
+        budget: 'medium',
+        dietTags: ['vegetarian', 'halal', 'high-protein']
+      },
+      morningSnack: {
+        name: 'Mass Gainer Smoothie',
+        description: 'High-calorie smoothie with oats, peanut butter, and protein',
+        time: '10:30 AM',
+        ingredients: ['2 bananas', '1.5 cups whole milk', '2 scoops protein powder', '1/2 cup oats', '3 tbsp peanut butter', '1 tbsp honey'],
+        instructions: ['Blend all ingredients until smooth', 'Drink immediately for maximum nutrition'],
+        macros: { calories: 680, protein: 54, carbs: 78, fats: 18 },
+        prepTime: 5,
+        cookingSkill: 'beginner',
+        budget: 'medium',
+        dietTags: ['vegetarian', 'halal', 'high-protein']
+      },
+      lunch: {
+        name: 'Double Chicken Burrito Bowl',
+        description: 'Extra large chicken bowl with rice, beans, and avocado',
+        time: '1:00 PM - 2:00 PM',
+        ingredients: [
+          '8 oz grilled halal chicken breast',
+          '2 cups cooked brown rice',
+          '1 cup black beans',
+          '1 whole avocado',
+          '1/2 cup corn',
+          '1/4 cup shredded cheese',
+          'Salsa and sour cream'
+        ],
+        instructions: [
+          'Cook rice and warm black beans',
+          'Grill and slice chicken',
+          'Layer rice, beans, chicken in bowl',
+          'Top with avocado, corn, cheese',
+          'Add salsa and sour cream'
+        ],
+        macros: { calories: 880, protein: 62, carbs: 96, fats: 28 },
+        prepTime: 35,
+        cookingSkill: 'intermediate',
+        budget: 'medium',
+        dietTags: ['halal', 'high-protein']
+      },
+      afternoonSnack: {
+        name: 'Post-Workout Power Shake',
+        description: 'Fast-digesting carbs and protein for muscle recovery',
+        time: '4:00 PM',
+        ingredients: ['2 scoops whey protein', '1.5 cups milk', '1 banana', '2 tbsp honey', '1/4 cup granola'],
+        instructions: ['Blend protein, milk, banana, honey', 'Top with granola before drinking'],
+        macros: { calories: 520, protein: 48, carbs: 58, fats: 8 },
+        prepTime: 5,
+        cookingSkill: 'beginner',
+        budget: 'medium',
+        dietTags: ['vegetarian', 'halal', 'high-protein', 'post-workout']
+      },
+      dinner: {
+        name: 'Steak & Sweet Potato Power Meal',
+        description: 'Grilled halal steak with loaded sweet potato',
+        time: '7:00 PM - 8:00 PM',
+        ingredients: [
+          '8 oz halal sirloin steak',
+          '2 large sweet potatoes',
+          '1 cup sautéed spinach',
+          '3 tbsp butter',
+          '1/4 cup sour cream',
+          'Salt, pepper, garlic'
+        ],
+        instructions: [
+          'Season and grill steak to desired doneness',
+          'Bake sweet potatoes until tender',
+          'Sauté spinach with garlic',
+          'Top potatoes with butter and sour cream',
+          'Serve steak with sweet potatoes and spinach'
+        ],
+        macros: { calories: 780, protein: 56, carbs: 72, fats: 28 },
+        prepTime: 45,
+        cookingSkill: 'intermediate',
+        budget: 'high',
+        dietTags: ['halal', 'high-protein', 'gluten-free']
+      },
+      eveningSnack: {
+        name: 'Casein Protein Bowl',
+        description: 'Slow-digesting protein with nuts for overnight recovery',
+        time: '9:30 PM',
+        ingredients: ['1.5 cups cottage cheese', '1/4 cup mixed nuts', '2 tbsp chia seeds', '1/2 cup berries', '1 tbsp honey'],
+        instructions: ['Mix cottage cheese with berries', 'Top with nuts, chia seeds, and honey'],
+        macros: { calories: 420, protein: 38, carbs: 32, fats: 18 },
+        prepTime: 5,
+        cookingSkill: 'beginner',
+        budget: 'medium',
+        dietTags: ['vegetarian', 'halal', 'high-protein', 'gluten-free']
+      }
+    },
+    totalMacros: { calories: 4000, protein: 306, carbs: 418, fats: 124 }
+  }
+];
+
+// Generate remaining days for muscle gain
+thursdayToSunday.forEach(({ day, name, id }) => {
+  const sourceDay = WEEK_1_MUSCLE_GAIN[0];
+  WEEK_1_MUSCLE_GAIN.push({
+    ...sourceDay,
+    id: `w1-gain-${id}`,
+    day: day,
+    dayName: name
+  });
+});
+
+// ============================================
+// MAINTENANCE MEAL PLANS (Balanced Nutrition)
+// ============================================
+export const WEEK_1_MAINTENANCE: MealPlan[] = [
+  {
+    id: 'w1-maint-mon',
+    week: 1,
+    day: 1,
+    dayName: 'Monday',
+    goal: 'maintenance',
+    meals: {
+      breakfast: {
+        name: 'Mediterranean Veggie Omelet',
+        description: '3-egg omelet with feta, tomatoes, and spinach',
+        time: '7:00 AM - 8:00 AM',
+        ingredients: ['3 whole eggs', '1/4 cup feta cheese', '1/2 cup cherry tomatoes', '1 cup fresh spinach', '1 slice whole grain toast', '1 tsp olive oil'],
+        instructions: [
+          'Whisk eggs with salt and pepper',
+          'Sauté spinach and tomatoes in olive oil',
+          'Pour eggs into pan, add vegetables',
+          'Sprinkle feta cheese on top',
+          'Fold omelet and serve with toast'
+        ],
+        macros: { calories: 380, protein: 26, carbs: 24, fats: 22 },
+        prepTime: 15,
+        cookingSkill: 'intermediate',
+        budget: 'low',
+        dietTags: ['vegetarian', 'halal', 'mediterranean']
+      },
+      morningSnack: {
+        name: 'Fresh Fruit & Nuts',
+        description: 'Apple slices with mixed nuts and string cheese',
+        time: '10:30 AM',
+        ingredients: ['1 medium apple', '1/4 cup mixed nuts (almonds, walnuts)', '1 string cheese'],
+        instructions: ['Slice apple', 'Portion nuts', 'Enjoy together as balanced snack'],
+        macros: { calories: 280, protein: 12, carbs: 28, fats: 14 },
+        prepTime: 3,
+        cookingSkill: 'beginner',
+        budget: 'low',
+        dietTags: ['vegetarian', 'halal', 'gluten-free']
+      },
+      lunch: {
+        name: 'Grilled Chicken Caesar Salad',
+        description: 'Classic Caesar with grilled halal chicken and parmesan',
+        time: '1:00 PM - 2:00 PM',
+        ingredients: [
+          '5 oz grilled halal chicken breast',
+          '3 cups romaine lettuce',
+          '2 tbsp Caesar dressing',
+          '2 tbsp parmesan cheese',
+          '1/2 cup croutons',
+          'Lemon wedge'
+        ],
+        instructions: [
+          'Grill and slice chicken breast',
+          'Chop romaine lettuce',
+          'Toss lettuce with dressing',
+          'Top with chicken, parmesan, croutons',
+          'Squeeze lemon over salad'
+        ],
+        macros: { calories: 420, protein: 38, carbs: 28, fats: 18 },
+        prepTime: 20,
+        cookingSkill: 'beginner',
+        budget: 'low',
+        dietTags: ['halal', 'high-protein']
+      },
+      afternoonSnack: {
+        name: 'Hummus & Veggie Sticks',
+        description: 'Fresh vegetables with creamy hummus',
+        time: '4:00 PM',
+        ingredients: ['1/2 cup hummus', '1 cup carrot sticks', '1 cup cucumber slices', '1/2 cup bell pepper strips'],
+        instructions: ['Slice all vegetables', 'Arrange around hummus for dipping'],
+        macros: { calories: 220, protein: 8, carbs: 28, fats: 10 },
+        prepTime: 8,
+        cookingSkill: 'beginner',
+        budget: 'low',
+        dietTags: ['vegan', 'halal', 'gluten-free', 'mediterranean']
+      },
+      dinner: {
+        name: 'Teriyaki Salmon Bowl',
+        description: 'Glazed salmon with jasmine rice and steamed broccoli',
+        time: '7:00 PM - 8:00 PM',
+        ingredients: [
+          '5 oz salmon fillet',
+          '1 cup cooked jasmine rice',
+          '1.5 cups steamed broccoli',
+          '3 tbsp teriyaki sauce',
+          '1 tsp sesame seeds',
+          '1 green onion sliced'
+        ],
+        instructions: [
+          'Cook jasmine rice',
+          'Pan-sear salmon, brush with teriyaki',
+          'Steam broccoli until tender',
+          'Assemble bowl with rice, salmon, broccoli',
+          'Garnish with sesame seeds and green onion'
+        ],
+        macros: { calories: 480, protein: 36, carbs: 52, fats: 14 },
+        prepTime: 30,
+        cookingSkill: 'intermediate',
+        budget: 'medium',
+        dietTags: ['pescatarian', 'halal', 'high-protein']
+      },
+      eveningSnack: {
+        name: 'Greek Yogurt Parfait',
+        description: 'Layered yogurt with berries and granola',
+        time: '9:30 PM',
+        ingredients: ['1 cup Greek yogurt', '1/2 cup mixed berries', '3 tbsp granola', '1 tsp honey'],
+        instructions: ['Layer yogurt, berries, granola in glass', 'Drizzle with honey'],
+        macros: { calories: 260, protein: 18, carbs: 36, fats: 6 },
+        prepTime: 5,
+        cookingSkill: 'beginner',
+        budget: 'low',
+        dietTags: ['vegetarian', 'halal']
+      }
+    },
+    totalMacros: { calories: 2040, protein: 138, carbs: 196, fats: 84 }
+  }
+];
+
+// Generate remaining days for maintenance
+thursdayToSunday.forEach(({ day, name, id }) => {
+  const sourceDay = WEEK_1_MAINTENANCE[0];
+  WEEK_1_MAINTENANCE.push({
+    ...sourceDay,
+    id: `w1-maint-${id}`,
     day: day,
     dayName: name
   });

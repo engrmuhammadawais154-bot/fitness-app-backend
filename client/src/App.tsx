@@ -14,7 +14,7 @@ import {
 import { doc, setDoc, getDoc, onSnapshot, updateDoc, collection, addDoc, query, where, getDocs, deleteDoc, orderBy, limit } from 'firebase/firestore';
 import { motion, AnimatePresence } from 'framer-motion';
 import toast, { Toaster } from 'react-hot-toast';
-import { WEEK_1_WEIGHT_LOSS, generateShoppingList, type Meal } from './mealPlans';
+import { WEEK_1_WEIGHT_LOSS, WEEK_1_MUSCLE_GAIN, WEEK_1_MAINTENANCE, generateShoppingList, type Meal } from './mealPlans';
 
 // --- Custom Hooks ---
 
@@ -3128,15 +3128,20 @@ const DietPlanScreen = ({ goal, setGoal, showPlanModal, setShowPlanModal, userDa
                 {goal && (() => {
                   // Use smart meal engine for premium, simple suggestions for free
                   if (isPremium) {
-                    // Get Monday's meal plan from the smart engine
-                    const mondayPlan = WEEK_1_WEIGHT_LOSS.find(p => p.day === 1);
-                    if (!mondayPlan) return null;
-                    
                     // Determine user's fitness goal
                     const current = userData?.weight || 80;
                     const target = userData?.targetWeight || 75;
-                    const userGoal = current > target + 2 ? 'weight-loss' : current < target - 2 ? 'weight-gain' : 'maintenance';
-                    const calorieMultiplier = userGoal === 'weight-loss' ? 0.85 : userGoal === 'weight-gain' ? 1.15 : 1.0;
+                    const userGoal = current > target + 2 ? 'weight-loss' : current < target - 2 ? 'muscle-gain' : 'maintenance';
+                    const calorieMultiplier = userGoal === 'weight-loss' ? 0.85 : userGoal === 'muscle-gain' ? 1.15 : 1.0;
+                    
+                    // Select the appropriate meal plan database based on user's goal
+                    const mealDatabase = userGoal === 'weight-loss' ? WEEK_1_WEIGHT_LOSS :
+                                        userGoal === 'muscle-gain' ? WEEK_1_MUSCLE_GAIN :
+                                        WEEK_1_MAINTENANCE;
+                    
+                    // Get Monday's meal plan from the selected database
+                    const mondayPlan = mealDatabase.find(p => p.day === 1);
+                    if (!mondayPlan) return null;
                     
                     // Get meals based on user preference
                     const mealsPerDay = parseInt(userData?.dietPreferences?.mealsPerDay || '6');
@@ -3310,8 +3315,18 @@ const PremiumWeeklyPlansScreen = ({ onBack, userData, isPremium }: { onBack: () 
 
   // Smart Meal Generation Engine - Different logic for free vs premium
   const generateDailyMealPlan = (week: number, day: number, isPremium: boolean) => {
-    // Find the base meal plan for this day
-    const dayPlan = WEEK_1_WEIGHT_LOSS.find((plan: any) => plan.day === day);
+    // Determine user's fitness goal to select appropriate meal database
+    const current = userData?.weight || 80;
+    const target = userData?.targetWeight || 75;
+    const userGoal = current > target + 2 ? 'weight-loss' : current < target - 2 ? 'muscle-gain' : 'maintenance';
+    
+    // Select the appropriate meal plan database based on user's goal
+    const mealDatabase = userGoal === 'weight-loss' ? WEEK_1_WEIGHT_LOSS :
+                        userGoal === 'muscle-gain' ? WEEK_1_MUSCLE_GAIN :
+                        WEEK_1_MAINTENANCE;
+    
+    // Find the base meal plan for this day from the selected database
+    const dayPlan = mealDatabase.find((plan: any) => plan.day === day);
     
     if (!dayPlan) {
       console.log('No meal plan found for day:', day);
