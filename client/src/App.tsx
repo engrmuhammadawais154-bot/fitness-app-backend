@@ -2745,7 +2745,6 @@ const DietPlanScreen = ({ goal, setGoal, showPlanModal, setShowPlanModal, userDa
   userData: any;
   isPremium: boolean;
 }) => {
-  const [showPremiumPlans, setShowPremiumPlans] = useState(false);
   const [showPremiumLock, setShowPremiumLock] = useState(false);
 
   const goalOptions = useMemo(() => [
@@ -3054,40 +3053,6 @@ const DietPlanScreen = ({ goal, setGoal, showPlanModal, setShowPlanModal, userDa
                 ))}
               </div>
 
-              {/* Premium Weekly Plans Button */}
-              <div className="mt-6">
-                <button
-                  onClick={() => {
-                    if (isPremium) {
-                      setShowPremiumPlans(true);
-                    } else {
-                      setShowPremiumLock(true);
-                    }
-                  }}
-                  className="w-full p-6 bg-gradient-to-r from-amber-400 to-yellow-500 hover:from-amber-500 hover:to-yellow-600 rounded-xl shadow-2xl border-2 border-amber-300 text-white transform transition duration-300 hover:scale-[1.02] active:scale-95 relative overflow-hidden"
-                >
-                  {/* Animated shine effect */}
-                  <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent animate-pulse"></div>
-                  
-                  <div className="relative flex items-center justify-between">
-                    <div className="flex flex-col items-start">
-                      <div className="flex items-center gap-2 mb-2">
-                        <svg className="w-8 h-8" fill="currentColor" viewBox="0 0 20 20">
-                          <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
-                        </svg>
-                        {!isPremium && (
-                          <span className="text-xs px-2 py-1 bg-white/90 text-amber-700 font-bold rounded-full">
-                            PREMIUM
-                          </span>
-                        )}
-                      </div>
-                      <span className="text-xl font-bold text-white">4-Week Meal Plans</span>
-                      <span className="text-sm text-white/95 mt-1">Detailed recipes • Shopping lists • Macros</span>
-                    </div>
-                    <ArrowLeft className="h-6 w-6 transform rotate-180" />
-                  </div>
-                </button>
-              </div>
             </>
           ) : (
             <div className="space-y-4" {...swipeHandlersDietDetails}>
@@ -3115,13 +3080,29 @@ const DietPlanScreen = ({ goal, setGoal, showPlanModal, setShowPlanModal, userDa
               <DisclaimerCard compact={true} />
               
               <p className="text-gray-700 dark:text-white/70 text-sm italic">
-                Sample 1-Day Plan ({userData?.dietPreferences?.mealsPerDay || '3'} meals) based on your {userData?.dietSurveyCompleted ? 'preferences and ' : ''}goal:
+                Sample 1-Day Plan ({isPremium ? (userData?.dietPreferences?.mealsPerDay || '3') : '3'} meals{!isPremium && ' - basic plan'}) based on your {userData?.dietSurveyCompleted ? 'preferences and ' : ''}goal:
               </p>
+              
+              {/* Free user limitation notice */}
+              {!isPremium && (
+                <div className="bg-amber-50 dark:bg-amber-900/20 border-2 border-amber-300 dark:border-amber-600/30 rounded-xl p-4 flex items-start gap-3">
+                  <svg className="w-5 h-5 text-amber-600 dark:text-amber-400 flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" clipRule="evenodd" />
+                  </svg>
+                  <div className="flex-1">
+                    <p className="text-sm font-semibold text-amber-900 dark:text-amber-300 mb-1">Free Plan: 3 Basic Meals</p>
+                    <p className="text-xs text-amber-800 dark:text-amber-400">Upgrade to Premium for custom meal counts (3-6 meals), goal-based calorie adjustment, and personalized macros.</p>
+                  </div>
+                </div>
+              )}
 
               <div className="space-y-3">
                 {goal && (() => {
                   const allMeals = suggestions[goal as keyof typeof suggestions] || [];
-                  const mealsPerDay = parseInt(userData?.dietPreferences?.mealsPerDay || '3');
+                  
+                  // FREE USERS: Always show 3 meals (breakfast, lunch, dinner)
+                  // PREMIUM USERS: Show custom meal count based on preference
+                  const mealsPerDay = isPremium ? parseInt(userData?.dietPreferences?.mealsPerDay || '3') : 3;
                   
                   // Define meal selection based on meals per day
                   // 2 meals: Breakfast, Dinner
@@ -3187,16 +3168,11 @@ const DietPlanScreen = ({ goal, setGoal, showPlanModal, setShowPlanModal, userDa
           }}
         />
       )}
-
-      {/* Premium Weekly Plans Screen */}
-      {showPremiumPlans && (
-        <PremiumWeeklyPlansScreen onBack={() => setShowPremiumPlans(false)} userData={userData} isPremium={isPremium} />
-      )}
     </div>
   );
 };
 
-// Premium Weekly Plans Screen Component
+// Premium Weekly Plans Screen Component (kept for future use)
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 const PremiumWeeklyPlansScreen = ({ onBack, userData, isPremium }: { onBack: () => void; userData: any; isPremium: boolean }) => {
   const [selectedDay, setSelectedDay] = useState<number | null>(null);
