@@ -5225,23 +5225,50 @@ const App = () => {
     }
   }, [userData]);
 
-  // Check premium subscription status from user data
+  // Real-time premium subscription status listener
   useEffect(() => {
-    if (userData?.premium?.isActive) {
-      const expiry = userData.premium.expiryDate;
-      // Check if subscription is still valid
-      if (expiry && expiry > Date.now()) {
-        setIsPremium(true);
-        setPremiumExpiry(expiry);
-      } else {
-        setIsPremium(false);
-        setPremiumExpiry(null);
-      }
-    } else {
+    if (!user?.uid) {
       setIsPremium(false);
       setPremiumExpiry(null);
+      return;
     }
-  }, [userData]);
+
+    console.log('👂 Setting up real-time premium status listener for user:', user.uid);
+    
+    // Real-time listener for premium status changes
+    const unsubscribe = onSnapshot(doc(db, 'users', user.uid), (docSnapshot) => {
+      if (docSnapshot.exists()) {
+        const data = docSnapshot.data();
+        console.log('🔄 Real-time premium data update:', data.premium);
+        
+        if (data.premium?.isActive) {
+          const expiryDate = data.premium.expiryDate;
+          const now = Date.now();
+          
+          if (expiryDate && expiryDate > now) {
+            console.log('✅ Premium ACTIVE - Expires:', new Date(expiryDate).toLocaleDateString());
+            setIsPremium(true);
+            setPremiumExpiry(expiryDate);
+          } else {
+            console.log('⏰ Premium EXPIRED on:', expiryDate ? new Date(expiryDate).toLocaleDateString() : 'unknown');
+            setIsPremium(false);
+            setPremiumExpiry(null);
+          }
+        } else {
+          console.log('❌ No active premium subscription');
+          setIsPremium(false);
+          setPremiumExpiry(null);
+        }
+      }
+    }, (error) => {
+      console.error('Error listening to premium status:', error);
+    });
+
+    return () => {
+      console.log('🔇 Cleaning up premium status listener');
+      unsubscribe();
+    };
+  }, [user?.uid]);
 
   // Firebase auth state listener - automatically handles session persistence
   useEffect(() => {
