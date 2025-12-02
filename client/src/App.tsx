@@ -2493,12 +2493,13 @@ const DietSurveyScreen = ({ onComplete, userData }: { onComplete: () => void; us
 
   const canProceed = () => {
     switch (currentStep) {
-      case 1: return surveyData.religion !== '';
-      case 2: return surveyData.dietType !== '';
-      case 3: return surveyData.foodPreferences.length > 0;
-      case 4: return surveyData.allergies.length > 0;
-      case 5: return surveyData.cookingSkill !== '';
-      case 6: return surveyData.budget !== '';
+      case 1: return surveyData.fitnessGoal !== '';
+      case 2: return surveyData.religion !== '';
+      case 3: return surveyData.dietType !== '';
+      case 4: return surveyData.foodPreferences.length > 0;
+      case 5: return surveyData.allergies.length > 0;
+      case 6: return surveyData.cookingSkill !== '';
+      case 7: return surveyData.budget !== '';
       default: return false;
     }
   };
