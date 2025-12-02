@@ -15,6 +15,14 @@ import { doc, setDoc, getDoc, onSnapshot, updateDoc, collection, addDoc, query, 
 import { motion, AnimatePresence } from 'framer-motion';
 import toast, { Toaster } from 'react-hot-toast';
 import { WEEK_1_WEIGHT_LOSS, WEEK_1_MUSCLE_GAIN, WEEK_1_MAINTENANCE, generateShoppingList, type Meal } from './mealPlans';
+import { 
+  LOW_BUDGET_WEIGHT_LOSS, 
+  MEDIUM_BUDGET_WEIGHT_LOSS, 
+  HIGH_BUDGET_WEIGHT_LOSS,
+  LOW_BUDGET_MUSCLE_GAIN,
+  MEDIUM_BUDGET_MUSCLE_GAIN,
+  HIGH_BUDGET_MUSCLE_GAIN
+} from './mealPlansBudget';
 
 // --- Custom Hooks ---
 
@@ -3528,10 +3536,41 @@ const PremiumWeeklyPlansScreen = ({ onBack, userData, isPremium }: { onBack: () 
       console.log('⚖️ Auto-calculated goal from weight:', { current, target, userGoal });
     }
     
-    // Select the appropriate meal plan database based on user's goal
-    const mealDatabase = userGoal === 'weight-loss' ? WEEK_1_WEIGHT_LOSS :
-                        userGoal === 'muscle-gain' ? WEEK_1_MUSCLE_GAIN :
-                        WEEK_1_MAINTENANCE;
+    // Get user preferences
+    const preferences = userData?.dietPreferences || {};
+    const { religion, dietType, allergies, mealsPerDay } = preferences;
+
+    console.log('isPremium:', isPremium, '| mealsPerDay:', mealsPerDay || 'not set');
+    
+    // Select the appropriate meal plan database based on user's goal AND budget
+    const userBudget = preferences.budget || 'medium'; // Default to medium if not set
+    
+    let mealDatabase;
+    
+    if (userGoal === 'weight-loss') {
+      // Weight loss - select budget tier
+      if (userBudget === 'low') {
+        mealDatabase = LOW_BUDGET_WEIGHT_LOSS;
+      } else if (userBudget === 'high') {
+        mealDatabase = HIGH_BUDGET_WEIGHT_LOSS;
+      } else {
+        mealDatabase = MEDIUM_BUDGET_WEIGHT_LOSS;
+      }
+    } else if (userGoal === 'muscle-gain') {
+      // Muscle gain - select budget tier
+      if (userBudget === 'low') {
+        mealDatabase = LOW_BUDGET_MUSCLE_GAIN;
+      } else if (userBudget === 'high') {
+        mealDatabase = HIGH_BUDGET_MUSCLE_GAIN;
+      } else {
+        mealDatabase = MEDIUM_BUDGET_MUSCLE_GAIN;
+      }
+    } else {
+      // Maintenance - use existing database (budget not yet implemented for maintenance)
+      mealDatabase = WEEK_1_MAINTENANCE;
+    }
+    
+    console.log('🍽️ Using meal database:', { goal: userGoal, budget: userBudget });
     
     // Find the base meal plan for this day from the selected database
     const dayPlan = mealDatabase.find((plan: any) => plan.day === day);
@@ -3543,12 +3582,6 @@ const PremiumWeeklyPlansScreen = ({ onBack, userData, isPremium }: { onBack: () 
 
     // Clone the plan to avoid mutating original
     let adjustedPlan = JSON.parse(JSON.stringify(dayPlan));
-    
-    // Get user preferences
-    const preferences = userData?.dietPreferences || {};
-    const { religion, dietType, allergies, mealsPerDay } = preferences;
-
-    console.log('isPremium:', isPremium, '| mealsPerDay:', mealsPerDay || 'not set');
 
     // Helper function to check if meal matches safety filters
     const matchesSafetyFilters = (meal: any) => {
