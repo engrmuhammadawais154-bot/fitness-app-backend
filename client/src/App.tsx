@@ -3103,9 +3103,19 @@ const DietPlanScreen = ({ goal, setGoal, showPlanModal, setShowPlanModal, userDa
               
               {/* Goal-based calorie info for premium */}
               {isPremium && (() => {
-                const current = userData?.weight || 80;
-                const target = userData?.targetWeight || 75;
-                const userGoal = current > target + 2 ? 'weight-loss' : current < target - 2 ? 'muscle-gain' : 'maintenance';
+                // CRITICAL: Use the same logic as generateDailyMealPlan - prioritize preference
+                const preferenceGoal = userData?.dietPreferences?.fitnessGoal;
+                let userGoal = 'maintenance';
+                
+                if (preferenceGoal) {
+                  userGoal = preferenceGoal; // Use user's explicit preference
+                } else {
+                  // Fallback: calculate from weight
+                  const current = userData?.weight || 80;
+                  const target = userData?.targetWeight || 75;
+                  userGoal = current > target + 2 ? 'weight-loss' : current < target - 2 ? 'muscle-gain' : 'maintenance';
+                }
+                
                 const calorieMultiplier = userGoal === 'weight-loss' ? 0.85 : userGoal === 'muscle-gain' ? 1.15 : 1.0;
                 const baseCalories = 2000;
                 const adjustedCalories = Math.round(baseCalories * calorieMultiplier);
