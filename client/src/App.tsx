@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 // Using lucide-react for modern, clean icons (assumed available in the environment)
-import { Home, Dumbbell, Soup, User, ArrowLeft, Heart, Target, TrendingUp, TrendingDown, Clock, Search, Mail, Lock, Eye, EyeOff, Edit, X, RefreshCw } from 'lucide-react';
+import { Home, Dumbbell, Soup, User, ArrowLeft, Heart, Target, TrendingUp, TrendingDown, Clock, Search, Mail, Lock, Eye, EyeOff, Edit, X, RefreshCw, Crown } from 'lucide-react';
 import { App as CapacitorApp } from '@capacitor/app';
 import { StatusBar, Style } from '@capacitor/status-bar';
 import { auth, db } from './firebase';
@@ -4961,7 +4961,13 @@ const AppPreferencesScreen = ({ onBack, userData }: { onBack: () => void; userDa
 };
 
 // 4. Account Screen
-const AccountScreen = ({ onLogout, userData: propUserData, onNavigateToSettings }: { onLogout: () => void; userData: any; onNavigateToSettings: (screen: 'health' | 'history' | 'goals' | 'preferences') => void }) => {
+const AccountScreen = ({ onLogout, userData: propUserData, onNavigateToSettings, isPremium, premiumExpiry }: { 
+  onLogout: () => void; 
+  userData: any; 
+  onNavigateToSettings: (screen: 'health' | 'history' | 'goals' | 'preferences') => void;
+  isPremium: boolean;
+  premiumExpiry: number | null;
+}) => {
     const userData = propUserData;
     const [showEditModal, setShowEditModal] = useState(false);
     const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
@@ -5090,6 +5096,51 @@ const AccountScreen = ({ onLogout, userData: propUserData, onNavigateToSettings 
                         <p className="text-2xl font-bold text-teal-600 dark:text-teal-400">{units === 'imperial' ? kgToLbs(weightLost) : weightLost.toFixed(1)}</p>
                         <p className="text-sm text-gray-600 dark:text-white/70">{units === 'imperial' ? 'lb' : 'kg'} Lost</p>
                     </div>
+                </div>
+            </div>
+
+            {/* Premium Status Debug Section */}
+            <div className="bg-gradient-to-br from-yellow-50 to-orange-50 dark:from-gray-800 dark:to-gray-700 p-6 rounded-xl shadow-lg border-2 border-yellow-300 dark:border-yellow-600">
+                <div className="flex items-center gap-2 mb-4">
+                    <div className="bg-yellow-500 p-2 rounded-lg">
+                        <Crown className="w-5 h-5 text-white" />
+                    </div>
+                    <h3 className="text-lg font-bold text-gray-900 dark:text-white">Premium Status (Debug)</h3>
+                </div>
+                <div className="space-y-2 text-sm">
+                    <div className="flex justify-between items-center p-2 bg-white dark:bg-gray-900 rounded">
+                        <span className="text-gray-600 dark:text-gray-300">User ID:</span>
+                        <span className="text-gray-900 dark:text-white font-mono text-xs">{auth.currentUser?.uid}</span>
+                    </div>
+                    <div className="flex justify-between items-center p-2 bg-white dark:bg-gray-900 rounded">
+                        <span className="text-gray-600 dark:text-gray-300">Premium Active:</span>
+                        <span className={`font-semibold ${isPremium ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
+                            {isPremium ? '✅ YES' : '❌ NO'}
+                        </span>
+                    </div>
+                    {premiumExpiry && (
+                        <div className="flex justify-between items-center p-2 bg-white dark:bg-gray-900 rounded">
+                            <span className="text-gray-600 dark:text-gray-300">Expires:</span>
+                            <span className="text-gray-900 dark:text-white font-semibold">
+                                {new Date(premiumExpiry).toLocaleDateString()}
+                            </span>
+                        </div>
+                    )}
+                    <button
+                        onClick={async () => {
+                            try {
+                                const userDoc = await getDoc(doc(db, 'users', auth.currentUser!.uid));
+                                console.log('🔍 MANUAL CHECK - Full user document:', JSON.stringify(userDoc.data(), null, 2));
+                                toast.success('Check console for full data');
+                            } catch (error) {
+                                console.error('Manual check error:', error);
+                                toast.error('Failed to fetch data');
+                            }
+                        }}
+                        className="w-full mt-2 py-2 bg-yellow-500 hover:bg-yellow-600 text-white rounded-lg font-semibold transition"
+                    >
+                        🔍 Check Firebase Data
+                    </button>
                 </div>
             </div>
 
@@ -5228,22 +5279,37 @@ const App = () => {
   // Real-time premium subscription status listener
   useEffect(() => {
     if (!user?.uid) {
+      console.log('⚠️ No user UID - skipping premium listener setup');
       setIsPremium(false);
       setPremiumExpiry(null);
       return;
     }
 
     console.log('👂 Setting up real-time premium status listener for user:', user.uid);
+    console.log('📍 Firebase project:', import.meta.env.VITE_FIREBASE_PROJECT_ID);
     
     // Real-time listener for premium status changes
     const unsubscribe = onSnapshot(doc(db, 'users', user.uid), (docSnapshot) => {
+      console.log('📨 Snapshot received for user:', user.uid);
+      console.log('📄 Document exists:', docSnapshot.exists());
+      
       if (docSnapshot.exists()) {
         const data = docSnapshot.data();
-        console.log('🔄 Real-time premium data update:', data.premium);
+        console.log('📦 Full user data:', JSON.stringify(data, null, 2));
+        console.log('💎 Premium field:', JSON.stringify(data.premium, null, 2));
         
         if (data.premium?.isActive) {
           const expiryDate = data.premium.expiryDate;
           const now = Date.now();
+          
+          console.log('🔍 Premium check:', {
+            isActive: data.premium.isActive,
+            expiryDate: expiryDate,
+            expiryDateReadable: expiryDate ? new Date(expiryDate).toLocaleString() : 'N/A',
+            now: now,
+            nowReadable: new Date(now).toLocaleString(),
+            isValid: expiryDate && expiryDate > now
+          });
           
           if (expiryDate && expiryDate > now) {
             console.log('✅ Premium ACTIVE - Expires:', new Date(expiryDate).toLocaleDateString());
@@ -5255,17 +5321,26 @@ const App = () => {
             setPremiumExpiry(null);
           }
         } else {
-          console.log('❌ No active premium subscription');
+          console.log('❌ No active premium subscription - isActive:', data.premium?.isActive);
           setIsPremium(false);
           setPremiumExpiry(null);
         }
+      } else {
+        console.log('⚠️ User document does not exist in Firestore!');
+        setIsPremium(false);
+        setPremiumExpiry(null);
       }
     }, (error) => {
-      console.error('Error listening to premium status:', error);
+      console.error('❌ ERROR listening to premium status:', error);
+      console.error('Error details:', {
+        code: error.code,
+        message: error.message,
+        name: error.name
+      });
     });
 
     return () => {
-      console.log('🔇 Cleaning up premium status listener');
+      console.log('🔇 Cleaning up premium status listener for user:', user.uid);
       unsubscribe();
     };
   }, [user?.uid]);
@@ -5659,7 +5734,7 @@ const App = () => {
           onUpgradeToPremium={() => console.log('Upgrade modal')}
         />;
       case 'account':
-        return <AccountScreen onLogout={handleLogout} userData={userData} onNavigateToSettings={setActiveSettingsScreen} />;
+        return <AccountScreen onLogout={handleLogout} userData={userData} onNavigateToSettings={setActiveSettingsScreen} isPremium={isPremium} premiumExpiry={premiumExpiry} />;
       default:
         return null;
     }
