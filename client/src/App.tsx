@@ -3105,20 +3105,20 @@ const DietPlanScreen = ({ goal, setGoal, showPlanModal, setShowPlanModal, userDa
               {isPremium && (() => {
                 const current = userData?.weight || 80;
                 const target = userData?.targetWeight || 75;
-                const userGoal = current > target + 2 ? 'weight-loss' : current < target - 2 ? 'weight-gain' : 'maintenance';
-                const calorieMultiplier = userGoal === 'weight-loss' ? 0.85 : userGoal === 'weight-gain' ? 1.15 : 1.0;
+                const userGoal = current > target + 2 ? 'weight-loss' : current < target - 2 ? 'muscle-gain' : 'maintenance';
+                const calorieMultiplier = userGoal === 'weight-loss' ? 0.85 : userGoal === 'muscle-gain' ? 1.15 : 1.0;
                 const baseCalories = 2000;
                 const adjustedCalories = Math.round(baseCalories * calorieMultiplier);
                 
                 return (
                   <div className={`p-4 rounded-xl border-2 ${
                     userGoal === 'weight-loss' ? 'bg-red-50 dark:bg-red-900/20 border-red-300 dark:border-red-600/30' :
-                    userGoal === 'weight-gain' ? 'bg-green-50 dark:bg-green-900/20 border-green-300 dark:border-green-600/30' :
+                    userGoal === 'muscle-gain' ? 'bg-green-50 dark:bg-green-900/20 border-green-300 dark:border-green-600/30' :
                     'bg-blue-50 dark:bg-blue-900/20 border-blue-300 dark:border-blue-600/30'
                   }`}>
                     <p className="text-sm font-bold mb-1">
                       {userGoal === 'weight-loss' && '🔥 Weight Loss Plan'}
-                      {userGoal === 'weight-gain' && '💪 Weight Gain Plan'}
+                      {userGoal === 'muscle-gain' && '💪 Muscle Gain Plan'}
                       {userGoal === 'maintenance' && '⚖️ Maintenance Plan'}
                     </p>
                     <p className="text-xs opacity-90">
@@ -3547,7 +3547,7 @@ const PremiumWeeklyPlansScreen = ({ onBack, userData, isPremium }: { onBack: () 
     const calorieMultiplier = {
       'weight-loss': 0.85,      // 15% calorie deficit
       'maintenance': 1.0,        // Baseline calories
-      'weight-gain': 1.15        // 15% calorie surplus
+      'muscle-gain': 1.15        // 15% calorie surplus
     }[userGoal] || 1.0;
 
     console.log('Goal:', userGoal, '| Calorie multiplier:', calorieMultiplier);
@@ -3777,9 +3777,9 @@ const PremiumWeeklyPlansScreen = ({ onBack, userData, isPremium }: { onBack: () 
           <p className="text-sm text-gray-700 dark:text-gray-300">
             <strong className="text-indigo-700 dark:text-indigo-400">
               {userGoal === 'weight-loss' && '🔥 Calorie Deficit Mode'}
-              {userGoal === 'weight-gain' && '💪 Calorie Surplus Mode'}
+              {userGoal === 'muscle-gain' && '💪 Calorie Surplus Mode'}
               {userGoal === 'maintenance' && '⚖️ Balanced Nutrition Mode'}
-            </strong> - Your meals are automatically adjusted to help you {userGoal === 'weight-loss' ? 'lose weight' : userGoal === 'weight-gain' ? 'gain muscle' : 'maintain your current weight'}. Each week features different recipes that rotate after Week 4.
+            </strong> - Your meals are automatically adjusted to help you {userGoal === 'weight-loss' ? 'lose weight' : userGoal === 'muscle-gain' ? 'gain muscle' : 'maintain your current weight'}. Each week features different recipes that rotate after Week 4.
           </p>
         </div>
 
@@ -3908,7 +3908,7 @@ const PremiumWeeklyPlansScreen = ({ onBack, userData, isPremium }: { onBack: () 
               const dayPlan = getMealPlanForDay(currentWeek, selectedDay);
               if (!dayPlan) return null;
               
-              const goalColor = userGoal === 'weight-loss' ? 'orange' : userGoal === 'weight-gain' ? 'green' : 'blue';
+              const goalColor = userGoal === 'weight-loss' ? 'orange' : userGoal === 'muscle-gain' ? 'green' : 'blue';
               
               return (
                 <div className={`bg-gradient-to-r from-${goalColor}-50 to-${goalColor}-100 dark:from-${goalColor}-900/20 dark:to-${goalColor}-900/30 rounded-xl p-4 border border-${goalColor}-200 dark:border-${goalColor}-500/30`}>
@@ -3916,7 +3916,7 @@ const PremiumWeeklyPlansScreen = ({ onBack, userData, isPremium }: { onBack: () 
                     <p className="text-xs text-gray-600 dark:text-gray-400 font-semibold uppercase">Daily Total</p>
                     <span className="text-xs font-bold px-2 py-1 bg-white dark:bg-gray-800 rounded-full">
                       {userGoal === 'weight-loss' && '🔥 -15% Cal'}
-                      {userGoal === 'weight-gain' && '💪 +15% Cal'}
+                      {userGoal === 'muscle-gain' && '💪 +15% Cal'}
                       {userGoal === 'maintenance' && '⚖️ Balanced'}
                     </span>
                   </div>
