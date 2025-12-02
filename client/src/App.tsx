@@ -2730,31 +2730,45 @@ const DietSurveyScreen = ({ onComplete, userData, initialStep }: { onComplete: (
       </div>
 
       {/* Navigation Buttons */}
-      <div className="flex gap-3 pt-4">
-        {currentStep > 1 && (
-          <button
-            onClick={() => setCurrentStep(prev => prev - 1)}
-            className="flex-1 py-3 bg-gray-700 hover:bg-gray-600 text-white font-semibold rounded-xl transition"
-          >
-            Back
-          </button>
-        )}
-        
-        {currentStep < totalSteps ? (
-          <button
-            onClick={() => setCurrentStep(prev => prev + 1)}
-            disabled={!canProceed()}
-            className="flex-1 py-3 bg-indigo-600 hover:bg-indigo-700 disabled:bg-gray-700 disabled:cursor-not-allowed text-white font-semibold rounded-xl transition"
-          >
-            Next
-          </button>
-        ) : (
+      <div className="space-y-3 pt-4">
+        {/* Primary Actions Row */}
+        <div className="flex gap-3">
+          {currentStep > 1 && (
+            <button
+              onClick={() => setCurrentStep(prev => prev - 1)}
+              className="flex-1 py-3 bg-gray-700 hover:bg-gray-600 text-white font-semibold rounded-xl transition"
+            >
+              ← Back
+            </button>
+          )}
+          
+          {currentStep < totalSteps ? (
+            <button
+              onClick={() => setCurrentStep(prev => prev + 1)}
+              disabled={!canProceed()}
+              className="flex-1 py-3 bg-indigo-600 hover:bg-indigo-700 disabled:bg-gray-700 disabled:cursor-not-allowed text-white font-semibold rounded-xl transition"
+            >
+              Next →
+            </button>
+          ) : (
+            <button
+              onClick={handleSaveSurvey}
+              disabled={!canProceed() || isSaving}
+              className="flex-1 py-3 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 disabled:from-gray-700 disabled:to-gray-700 disabled:cursor-not-allowed text-white font-semibold rounded-xl transition"
+            >
+              {isSaving ? 'Saving...' : 'Complete Survey 🎉'}
+            </button>
+          )}
+        </div>
+
+        {/* Save & Exit Button - Always available if user has made changes */}
+        {canProceed() && currentStep < totalSteps && (
           <button
             onClick={handleSaveSurvey}
-            disabled={!canProceed() || isSaving}
-            className="flex-1 py-3 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 disabled:from-gray-700 disabled:to-gray-700 disabled:cursor-not-allowed text-white font-semibold rounded-xl transition"
+            disabled={isSaving}
+            className="w-full py-2.5 bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 disabled:from-gray-700 disabled:to-gray-700 disabled:cursor-not-allowed text-white font-semibold rounded-xl transition text-sm"
           >
-            {isSaving ? 'Saving...' : 'Complete Survey 🎉'}
+            {isSaving ? 'Saving...' : '✓ Save & Exit'}
           </button>
         )}
       </div>
