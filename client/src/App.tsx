@@ -5193,9 +5193,7 @@ const App = () => {
   const [activeSettingsScreen, setActiveSettingsScreen] = useState<'health' | 'history' | 'goals' | 'preferences' | null>(null);
   
   // Premium Subscription State
-  // @ts-ignore - setIsPremium unused but kept for future feature
-  const [isPremium, setIsPremium] = useState(true); // Test premium experience
-  // @ts-ignore - premium expiry unused but kept for future feature
+  const [isPremium, setIsPremium] = useState(false); // Changed from true - now requires actual subscription
   const [premiumExpiry, setPremiumExpiry] = useState<number | null>(null);
   
   // Exercise Logging State
@@ -5223,6 +5221,24 @@ const App = () => {
       document.documentElement.classList.remove('dark');
       // Set status bar to dark text for light mode
       StatusBar.setStyle({ style: Style.Light }).catch(() => {});
+    }
+  }, [userData]);
+
+  // Check premium subscription status from user data
+  useEffect(() => {
+    if (userData?.premium?.isActive) {
+      const expiry = userData.premium.expiryDate;
+      // Check if subscription is still valid
+      if (expiry && expiry > Date.now()) {
+        setIsPremium(true);
+        setPremiumExpiry(expiry);
+      } else {
+        setIsPremium(false);
+        setPremiumExpiry(null);
+      }
+    } else {
+      setIsPremium(false);
+      setPremiumExpiry(null);
     }
   }, [userData]);
 
