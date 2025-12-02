@@ -41,7 +41,8 @@ export interface Meal {
 }
 
 // Import original data
-import { WEEK_1_WEIGHT_LOSS as ORIGINAL_WEEK_1, generateShoppingList, ShoppingListItem } from './mealPlans';
+import { WEEK_1_WEIGHT_LOSS as ORIGINAL_WEEK_1, generateShoppingList } from './mealPlans';
+import type { ShoppingListItem } from './mealPlanTypes';
 
 // Enhanced Week 1 with all 7 unique days
 export const WEEK_1_WEIGHT_LOSS: MealPlan[] = ORIGINAL_WEEK_1;

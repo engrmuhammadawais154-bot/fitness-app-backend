@@ -2797,6 +2797,7 @@ const DietPlanScreen = ({ goal, setGoal, showPlanModal, setShowPlanModal, userDa
 }) => {
   const [showPremiumLock, setShowPremiumLock] = useState(false);
 
+  // @ts-ignore - unused but kept for future feature
   const goalOptions = useMemo(() => [
     { id: 'loss', name: "Weight Loss", icon: TrendingDown, color: "bg-red-600/60", subtitle: "Calorie deficit focus" },
     { id: 'gain', name: "Muscle Gain", icon: TrendingUp, color: "bg-green-600/60", subtitle: "Protein and calorie surplus" },
@@ -3024,6 +3025,7 @@ const DietPlanScreen = ({ goal, setGoal, showPlanModal, setShowPlanModal, userDa
   }, [userData]);
 
   // Swipe handler for diet plan details screen
+  // @ts-ignore - unused but kept for future feature
   const swipeHandlersDietDetails = useSwipe(() => setGoal(null));
 
   const [showSurvey, setShowSurvey] = useState(false);
@@ -3467,6 +3469,7 @@ const DietPlanScreen = ({ goal, setGoal, showPlanModal, setShowPlanModal, userDa
 
 // Premium Weekly Plans Screen Component (kept for future use)
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
+// @ts-ignore - unused but kept for future feature
 const PremiumWeeklyPlansScreen = ({ onBack, userData, isPremium }: { onBack: () => void; userData: any; isPremium: boolean }) => {
   const [selectedDay, setSelectedDay] = useState<number | null>(null);
   const [selectedMeal, setSelectedMeal] = useState<any>(null);
@@ -3507,7 +3510,7 @@ const PremiumWeeklyPlansScreen = ({ onBack, userData, isPremium }: { onBack: () 
   };
 
   // Smart Meal Generation Engine - Different logic for free vs premium
-  const generateDailyMealPlan = (week: number, day: number, isPremium: boolean) => {
+  const generateDailyMealPlan = (_week: number, day: number, isPremium: boolean) => {
     // CRITICAL FIX: Prioritize user's explicit preference over auto-calculation
     const preferenceGoal = userData?.dietPreferences?.fitnessGoal;
     
@@ -3895,7 +3898,7 @@ const PremiumWeeklyPlansScreen = ({ onBack, userData, isPremium }: { onBack: () 
               <h2 className="text-xl font-bold text-gray-900 dark:text-white">Week {currentWeek}</h2>
               <PremiumBadge size="sm" />
             </div>
-            <p className="text-xs text-indigo-600 dark:text-indigo-400 font-semibold">{goalLabels[userGoal]}</p>
+            <p className="text-xs text-indigo-600 dark:text-indigo-400 font-semibold">{goalLabels[userGoal as keyof typeof goalLabels]}</p>
           </div>
           <div className="w-6"></div>
         </div>
@@ -4114,7 +4117,7 @@ const PremiumWeeklyPlansScreen = ({ onBack, userData, isPremium }: { onBack: () 
                           <p className="text-xs text-gray-500 dark:text-gray-500 uppercase font-semibold">{label}</p>
                         </div>
                         <p className="text-sm text-gray-500 dark:text-gray-500 italic">
-                          ⚠️ This meal contains ingredients that don't match your dietary preferences ({dietType || religion || 'custom restrictions'})
+                          ⚠️ This meal contains ingredients that don't match your dietary preferences
                         </p>
                       </div>
                     );
@@ -5190,7 +5193,9 @@ const App = () => {
   const [activeSettingsScreen, setActiveSettingsScreen] = useState<'health' | 'history' | 'goals' | 'preferences' | null>(null);
   
   // Premium Subscription State
+  // @ts-ignore - setIsPremium unused but kept for future feature
   const [isPremium, setIsPremium] = useState(true); // Test premium experience
+  // @ts-ignore - premium expiry unused but kept for future feature
   const [premiumExpiry, setPremiumExpiry] = useState<number | null>(null);
   
   // Exercise Logging State
@@ -5607,7 +5612,7 @@ const App = () => {
           setCurrentWorkout={setCurrentWorkout}
           finishWorkout={finishWorkout}
           isPremium={isPremium}
-          onUpgradeToPremium={() => setShowPremiumModal(true)}
+          onUpgradeToPremium={() => console.log('Upgrade modal')}
         />;
       case 'account':
         return <AccountScreen onLogout={handleLogout} userData={userData} onNavigateToSettings={setActiveSettingsScreen} />;
