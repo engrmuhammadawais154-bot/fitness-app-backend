@@ -2680,7 +2680,7 @@ const DietSurveyScreen = ({ onComplete, userData, initialStep }: { onComplete: (
           </div>
         )}
 
-        {currentStep === 6 && (
+        {currentStep === 7 && (
           <div className="space-y-4">
             <h3 className="text-xl font-semibold text-gray-900 dark:text-white">What's your food budget?</h3>
             <p className="text-gray-600 dark:text-white/60 text-sm">We'll suggest meals within your range</p>
@@ -2692,7 +2692,7 @@ const DietSurveyScreen = ({ onComplete, userData, initialStep }: { onComplete: (
                   className={`w-full p-4 rounded-xl border-2 transition flex items-center justify-between ${
                     surveyData.budget === budget.id
                       ? 'border-indigo-500 bg-indigo-500/20'
-                      : 'border-gray-700 bg-gray-800 hover:border-gray-600'
+                      : 'border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 hover:border-indigo-400 dark:hover:border-gray-600'
                   }`}
                 >
                   <div className="flex items-center gap-3">
