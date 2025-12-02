@@ -2367,6 +2367,7 @@ const QuoteCarousel = ({ quotes }: { quotes: { text: string, author: string }[] 
 const DietSurveyScreen = ({ onComplete, userData }: { onComplete: () => void; userData: any }) => {
   const [currentStep, setCurrentStep] = useState(1);
   const [surveyData, setSurveyData] = useState({
+    fitnessGoal: userData?.dietPreferences?.fitnessGoal || '',
     religion: userData?.dietPreferences?.religion || '',
     dietType: userData?.dietPreferences?.dietType || '',
     foodPreferences: userData?.dietPreferences?.foodPreferences || [],
@@ -2376,6 +2377,12 @@ const DietSurveyScreen = ({ onComplete, userData }: { onComplete: () => void; us
     budget: userData?.dietPreferences?.budget || '',
   });
   const [isSaving, setIsSaving] = useState(false);
+
+  const fitnessGoals = [
+    { id: 'weight-loss', name: 'Weight Loss', desc: 'Calorie deficit focus', icon: '🔥', color: 'bg-red-500' },
+    { id: 'muscle-gain', name: 'Muscle Gain', desc: 'Protein and calorie surplus', icon: '💪', color: 'bg-green-500' },
+    { id: 'maintenance', name: 'Maintenance', desc: 'Balanced lifestyle', icon: '⚖️', color: 'bg-blue-500' },
+  ];
 
   const religions = [
     { id: 'muslim', name: 'Muslim (Halal)', icon: '☪️' },
@@ -2496,7 +2503,7 @@ const DietSurveyScreen = ({ onComplete, userData }: { onComplete: () => void; us
     }
   };
 
-  const totalSteps = 6;
+  const totalSteps = 7;
   const progress = (currentStep / totalSteps) * 100;
 
   return (
@@ -2525,6 +2532,34 @@ const DietSurveyScreen = ({ onComplete, userData }: { onComplete: () => void; us
       <div className="min-h-[400px]">
         {currentStep === 1 && (
           <div className="space-y-4">
+            <h3 className="text-xl font-semibold text-gray-900 dark:text-white">What's your fitness goal?</h3>
+            <p className="text-gray-600 dark:text-white/60 text-sm">This determines your meal plan type</p>
+            <div className="space-y-3">
+              {fitnessGoals.map(goal => (
+                <button
+                  key={goal.id}
+                  onClick={() => setSurveyData(prev => ({ ...prev, fitnessGoal: goal.id }))}
+                  className={`w-full p-6 rounded-xl border-2 transition flex items-center gap-4 ${
+                    surveyData.fitnessGoal === goal.id
+                      ? 'border-indigo-500 bg-indigo-500/20'
+                      : 'border-gray-300 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 hover:border-gray-400 dark:hover:border-gray-600'
+                  }`}
+                >
+                  <div className={`text-4xl w-16 h-16 rounded-full ${goal.color} flex items-center justify-center`}>
+                    {goal.icon}
+                  </div>
+                  <div className="flex-1 text-left">
+                    <div className="text-gray-900 dark:text-white font-bold text-lg">{goal.name}</div>
+                    <div className="text-gray-600 dark:text-white/60 text-sm">{goal.desc}</div>
+                  </div>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {currentStep === 2 && (
+          <div className="space-y-4">
             <h3 className="text-xl font-semibold text-gray-900 dark:text-white">What's your religion or dietary belief?</h3>
             <p className="text-gray-600 dark:text-white/60 text-sm">This helps us suggest appropriate foods</p>
             <div className="grid grid-cols-2 gap-3">
@@ -2546,7 +2581,7 @@ const DietSurveyScreen = ({ onComplete, userData }: { onComplete: () => void; us
           </div>
         )}
 
-        {currentStep === 2 && (
+        {currentStep === 3 && (
           <div className="space-y-4">
             <h3 className="text-xl font-semibold text-gray-900 dark:text-white">What's your diet type?</h3>
             <p className="text-gray-600 dark:text-white/60 text-sm">Choose your eating pattern</p>
@@ -2570,7 +2605,7 @@ const DietSurveyScreen = ({ onComplete, userData }: { onComplete: () => void; us
           </div>
         )}
 
-        {currentStep === 3 && (
+        {currentStep === 4 && (
           <div className="space-y-4">
             <h3 className="text-xl font-semibold text-gray-900 dark:text-white">What foods do you like?</h3>
             <p className="text-gray-600 dark:text-white/60 text-sm">Select all that apply</p>
@@ -2593,7 +2628,7 @@ const DietSurveyScreen = ({ onComplete, userData }: { onComplete: () => void; us
           </div>
         )}
 
-        {currentStep === 4 && (
+        {currentStep === 5 && (
           <div className="space-y-4">
             <h3 className="text-xl font-semibold text-gray-900 dark:text-white">Any food allergies?</h3>
             <p className="text-gray-600 dark:text-white/60 text-sm">We'll exclude these from your plan</p>
@@ -2616,7 +2651,7 @@ const DietSurveyScreen = ({ onComplete, userData }: { onComplete: () => void; us
           </div>
         )}
 
-        {currentStep === 5 && (
+        {currentStep === 6 && (
           <div className="space-y-4">
             <h3 className="text-xl font-semibold text-gray-900 dark:text-white">What's your cooking skill level?</h3>
             <p className="text-gray-600 dark:text-white/60 text-sm">We'll match recipe complexity</p>
@@ -3009,6 +3044,17 @@ const DietPlanScreen = ({ goal, setGoal, showPlanModal, setShowPlanModal, userDa
             <div className="bg-gradient-to-r from-indigo-300 via-purple-300 to-pink-300 dark:from-indigo-900/40 dark:to-purple-900/40 p-4 rounded-xl border-2 border-indigo-400 dark:border-indigo-500/30 shadow-xl">
               <h3 className="text-sm font-semibold text-indigo-900 dark:text-white mb-2">Your Diet Profile</h3>
               <div className="flex flex-wrap gap-2 text-xs">
+                {userData.dietPreferences?.fitnessGoal && (
+                  <span className={`px-2 py-1 rounded-full font-semibold border ${
+                    userData.dietPreferences.fitnessGoal === 'weight-loss' ? 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300 border-red-300' :
+                    userData.dietPreferences.fitnessGoal === 'muscle-gain' ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300 border-green-300' :
+                    'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 border-blue-300'
+                  }`}>
+                    {userData.dietPreferences.fitnessGoal === 'weight-loss' ? '🔥 Weight Loss' :
+                     userData.dietPreferences.fitnessGoal === 'muscle-gain' ? '💪 Muscle Gain' :
+                     '⚖️ Maintenance'}
+                  </span>
+                )}
                 {userData.dietPreferences?.religion && (
                   <span className="px-2 py-1 bg-white/90 dark:bg-indigo-600/30 rounded-full text-indigo-700 dark:text-indigo-300 font-semibold border border-indigo-300 dark:border-transparent">
                     {userData.dietPreferences.religion === 'muslim' ? '☪️ Halal' : 
@@ -3034,33 +3080,8 @@ const DietPlanScreen = ({ goal, setGoal, showPlanModal, setShowPlanModal, userDa
           {/* Medical Disclaimer - Collapsible */}
           <DisclaimerCard />
 
-          {!goal ? (
-            <>
-              <div className="grid grid-cols-1 gap-4">
-                {goalOptions.map((opt) => (
-                  <button
-                    key={opt.id}
-                    onClick={() => setGoal(opt.id)}
-                    className={`p-6 ${opt.color} rounded-xl shadow-xl border-2 border-white/30 dark:border-indigo-400/20 text-white flex items-center justify-between transform transition duration-300 hover:scale-[1.02] hover:shadow-2xl active:scale-95`}
-                  >
-                    <div className="flex flex-col items-start">
-                      <opt.icon className="h-8 w-8 mb-2" />
-                      <span className="text-xl font-semibold text-white">{opt.name}</span>
-                      <span className="text-sm font-light text-white/95 mt-1">{opt.subtitle}</span>
-                    </div>
-                    <ArrowLeft className="h-5 w-5 transform rotate-180" />
-                  </button>
-                ))}
-              </div>
-
-            </>
-          ) : (
-            <div className="space-y-4" {...swipeHandlersDietDetails}>
-              <button onClick={() => setGoal(null)} className="flex items-center text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 dark:hover:text-indigo-300 transition duration-200">
-                <ArrowLeft className="h-4 w-4 mr-2" /> Back to Goals
-              </button>
-          
-              <h3 className="text-xl font-bold text-indigo-700 dark:text-indigo-300 mt-4 capitalize">{goalOptions.find(o => o.id === goal)?.name} Plan</h3>
+          <div className="space-y-4">
+            <h3 className="text-xl font-bold text-indigo-700 dark:text-indigo-300 mt-4">Your Meal Plan</h3>
               
               {/* Personalization Notice */}
               {userData?.dietSurveyCompleted && (
@@ -3128,16 +3149,29 @@ const DietPlanScreen = ({ goal, setGoal, showPlanModal, setShowPlanModal, userDa
                 {goal && (() => {
                   // Use smart meal engine for premium, simple suggestions for free
                   if (isPremium) {
-                    // Determine user's fitness goal
-                    const current = userData?.weight || 80;
-                    const target = userData?.targetWeight || 75;
-                    const userGoal = current > target + 2 ? 'weight-loss' : current < target - 2 ? 'muscle-gain' : 'maintenance';
+                    // Get user's fitness goal from preferences (or fallback to weight-based calculation)
+                    const userGoal = userData?.dietPreferences?.fitnessGoal || (() => {
+                      const current = userData?.weight || 80;
+                      const target = userData?.targetWeight || 75;
+                      return current > target + 2 ? 'weight-loss' : current < target - 2 ? 'muscle-gain' : 'maintenance';
+                    })();
+                    
+                    // DEBUG: Log to console
+                    console.log('🎯 Goal Detection:', { 
+                      preferenceGoal: userData?.dietPreferences?.fitnessGoal,
+                      calculatedGoal: userGoal,
+                      weight: userData?.weight,
+                      target: userData?.targetWeight
+                    });
+                    
                     const calorieMultiplier = userGoal === 'weight-loss' ? 0.85 : userGoal === 'muscle-gain' ? 1.15 : 1.0;
                     
                     // Select the appropriate meal plan database based on user's goal
                     const mealDatabase = userGoal === 'weight-loss' ? WEEK_1_WEIGHT_LOSS :
                                         userGoal === 'muscle-gain' ? WEEK_1_MUSCLE_GAIN :
                                         WEEK_1_MAINTENANCE;
+                    
+                    console.log('📊 Selected Database:', mealDatabase[0]?.goal, 'First meal:', mealDatabase[0]?.meals?.breakfast?.name);
                     
                     // Get Monday's meal plan from the selected database
                     const mondayPlan = mealDatabase.find(p => p.day === 1);
@@ -3254,7 +3288,6 @@ const DietPlanScreen = ({ goal, setGoal, showPlanModal, setShowPlanModal, userDa
                 })()}
               </div>
             </div>
-          )}
         </>
       )}
 
@@ -3296,29 +3329,37 @@ const PremiumWeeklyPlansScreen = ({ onBack, userData, isPremium }: { onBack: () 
     { day: 7, name: 'Sunday', emoji: '✨' }
   ];
 
-  // Determine user's fitness goal based on weight data
+  // Determine user's fitness goal from preferences or weight data
   const getUserGoal = () => {
+    // First, check if user has set a fitness goal preference
+    if (userData?.dietPreferences?.fitnessGoal) {
+      return userData.dietPreferences.fitnessGoal;
+    }
+    
+    // Fallback: calculate from weight data
     const current = userData?.weight || userData?.currentWeight || 80;
     const target = userData?.targetWeight || 75;
     
     if (current > target + 2) return 'weight-loss';
-    if (current < target - 2) return 'weight-gain';
+    if (current < target - 2) return 'muscle-gain';
     return 'maintenance';
   };
 
   const userGoal = getUserGoal();
   const goalLabels = {
     'weight-loss': 'Weight Loss Plan',
-    'weight-gain': 'Weight Gain Plan',
+    'muscle-gain': 'Muscle Gain Plan',
     'maintenance': 'Maintenance Plan'
   };
 
   // Smart Meal Generation Engine - Different logic for free vs premium
   const generateDailyMealPlan = (week: number, day: number, isPremium: boolean) => {
-    // Determine user's fitness goal to select appropriate meal database
-    const current = userData?.weight || 80;
-    const target = userData?.targetWeight || 75;
-    const userGoal = current > target + 2 ? 'weight-loss' : current < target - 2 ? 'muscle-gain' : 'maintenance';
+    // Get user's fitness goal from preferences or calculate from weight
+    const userGoal = userData?.dietPreferences?.fitnessGoal || (() => {
+      const current = userData?.weight || 80;
+      const target = userData?.targetWeight || 75;
+      return current > target + 2 ? 'weight-loss' : current < target - 2 ? 'muscle-gain' : 'maintenance';
+    })();
     
     // Select the appropriate meal plan database based on user's goal
     const mealDatabase = userGoal === 'weight-loss' ? WEEK_1_WEIGHT_LOSS :
@@ -4925,7 +4966,7 @@ const App = () => {
   const [user, setUser] = useState<any>(null);
   const [selectedMuscle, setSelectedMuscle] = useState<string | null>(null);
   const [location, setLocation] = useState<'gym' | 'home' | null>(null);
-  const [goal, setGoal] = useState<string | null>(null);
+  const [goal, setGoal] = useState<string | null>('default'); // Set to 'default' to always show meal plan
   const [selectedExercise, setSelectedExercise] = useState<any>(null);
   const [showPlanModal, setShowPlanModal] = useState(false);
   const [activeSettingsScreen, setActiveSettingsScreen] = useState<'health' | 'history' | 'goals' | 'preferences' | null>(null);
