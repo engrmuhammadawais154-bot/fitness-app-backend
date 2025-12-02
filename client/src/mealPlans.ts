@@ -682,6 +682,9 @@ thursdayToSunday.forEach(({ day, name, id }) => {
   });
 });
 
+// Import additional weeks from separate file
+export * from './mealPlansWeeks';
+
 // Shopping List Generator
 export interface ShoppingListItem {
   item: string;
