@@ -5194,6 +5194,7 @@ const App = () => {
   
   // Premium Subscription State
   const [isPremium, setIsPremium] = useState(false); // Changed from true - now requires actual subscription
+  // @ts-ignore - premiumExpiry used for future subscription management features
   const [premiumExpiry, setPremiumExpiry] = useState<number | null>(null);
   
   // Exercise Logging State
