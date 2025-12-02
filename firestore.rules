@@ -1,0 +1,85 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // ==========================================
+    // HELPER FUNCTIONS
+    // ==========================================
+    
+    // Check if user is authenticated
+    function isSignedIn() {
+      return request.auth != null;
+    }
+    
+    // Check if user is the owner of the resource
+    function isOwner(userId) {
+      return request.auth.uid == userId;
+    }
+    
+    // Validate email format
+    function isValidEmail(email) {
+      return email.matches('^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$');
+    }
+    
+    // Rate limiting helper (basic check)
+    function notTooManyRequests() {
+      return request.time < resource.data.lastUpdate + duration.value(1, 's');
+    }
+    
+    // ==========================================
+    // USERS COLLECTION
+    // ==========================================
+    
+    match /users/{userId} {
+      // Read: Only authenticated user can read their own data
+      allow read: if isSignedIn() && isOwner(userId);
+      
+      // Create: Only during account creation
+      allow create: if isSignedIn() 
+        && isOwner(userId)
+        && request.resource.data.keys().hasAll(['email', 'name'])
+        && request.resource.data.email is string
+        && request.resource.data.name is string
+        && isValidEmail(request.resource.data.email);
+      
+      // Update: Only user can update their own data
+      allow update: if isSignedIn() 
+        && isOwner(userId)
+        && request.resource.data.email == resource.data.email; // Prevent email change
+      
+      // Delete: Only user can delete their own account
+      allow delete: if isSignedIn() && isOwner(userId);
+    }
+    
+    // ==========================================
+    // WORKOUT HISTORY COLLECTION
+    // ==========================================
+    
+    match /workoutHistory/{workoutId} {
+      // Read: Only owner can read their workouts
+      allow read: if isSignedIn() && isOwner(resource.data.userId);
+      
+      // Create: Only authenticated users, must include userId and valid data
+      allow create: if isSignedIn() 
+        && request.resource.data.userId == request.auth.uid
+        && request.resource.data.timestamp is number
+        && request.resource.data.exercises is list
+        && request.resource.data.exercises.size() > 0
+        && request.resource.data.exercises.size() <= 50; // Max 50 exercises per workout
+      
+      // Update: Only owner can update their workouts
+      allow update: if isSignedIn() && isOwner(resource.data.userId);
+      
+      // Delete: Only owner can delete their workouts
+      allow delete: if isSignedIn() && isOwner(resource.data.userId);
+    }
+    
+    // ==========================================
+    // DENY ALL OTHER ACCESS
+    // ==========================================
+    
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
