@@ -5187,7 +5187,7 @@ const App = () => {
   const [user, setUser] = useState<any>(null);
   const [selectedMuscle, setSelectedMuscle] = useState<string | null>(null);
   const [location, setLocation] = useState<'gym' | 'home' | null>(null);
-  const [goal, setGoal] = useState<string | null>('default'); // Set to 'default' to always show meal plan
+  const [goal, setGoal] = useState<string | null>('loss'); // Default to 'loss' for free users to see sample meals
   const [selectedExercise, setSelectedExercise] = useState<any>(null);
   const [showPlanModal, setShowPlanModal] = useState(false);
   const [activeSettingsScreen, setActiveSettingsScreen] = useState<'health' | 'history' | 'goals' | 'preferences' | null>(null);
