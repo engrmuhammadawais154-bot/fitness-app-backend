@@ -3028,6 +3028,7 @@ const DietPlanScreen = ({ goal, setGoal, showPlanModal, setShowPlanModal, userDa
 
   const [showSurvey, setShowSurvey] = useState(false);
   const [editStep, setEditStep] = useState<number | null>(null);
+  const [expandedMeals, setExpandedMeals] = useState<Record<string, boolean>>({});
 
   // Check if user has completed diet survey
   const hasDietPreferences = userData?.dietSurveyCompleted;
@@ -3353,18 +3354,58 @@ const DietPlanScreen = ({ goal, setGoal, showPlanModal, setShowPlanModal, userDa
                             </div>
                           </div>
                           
-                          {/* Ingredients */}
+                          {/* Ingredients - Expandable */}
                           <div className="mb-2">
                             <p className="text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1">Ingredients:</p>
                             <div className="text-xs text-gray-600 dark:text-gray-400 space-y-1">
-                              {meal.ingredients.slice(0, 3).map((ing, i) => (
-                                <p key={i}>• {ing}</p>
-                              ))}
+                              {expandedMeals[`${index}-ingredients`] ? (
+                                // Show all ingredients
+                                meal.ingredients.map((ing, i) => (
+                                  <p key={i}>• {ing}</p>
+                                ))
+                              ) : (
+                                // Show only first 3
+                                meal.ingredients.slice(0, 3).map((ing, i) => (
+                                  <p key={i}>• {ing}</p>
+                                ))
+                              )}
                               {meal.ingredients.length > 3 && (
-                                <p className="text-emerald-600 dark:text-emerald-400 font-semibold">+{meal.ingredients.length - 3} more...</p>
+                                <button
+                                  onClick={() => setExpandedMeals(prev => ({
+                                    ...prev,
+                                    [`${index}-ingredients`]: !prev[`${index}-ingredients`]
+                                  }))}
+                                  className="text-emerald-600 dark:text-emerald-400 font-semibold hover:underline cursor-pointer"
+                                >
+                                  {expandedMeals[`${index}-ingredients`] 
+                                    ? '- Show less' 
+                                    : `+${meal.ingredients.length - 3} more...`}
+                                </button>
                               )}
                             </div>
                           </div>
+
+                          {/* Instructions - Expandable */}
+                          {meal.instructions && meal.instructions.length > 0 && (
+                            <div className="mb-2">
+                              <button
+                                onClick={() => setExpandedMeals(prev => ({
+                                  ...prev,
+                                  [`${index}-instructions`]: !prev[`${index}-instructions`]
+                                }))}
+                                className="text-xs font-semibold text-indigo-600 dark:text-indigo-400 hover:underline mb-1 cursor-pointer"
+                              >
+                                {expandedMeals[`${index}-instructions`] ? '▼ Hide Instructions' : '▶ View Instructions'}
+                              </button>
+                              {expandedMeals[`${index}-instructions`] && (
+                                <div className="text-xs text-gray-600 dark:text-gray-400 space-y-1 bg-indigo-50 dark:bg-indigo-900/20 p-3 rounded-lg mt-2">
+                                  {meal.instructions.map((instruction, i) => (
+                                    <p key={i}>{i + 1}. {instruction}</p>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                          )}
                           
                           {/* Tags */}
                           <div className="flex flex-wrap gap-1 mt-2">
