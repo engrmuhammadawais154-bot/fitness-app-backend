@@ -2,45 +2,10 @@
 // Separate plans for Weight Loss, Muscle Gain, and Maintenance
 // Each plan respects budget, cooking skill, and dietary preferences
 
-export interface MealPlan {
-  id: string;
-  week: number;
-  day: number;
-  dayName: string;
-  goal: 'weight-loss' | 'muscle-gain' | 'maintenance';
-  meals: {
-    breakfast: Meal;
-    morningSnack: Meal;
-    lunch: Meal;
-    afternoonSnack: Meal;
-    dinner: Meal;
-    eveningSnack: Meal;
-  };
-  totalMacros: {
-    calories: number;
-    protein: number;
-    carbs: number;
-    fats: number;
-  };
-}
+import type { MealPlan, ShoppingListItem } from './mealPlanTypes';
 
-export interface Meal {
-  name: string;
-  description: string;
-  time: string;
-  ingredients: string[];
-  instructions: string[];
-  macros: {
-    calories: number;
-    protein: number;
-    carbs: number;
-    fats: number;
-  };
-  prepTime: number; // in minutes
-  cookingSkill: 'beginner' | 'intermediate' | 'advanced';
-  budget: 'low' | 'medium' | 'high';
-  dietTags: string[]; // vegetarian, vegan, halal, keto, etc.
-}
+// Re-export types for backwards compatibility
+export type { MealPlan, Meal, ShoppingListItem } from './mealPlanTypes';
 
 // ============================================
 // WEIGHT LOSS MEAL PLANS (Lower Calorie, High Protein)
@@ -686,13 +651,6 @@ thursdayToSunday.forEach(({ day, name, id }) => {
 export * from './mealPlansWeeks';
 
 // Shopping List Generator
-export interface ShoppingListItem {
-  item: string;
-  quantity: string;
-  category: 'protein' | 'vegetables' | 'fruits' | 'grains' | 'dairy' | 'pantry' | 'other';
-  estimatedCost: number;
-}
-
 export function generateShoppingList(weekPlan: MealPlan[]): ShoppingListItem[] {
   const items: Map<string, ShoppingListItem> = new Map();
   

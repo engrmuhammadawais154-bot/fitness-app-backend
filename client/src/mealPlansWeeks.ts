@@ -5,7 +5,7 @@
 // Week 4: Western/Mediterranean Classics
 // ============================================
 
-import { MealPlan } from './mealPlans';
+import type { MealPlan } from './mealPlanTypes';
 
 // ============================================
 // WEEK 2: ASIAN-INSPIRED - WEIGHT LOSS
