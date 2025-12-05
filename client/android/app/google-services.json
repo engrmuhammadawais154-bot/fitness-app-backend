@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "257004509164",
+    "project_id": "myfitnessapp-6b3ef",
+    "storage_bucket": "myfitnessapp-6b3ef.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:257004509164:android:265e84ef9bcdb89af152c9",
+        "android_client_info": {
+          "package_name": "com.auraflow.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAqc0fX5jmMbQMA1YtCuKIlhW9GL2DNWAw"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

@@ -9,20 +9,64 @@ import {
   createUserWithEmailAndPassword, 
   signOut,
   onAuthStateChanged,
-  sendEmailVerification
+  sendEmailVerification,
+  sendPasswordResetEmail
 } from 'firebase/auth';
 import { doc, setDoc, getDoc, onSnapshot, updateDoc, collection, addDoc, query, where, getDocs, deleteDoc, orderBy, limit } from 'firebase/firestore';
 import { motion, AnimatePresence } from 'framer-motion';
 import toast, { Toaster } from 'react-hot-toast';
-import { WEEK_1_WEIGHT_LOSS, WEEK_1_MUSCLE_GAIN, WEEK_1_MAINTENANCE, generateShoppingList, type Meal } from './mealPlans';
+import { WEEK_1_WEIGHT_LOSS, WEEK_1_MAINTENANCE, generateShoppingList, type Meal } from './mealPlans';
 import { 
   LOW_BUDGET_WEIGHT_LOSS, 
   MEDIUM_BUDGET_WEIGHT_LOSS, 
   HIGH_BUDGET_WEIGHT_LOSS,
   LOW_BUDGET_MUSCLE_GAIN,
   MEDIUM_BUDGET_MUSCLE_GAIN,
-  HIGH_BUDGET_MUSCLE_GAIN
+  HIGH_BUDGET_MUSCLE_GAIN,
+  LOW_BUDGET_MAINTENANCE,
+  MEDIUM_BUDGET_MAINTENANCE,
+  HIGH_BUDGET_MAINTENANCE
 } from './mealPlansBudget';
+import {
+  LOW_BUDGET_HINDU_WEIGHT_LOSS,
+  MEDIUM_BUDGET_HINDU_WEIGHT_LOSS,
+  HIGH_BUDGET_HINDU_WEIGHT_LOSS,
+  LOW_BUDGET_HINDU_MUSCLE_GAIN,
+  MEDIUM_BUDGET_HINDU_MUSCLE_GAIN,
+  HIGH_BUDGET_HINDU_MUSCLE_GAIN,
+  LOW_BUDGET_HINDU_MAINTENANCE,
+  MEDIUM_BUDGET_HINDU_MAINTENANCE,
+  HIGH_BUDGET_HINDU_MAINTENANCE
+} from './mealPlansHindu';
+import {
+  LOW_BUDGET_KOSHER_WEIGHT_LOSS,
+  MEDIUM_BUDGET_KOSHER_WEIGHT_LOSS,
+  HIGH_BUDGET_KOSHER_WEIGHT_LOSS,
+  LOW_BUDGET_KOSHER_MUSCLE_GAIN,
+  MEDIUM_BUDGET_KOSHER_MUSCLE_GAIN,
+  HIGH_BUDGET_KOSHER_MUSCLE_GAIN,
+  LOW_BUDGET_KOSHER_MAINTENANCE,
+  MEDIUM_BUDGET_KOSHER_MAINTENANCE,
+  HIGH_BUDGET_KOSHER_MAINTENANCE
+} from './mealPlansKosher';
+import {
+  LOW_BUDGET_CHRISTIAN_WEIGHT_LOSS,
+  MEDIUM_BUDGET_CHRISTIAN_WEIGHT_LOSS,
+  HIGH_BUDGET_CHRISTIAN_WEIGHT_LOSS,
+  LOW_BUDGET_CHRISTIAN_MUSCLE_GAIN,
+  MEDIUM_BUDGET_CHRISTIAN_MUSCLE_GAIN,
+  HIGH_BUDGET_CHRISTIAN_MUSCLE_GAIN,
+  LOW_BUDGET_CHRISTIAN_MAINTENANCE,
+  MEDIUM_BUDGET_CHRISTIAN_MAINTENANCE,
+  HIGH_BUDGET_CHRISTIAN_MAINTENANCE
+} from './mealPlansChristian';
+
+// Simplified budget-based meal preferences
+const mealStyles = [
+  { id: 'budget-friendly', name: 'Budget Friendly', desc: 'Affordable meals ($5-8/day)', icon: '💰', budget: 'low', cookingSkill: 'intermediate' },
+  { id: 'medium-budget', name: 'Medium Budget', desc: 'Balanced quality ($10-15/day)', icon: '⚖️', budget: 'medium', cookingSkill: 'intermediate' },
+  { id: 'expensive', name: 'Premium', desc: 'High-end ingredients ($20-30/day)', icon: '💎', budget: 'high', cookingSkill: 'intermediate' },
+];
 
 // --- Custom Hooks ---
 
@@ -646,8 +690,14 @@ const DynamicStatusCard = ({
         if (!snapshot.empty) {
           setLastWorkout(snapshot.docs[0].data());
         }
-      } catch (error) {
-        console.error('Error fetching last workout:', error);
+      } catch (error: any) {
+        // Silently handle index error - it's not critical for app functionality
+        if (error?.code === 'failed-precondition') {
+          // Index not created yet - ignore
+          console.log('ℹ️ Workout history index not yet created (non-critical)');
+        } else {
+          console.error('Error fetching last workout:', error);
+        }
       } finally {
         setIsLoading(false);
       }
@@ -1132,9 +1182,14 @@ const HomeScreen = ({
   };
 
   return (
-    <div className="p-4 space-y-6 pb-24">
-      <h1 className="text-3xl font-extrabold text-gray-900 dark:text-white">Welcome Back!</h1>
-      <p className="text-gray-700 dark:text-white/70">Your fitness journey starts now.</p>
+    <div className="h-full flex flex-col">
+      {/* Sticky Header */}
+      <div className="sticky top-0 z-20 bg-gradient-to-br from-indigo-50 via-purple-50 to-pink-50 dark:from-gray-900 dark:via-indigo-900/20 dark:to-gray-900 backdrop-blur-md border-b border-indigo-200 dark:border-indigo-500/30 px-4 py-4 shadow-sm">
+        <h1 className="text-3xl font-extrabold text-gray-900 dark:text-white">Welcome Back!</h1>
+        <p className="text-gray-700 dark:text-white/70">Your fitness journey starts now.</p>
+      </div>
+      
+      <div className="flex-1 overflow-y-auto p-4 space-y-6 pb-24">
       
       {/* Dynamic Status Card */}
       <DynamicStatusCard 
@@ -1156,7 +1211,7 @@ const HomeScreen = ({
           title="Starting Weight" 
           value={formatWeight(startingWeight, units)} 
           icon={TrendingUp} 
-          color="bg-gradient-to-br from-green-400 to-emerald-400 text-white dark:bg-green-500/30 dark:text-green-300"
+          color="bg-gradient-to-br from-emerald-400 via-green-500 to-teal-500 text-white shadow-lg shadow-emerald-500/50"
           editable
           onEdit={(val) => updateStartingWeight(parseFloat(val))}
         />
@@ -1164,7 +1219,7 @@ const HomeScreen = ({
           title="Target Weight" 
           value={formatWeight(targetWeight, units)} 
           icon={Target} 
-          color="bg-gradient-to-br from-yellow-400 to-orange-400 text-white dark:bg-yellow-500/30 dark:text-yellow-300"
+          color="bg-gradient-to-br from-amber-400 via-orange-500 to-red-500 text-white shadow-lg shadow-orange-500/50"
           editable
           onEdit={(val) => updateTargetWeight(parseFloat(val))}
         />
@@ -1172,7 +1227,7 @@ const HomeScreen = ({
           title="Current Weight" 
           value={formatWeight(currentWeight, units)} 
           icon={Dumbbell} 
-          color="bg-gradient-to-br from-indigo-500 to-purple-500 text-white dark:bg-indigo-500/30 dark:text-indigo-300"
+          color="bg-gradient-to-br from-blue-400 via-indigo-500 to-purple-600 text-white shadow-lg shadow-indigo-500/50"
           editable
           onEdit={(val) => updateWeight(parseFloat(val))}
         />
@@ -1180,7 +1235,7 @@ const HomeScreen = ({
           title="Goal Progress" 
           value={`${goalProgress}%`} 
           icon={Heart} 
-          color="bg-gradient-to-br from-pink-400 to-rose-400 text-white dark:bg-red-500/30 dark:text-red-300"
+          color="bg-gradient-to-br from-pink-400 via-rose-500 to-fuchsia-600 text-white shadow-lg shadow-pink-500/50"
         />
       </div>
     </div>
@@ -1608,12 +1663,38 @@ const ProfileSetupScreen = ({
 const AuthScreen = ({ onLogin }: { onLogin: () => void }) => {
   const [isSignUp, setIsSignUp] = useState(false);
   const [showProfileSetup, setShowProfileSetup] = useState(false);
+  const [showForgotPassword, setShowForgotPassword] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [name, setName] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
+
+  const handleForgotPassword = async () => {
+    if (!email) {
+      setError('Please enter your email address');
+      toast.error('Please enter your email address');
+      return;
+    }
+    
+    setIsLoading(true);
+    setError('');
+    
+    try {
+      await sendPasswordResetEmail(auth, email);
+      toast.success('Password reset email sent! Check your inbox.');
+      setShowForgotPassword(false);
+    } catch (error: any) {
+      const errorMessage = error.code === 'auth/user-not-found' 
+        ? 'No account found with this email'
+        : 'Failed to send reset email. Please try again.';
+      setError(errorMessage);
+      toast.error(errorMessage);
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   const handleEmailAuth = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -1707,7 +1788,7 @@ const AuthScreen = ({ onLogin }: { onLogin: () => void }) => {
           <div className="inline-flex items-center justify-center w-16 h-16 bg-indigo-600 dark:bg-indigo-600 rounded-full mb-4">
             <Dumbbell className="w-8 h-8 text-white" />
           </div>
-          <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">Fitness App</h1>
+          <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">Aura Flow</h1>
           <p className="text-gray-700 dark:text-white/70">Your journey to better health starts here</p>
         </div>
 
@@ -1833,7 +1914,11 @@ const AuthScreen = ({ onLogin }: { onLogin: () => void }) => {
 
             {!isSignUp && (
               <div className="flex justify-end">
-                <button type="button" className="text-sm text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 dark:hover:text-indigo-300 transition duration-200">
+                <button 
+                  type="button" 
+                  onClick={() => setShowForgotPassword(true)}
+                  className="text-sm text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 dark:hover:text-indigo-300 transition duration-200"
+                >
                   Forgot password?
                 </button>
               </div>
@@ -1865,6 +1950,54 @@ const AuthScreen = ({ onLogin }: { onLogin: () => void }) => {
           </button>
         </p>
       </div>
+
+      {/* Forgot Password Modal */}
+      {showForgotPassword && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50" onClick={() => setShowForgotPassword(false)}>
+          <div className="bg-white dark:bg-gray-800 rounded-2xl p-8 max-w-md w-full shadow-2xl" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-6">
+              <h2 className="text-2xl font-bold text-gray-900 dark:text-white">Reset Password</h2>
+              <button 
+                onClick={() => setShowForgotPassword(false)}
+                className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"
+              >
+                <X className="w-6 h-6" />
+              </button>
+            </div>
+            
+            <p className="text-gray-600 dark:text-gray-300 mb-6">
+              Enter your email address and we'll send you a link to reset your password.
+            </p>
+            
+            {error && (
+              <div className="mb-4 p-3 bg-red-100 dark:bg-red-500/20 border border-red-300 dark:border-red-500/50 rounded-lg text-red-700 dark:text-red-300 text-sm">
+                {error}
+              </div>
+            )}
+            
+            <div className="mb-6">
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                Email Address
+              </label>
+              <input
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                className="w-full px-4 py-3 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-xl focus:ring-2 focus:ring-indigo-500 dark:focus:ring-indigo-400 focus:border-transparent outline-none transition duration-200 text-gray-900 dark:text-white"
+                placeholder="your@email.com"
+              />
+            </div>
+            
+            <button
+              onClick={handleForgotPassword}
+              disabled={isLoading}
+              className="w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl transition duration-200 shadow-lg shadow-indigo-500/50 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {isLoading ? 'Sending...' : 'Send Reset Link'}
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
@@ -2381,8 +2514,7 @@ const DietSurveyScreen = ({ onComplete, userData, initialStep }: { onComplete: (
     foodPreferences: userData?.dietPreferences?.foodPreferences || [],
     allergies: userData?.dietPreferences?.allergies || [],
     mealsPerDay: userData?.dietPreferences?.mealsPerDay || '3',
-    cookingSkill: userData?.dietPreferences?.cookingSkill || '',
-    budget: userData?.dietPreferences?.budget || '',
+    mealStyle: userData?.dietPreferences?.mealStyle || '', // MERGED: replaces cookingSkill + budget
   });
   const [isSaving, setIsSaving] = useState(false);
 
@@ -2434,18 +2566,6 @@ const DietSurveyScreen = ({ onComplete, userData, initialStep }: { onComplete: (
     { id: 'shellfish', name: 'Shellfish', icon: '🦐' },
     { id: 'gluten', name: 'Gluten', icon: '🌾' },
     { id: 'soy', name: 'Soy', icon: '🫘' },
-  ];
-
-  const cookingSkills = [
-    { id: 'beginner', name: 'Beginner', desc: 'Simple meals', icon: '👶' },
-    { id: 'intermediate', name: 'Intermediate', desc: 'Moderate cooking', icon: '👨‍🍳' },
-    { id: 'advanced', name: 'Advanced', desc: 'Complex recipes', icon: '⭐' },
-  ];
-
-  const budgets = [
-    { id: 'low', name: 'Budget-Friendly', desc: 'Economical meals', icon: '💰' },
-    { id: 'medium', name: 'Moderate', desc: 'Balanced spending', icon: '💵' },
-    { id: 'high', name: 'Premium', desc: 'Quality ingredients', icon: '💎' },
   ];
 
   const handleTogglePreference = (item: string) => {
@@ -2506,13 +2626,12 @@ const DietSurveyScreen = ({ onComplete, userData, initialStep }: { onComplete: (
       case 3: return surveyData.dietType !== '';
       case 4: return surveyData.foodPreferences.length > 0;
       case 5: return surveyData.allergies.length > 0;
-      case 6: return surveyData.cookingSkill !== '';
-      case 7: return surveyData.budget !== '';
+      case 6: return surveyData.mealStyle !== ''; // Changed from budget
       default: return false;
     }
   };
 
-  const totalSteps = 7;
+  const totalSteps = 6; // Reduced from 7 (removed separate cooking skill step)
   const progress = (currentStep / totalSteps) * 100;
 
   return (
@@ -2662,52 +2781,24 @@ const DietSurveyScreen = ({ onComplete, userData, initialStep }: { onComplete: (
 
         {currentStep === 6 && (
           <div className="space-y-4">
-            <h3 className="text-xl font-semibold text-gray-900 dark:text-white">What's your cooking skill level?</h3>
-            <p className="text-gray-600 dark:text-white/60 text-sm">We'll match recipe complexity</p>
+            <h3 className="text-xl font-semibold text-gray-900 dark:text-white">What's your meal style?</h3>
+            <p className="text-gray-600 dark:text-white/60 text-sm">Choose a style that fits your budget and cooking skills</p>
             <div className="space-y-3">
-              {cookingSkills.map(skill => (
+              {mealStyles.map(style => (
                 <button
-                  key={skill.id}
-                  onClick={() => setSurveyData(prev => ({ ...prev, cookingSkill: skill.id }))}
+                  key={style.id}
+                  onClick={() => setSurveyData(prev => ({ ...prev, mealStyle: style.id }))}
                   className={`w-full p-4 rounded-xl border-2 transition flex items-center justify-between ${
-                    surveyData.cookingSkill === skill.id
+                    surveyData.mealStyle === style.id
                       ? 'border-indigo-500 bg-indigo-500/20'
                       : 'border-gray-300 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 hover:border-gray-400 dark:hover:border-gray-600'
                   }`}
                 >
                   <div className="flex items-center gap-3">
-                    <div className="text-3xl">{skill.icon}</div>
+                    <div className="text-3xl">{style.icon}</div>
                     <div className="text-left">
-                      <div className="text-gray-900 dark:text-white font-semibold">{skill.name}</div>
-                      <div className="text-gray-600 dark:text-white/50 text-sm">{skill.desc}</div>
-                    </div>
-                  </div>
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {currentStep === 7 && (
-          <div className="space-y-4">
-            <h3 className="text-xl font-semibold text-gray-900 dark:text-white">What's your food budget?</h3>
-            <p className="text-gray-600 dark:text-white/60 text-sm">We'll suggest meals within your range</p>
-            <div className="space-y-3">
-              {budgets.map(budget => (
-                <button
-                  key={budget.id}
-                  onClick={() => setSurveyData(prev => ({ ...prev, budget: budget.id }))}
-                  className={`w-full p-4 rounded-xl border-2 transition flex items-center justify-between ${
-                    surveyData.budget === budget.id
-                      ? 'border-indigo-500 bg-indigo-500/20'
-                      : 'border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 hover:border-indigo-400 dark:hover:border-gray-600'
-                  }`}
-                >
-                  <div className="flex items-center gap-3">
-                    <div className="text-3xl">{budget.icon}</div>
-                    <div className="text-left">
-                      <div className="text-gray-900 dark:text-white font-semibold">{budget.name}</div>
-                      <div className="text-gray-600 dark:text-white/50 text-sm">{budget.desc}</div>
+                      <div className="text-gray-900 dark:text-white font-semibold">{style.name}</div>
+                      <div className="text-gray-600 dark:text-white/50 text-sm">{style.desc}</div>
                     </div>
                   </div>
                 </button>
@@ -2735,6 +2826,7 @@ const DietSurveyScreen = ({ onComplete, userData, initialStep }: { onComplete: (
             </div>
           </div>
         )}
+
       </div>
 
       {/* Navigation Buttons */}
@@ -2795,15 +2887,24 @@ const DietSurveyScreen = ({ onComplete, userData, initialStep }: { onComplete: (
 };
 
 // 2. Diet Plan Screens
-const DietPlanScreen = ({ goal, setGoal, showPlanModal, setShowPlanModal, userData, isPremium }: {
+const DietPlanScreen = ({ goal, setGoal, showPlanModal, setShowPlanModal, userData, isPremium, currentDay, setCurrentDay, currentWeek, setCurrentWeek, expandedMeals, setExpandedMeals }: {
   goal: string | null;
   setGoal: (goal: string | null) => void;
   showPlanModal: boolean;
   setShowPlanModal: (show: boolean) => void;
   userData: any;
   isPremium: boolean;
+  currentDay: number;
+  setCurrentDay: (day: number | ((prev: number) => number)) => void;
+  currentWeek: number;
+  setCurrentWeek: (week: number | ((prev: number) => number)) => void;
+  expandedMeals: Record<string, boolean>;
+  setExpandedMeals: (meals: Record<string, boolean> | ((prev: Record<string, boolean>) => Record<string, boolean>)) => void;
 }) => {
   const [showPremiumLock, setShowPremiumLock] = useState(false);
+
+  const dayNames = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+  const dayNamesShort = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
   // @ts-ignore - unused but kept for future feature
   const goalOptions = useMemo(() => [
@@ -3038,7 +3139,6 @@ const DietPlanScreen = ({ goal, setGoal, showPlanModal, setShowPlanModal, userDa
 
   const [showSurvey, setShowSurvey] = useState(false);
   const [editStep, setEditStep] = useState<number | null>(null);
-  const [expandedMeals, setExpandedMeals] = useState<Record<string, boolean>>({});
 
   // Check if user has completed diet survey
   const hasDietPreferences = userData?.dietSurveyCompleted;
@@ -3054,18 +3154,23 @@ const DietPlanScreen = ({ goal, setGoal, showPlanModal, setShowPlanModal, userDa
   }
 
   return (
-    <div className="p-4 space-y-6">
-      <div className="flex justify-between items-center border-b border-indigo-500/50 pb-2">
-        <h2 className="text-2xl font-bold text-gray-900 dark:text-white">Your Nutrition Goal</h2>
-        {hasDietPreferences && (
-          <button
-            onClick={() => setShowSurvey(!showSurvey)}
-            className="text-xs text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 dark:hover:text-indigo-300"
-          >
-            {showSurvey ? 'View Plans' : 'Edit Preferences'}
-          </button>
-        )}
+    <div className="h-full flex flex-col">
+      {/* Sticky Header */}
+      <div className="sticky top-0 z-20 bg-gradient-to-br from-indigo-50 via-purple-50 to-pink-50 dark:from-gray-900 dark:via-indigo-900/20 dark:to-gray-900 backdrop-blur-md border-b border-indigo-200 dark:border-indigo-500/30 px-4 py-4 shadow-sm">
+        <div className="flex justify-between items-center">
+          <h2 className="text-2xl font-bold text-gray-900 dark:text-white">Your Nutrition Goal</h2>
+          {hasDietPreferences && (
+            <button
+              onClick={() => setShowSurvey(!showSurvey)}
+              className="text-xs text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 dark:hover:text-indigo-300"
+            >
+              {showSurvey ? 'View Plans' : 'Edit Preferences'}
+            </button>
+          )}
+        </div>
       </div>
+      
+      <div className="flex-1 overflow-y-auto p-4 space-y-6">
 
       {showSurvey ? (
         <DietSurveyScreen onComplete={() => setShowSurvey(false)} userData={userData} />
@@ -3149,31 +3254,14 @@ const DietPlanScreen = ({ goal, setGoal, showPlanModal, setShowPlanModal, userDa
                     </button>
                   </div>
                 )}
-                {userData.dietPreferences?.cookingSkill && (
+                {userData.dietPreferences?.mealStyle && (
                   <div className="flex items-center gap-1 bg-white/60 dark:bg-black/20 rounded-full pr-1">
-                    <span className="px-2 py-1 rounded-full text-amber-700 dark:text-amber-300 font-semibold">
-                      {userData.dietPreferences.cookingSkill === 'beginner' ? '👶 Beginner' :
-                       userData.dietPreferences.cookingSkill === 'intermediate' ? '👨‍🍳 Intermediate' :
-                       '⭐ Advanced'}
+                    <span className="px-2 py-1 rounded-full text-purple-700 dark:text-purple-300 font-semibold">
+                      {mealStyles.find(s => s.id === userData.dietPreferences?.mealStyle)?.icon || '🍽️'} {mealStyles.find(s => s.id === userData.dietPreferences?.mealStyle)?.name || 'Meal Style'}
                     </span>
                     <button
-                      onClick={() => setEditStep(7)}
-                      className="text-[8px] px-1.5 py-0.5 bg-amber-500 text-white rounded-full hover:bg-amber-600"
-                    >
-                      ✎
-                    </button>
-                  </div>
-                )}
-                {userData.dietPreferences?.budget && (
-                  <div className="flex items-center gap-1 bg-white/60 dark:bg-black/20 rounded-full pr-1">
-                    <span className="px-2 py-1 rounded-full text-green-700 dark:text-green-300 font-semibold">
-                      {userData.dietPreferences.budget === 'low' ? '💰 Budget' :
-                       userData.dietPreferences.budget === 'medium' ? '💵 Moderate' :
-                       '💎 Premium'}
-                    </span>
-                    <button
-                      onClick={() => setEditStep(8)}
-                      className="text-[8px] px-1.5 py-0.5 bg-green-500 text-white rounded-full hover:bg-green-600"
+                      onClick={() => setEditStep(6)}
+                      className="text-[8px] px-1.5 py-0.5 bg-purple-500 text-white rounded-full hover:bg-purple-600"
                     >
                       ✎
                     </button>
@@ -3244,8 +3332,59 @@ const DietPlanScreen = ({ goal, setGoal, showPlanModal, setShowPlanModal, userDa
                 );
               })()}
               
+              {/* Day Navigation - Premium Only */}
+              {isPremium && (
+                <div className="space-y-3">
+                  {/* Week Selector */}
+                  <div className="flex items-center justify-between gap-2 bg-gradient-to-r from-purple-50 to-pink-50 dark:from-purple-900/20 dark:to-pink-900/20 p-3 rounded-xl">
+                    <button
+                      onClick={() => setCurrentWeek(w => Math.max(1, w - 1))}
+                      disabled={currentWeek === 1}
+                      className="px-3 py-1.5 bg-white dark:bg-gray-800 rounded-lg text-sm font-semibold text-purple-600 dark:text-purple-400 disabled:opacity-30 disabled:cursor-not-allowed hover:bg-purple-100 dark:hover:bg-purple-900/30 transition"
+                    >
+                      ← Prev
+                    </button>
+                    <div className="text-center">
+                      <p className="text-xs text-gray-600 dark:text-gray-400">Week</p>
+                      <p className="text-lg font-bold text-purple-700 dark:text-purple-300">Week {currentWeek}</p>
+                    </div>
+                    <button
+                      onClick={() => setCurrentWeek(w => Math.min(4, w + 1))}
+                      disabled={currentWeek === 4}
+                      className="px-3 py-1.5 bg-white dark:bg-gray-800 rounded-lg text-sm font-semibold text-purple-600 dark:text-purple-400 disabled:opacity-30 disabled:cursor-not-allowed hover:bg-purple-100 dark:hover:bg-purple-900/30 transition"
+                    >
+                      Next →
+                    </button>
+                  </div>
+
+                  {/* Day Tabs */}
+                  <div className="flex gap-1 overflow-x-auto pb-2">
+                    {dayNamesShort.map((day, idx) => (
+                      <button
+                        key={idx}
+                        onClick={() => setCurrentDay(idx + 1)}
+                        className={`flex-1 min-w-[50px] py-2.5 px-2 rounded-lg text-xs font-semibold transition ${
+                          currentDay === idx + 1
+                            ? 'bg-gradient-to-br from-indigo-500 to-purple-500 text-white shadow-lg scale-105'
+                            : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700'
+                        }`}
+                      >
+                        {day}
+                      </button>
+                    ))}
+                  </div>
+
+                  {/* Current Day Display */}
+                  <div className="bg-gradient-to-r from-indigo-50 to-purple-50 dark:from-indigo-900/20 dark:to-purple-900/20 p-3 rounded-xl text-center">
+                    <p className="text-sm font-semibold text-indigo-700 dark:text-indigo-300">
+                      📅 {dayNames[currentDay - 1]} - Week {currentWeek}
+                    </p>
+                  </div>
+                </div>
+              )}
+              
               <p className="text-gray-700 dark:text-white/70 text-sm italic">
-                {isPremium ? 'Your Personalized Meal Plan' : 'Sample 1-Day Plan (3 basic meals)'}:
+                {isPremium ? `Your Personalized Meal Plan - ${dayNames[currentDay - 1]}` : 'Sample 1-Day Plan (3 basic meals)'}:
               </p>
               
               {/* Free user limitation notice */}
@@ -3290,16 +3429,120 @@ const DietPlanScreen = ({ goal, setGoal, showPlanModal, setShowPlanModal, userDa
                     
                     const calorieMultiplier = userGoal === 'weight-loss' ? 0.85 : userGoal === 'muscle-gain' ? 1.15 : 1.0;
                     
-                    // Select the appropriate meal plan database based on user's goal
-                    const mealDatabase = userGoal === 'weight-loss' ? WEEK_1_WEIGHT_LOSS :
-                                        userGoal === 'muscle-gain' ? WEEK_1_MUSCLE_GAIN :
-                                        WEEK_1_MAINTENANCE;
+                    // Select meal database based on goal and meal style
+                    const userMealStyle = userData?.dietPreferences?.mealStyle || 'medium-budget';
+                    const mealStyleConfig = mealStyles.find(s => s.id === userMealStyle) || mealStyles[1]; // Default to medium budget
+                    const userBudget = mealStyleConfig.budget;
+                    const userCookingSkill = mealStyleConfig.cookingSkill;
+                    const userReligion = userData?.dietPreferences?.religion || 'none';
                     
-                    console.log('📊 Selected Database:', mealDatabase[0]?.goal, 'First meal:', mealDatabase[0]?.meals?.breakfast?.name);
+                    console.log('🎯 Meal Selection Criteria:', {
+                      goal: userGoal,
+                      mealStyle: userMealStyle,
+                      budget: userBudget,
+                      cookingSkill: userCookingSkill,
+                      religion: userReligion
+                    });
                     
-                    // Get Monday's meal plan from the selected database
-                    const mondayPlan = mealDatabase.find(p => p.day === 1);
-                    if (!mondayPlan) return null;
+                    let mealDatabase;
+                    
+                    // Check religion for appropriate meal databases
+                    const isHindu = userReligion === 'hindu' || userReligion === 'buddhist';
+                    const isJewish = userReligion === 'jewish';
+                    const isChristian = userReligion === 'christian' || userReligion === 'none' || !userReligion;
+                    
+                    if (userGoal === 'weight-loss') {
+                      if (isHindu) {
+                        mealDatabase = userBudget === 'low' ? LOW_BUDGET_HINDU_WEIGHT_LOSS :
+                                      userBudget === 'high' ? HIGH_BUDGET_HINDU_WEIGHT_LOSS :
+                                      MEDIUM_BUDGET_HINDU_WEIGHT_LOSS;
+                      } else if (isJewish) {
+                        mealDatabase = userBudget === 'low' ? LOW_BUDGET_KOSHER_WEIGHT_LOSS :
+                                      userBudget === 'high' ? HIGH_BUDGET_KOSHER_WEIGHT_LOSS :
+                                      MEDIUM_BUDGET_KOSHER_WEIGHT_LOSS;
+                      } else if (isChristian) {
+                        mealDatabase = userBudget === 'low' ? LOW_BUDGET_CHRISTIAN_WEIGHT_LOSS :
+                                      userBudget === 'high' ? HIGH_BUDGET_CHRISTIAN_WEIGHT_LOSS :
+                                      MEDIUM_BUDGET_CHRISTIAN_WEIGHT_LOSS;
+                      } else {
+                        // Fallback to Muslim/halal for other religions
+                        mealDatabase = userBudget === 'low' ? LOW_BUDGET_WEIGHT_LOSS :
+                                      userBudget === 'high' ? HIGH_BUDGET_WEIGHT_LOSS :
+                                      MEDIUM_BUDGET_WEIGHT_LOSS;
+                      }
+                    } else if (userGoal === 'muscle-gain') {
+                      if (isHindu) {
+                        mealDatabase = userBudget === 'low' ? LOW_BUDGET_HINDU_MUSCLE_GAIN :
+                                      userBudget === 'high' ? HIGH_BUDGET_HINDU_MUSCLE_GAIN :
+                                      MEDIUM_BUDGET_HINDU_MUSCLE_GAIN;
+                      } else if (isJewish) {
+                        mealDatabase = userBudget === 'low' ? LOW_BUDGET_KOSHER_MUSCLE_GAIN :
+                                      userBudget === 'high' ? HIGH_BUDGET_KOSHER_MUSCLE_GAIN :
+                                      MEDIUM_BUDGET_KOSHER_MUSCLE_GAIN;
+                      } else if (isChristian) {
+                        mealDatabase = userBudget === 'low' ? LOW_BUDGET_CHRISTIAN_MUSCLE_GAIN :
+                                      userBudget === 'high' ? HIGH_BUDGET_CHRISTIAN_MUSCLE_GAIN :
+                                      MEDIUM_BUDGET_CHRISTIAN_MUSCLE_GAIN;
+                      } else {
+                        mealDatabase = userBudget === 'low' ? LOW_BUDGET_MUSCLE_GAIN :
+                                      userBudget === 'high' ? HIGH_BUDGET_MUSCLE_GAIN :
+                                      MEDIUM_BUDGET_MUSCLE_GAIN;
+                      }
+                    } else if (userGoal === 'maintenance') {
+                      if (isHindu) {
+                        mealDatabase = userBudget === 'low' ? LOW_BUDGET_HINDU_MAINTENANCE :
+                                      userBudget === 'high' ? HIGH_BUDGET_HINDU_MAINTENANCE :
+                                      MEDIUM_BUDGET_HINDU_MAINTENANCE;
+                      } else if (isJewish) {
+                        mealDatabase = userBudget === 'low' ? LOW_BUDGET_KOSHER_MAINTENANCE :
+                                      userBudget === 'high' ? HIGH_BUDGET_KOSHER_MAINTENANCE :
+                                      MEDIUM_BUDGET_KOSHER_MAINTENANCE;
+                      } else if (isChristian) {
+                        mealDatabase = userBudget === 'low' ? LOW_BUDGET_CHRISTIAN_MAINTENANCE :
+                                      userBudget === 'high' ? HIGH_BUDGET_CHRISTIAN_MAINTENANCE :
+                                      MEDIUM_BUDGET_CHRISTIAN_MAINTENANCE;
+                      } else {
+                        mealDatabase = userBudget === 'low' ? LOW_BUDGET_MAINTENANCE :
+                                      userBudget === 'high' ? HIGH_BUDGET_MAINTENANCE :
+                                      MEDIUM_BUDGET_MAINTENANCE;
+                      }
+                    } else {
+                      mealDatabase = WEEK_1_MAINTENANCE;
+                    }
+                    
+                    console.log('✅ Selected meal plan:', mealDatabase[0]?.id);
+                    
+                    // Get the meal plan for the selected day and week
+                    // Rotate weeks 2-4 by shifting days (week 2 = start from day 2, week 3 = day 3, etc.)
+                    let dayPlan = mealDatabase.find(p => p.day === currentDay && p.week === currentWeek);
+                    
+                    // If week doesn't exist, rotate through week 1 meals
+                    if (!dayPlan && currentWeek > 1) {
+                      // Rotate: Week 2 starts from day 2, Week 3 from day 3, Week 4 from day 4
+                      const rotatedDay = ((currentDay - 1 + (currentWeek - 1)) % 7) + 1;
+                      dayPlan = mealDatabase.find(p => p.day === rotatedDay && p.week === 1);
+                    }
+                    
+                    // Ultimate fallback
+                    if (!dayPlan) {
+                      dayPlan = mealDatabase[0];
+                    }
+                    
+                    if (!dayPlan) return null;
+                    
+                    // Filter meals by cooking skill preference
+                    const filterMealBySkill = (meal: any) => {
+                      if (!meal?.cookingSkill) return true;
+                      
+                      // Match exact cooking skill or show meals that match user's preference
+                      if (userCookingSkill === 'beginner') {
+                        return meal.cookingSkill === 'beginner';
+                      } else if (userCookingSkill === 'intermediate') {
+                        return ['beginner', 'intermediate'].includes(meal.cookingSkill);
+                      } else {
+                        return true; // Advanced users see all
+                      }
+                    };
                     
                     // Get meals based on user preference
                     const mealsPerDay = parseInt(userData?.dietPreferences?.mealsPerDay || '6');
@@ -3319,8 +3562,28 @@ const DietPlanScreen = ({ goal, setGoal, showPlanModal, setShowPlanModal, userDa
                                          mealTypes;
                     
                     return selectedMeals.map((mealType, index) => {
-                      const meal = mondayPlan.meals[mealType.key as keyof typeof mondayPlan.meals] as Meal | null;
+                      const meal = dayPlan.meals[mealType.key as keyof typeof dayPlan.meals] as Meal | null;
                       if (!meal) return null;
+                      
+                      // Check if meal matches cooking skill preference
+                      const skillMatch = filterMealBySkill(meal);
+                      
+                      // Skip meals that don't match skill level (show placeholder)
+                      if (!skillMatch) {
+                        return (
+                          <div key={index} className="bg-gray-100 dark:bg-gray-800/50 p-4 rounded-xl border-2 border-dashed border-gray-300 dark:border-gray-700">
+                            <div className="flex items-center gap-3">
+                              <span className="text-xl opacity-40">{mealType.emoji}</span>
+                              <div>
+                                <p className="text-sm font-semibold text-gray-400 dark:text-gray-500">{mealType.name}</p>
+                                <p className="text-xs text-gray-400 dark:text-gray-600 italic">
+                                  Meal filtered by cooking skill preference
+                                </p>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      }
                       
                       // Apply calorie adjustment
                       const adjustedMacros = {
@@ -3540,37 +3803,178 @@ const PremiumWeeklyPlansScreen = ({ onBack, userData, isPremium }: { onBack: () 
     const preferences = userData?.dietPreferences || {};
     const { religion, dietType, allergies, mealsPerDay } = preferences;
 
+    console.log('📋 User Preferences:', preferences);
     console.log('isPremium:', isPremium, '| mealsPerDay:', mealsPerDay || 'not set');
     
-    // Select the appropriate meal plan database based on user's goal AND budget
+    // Select the appropriate meal plan database based on user's goal, budget AND religion
     const userBudget = preferences.budget || 'medium'; // Default to medium if not set
+    const userReligion = religion?.toLowerCase() || '';
+    
+    console.log('💰 MEAL SELECTION:', {
+      rawBudget: preferences.budget,
+      selectedBudget: userBudget,
+      goal: userGoal,
+      religion: userReligion
+    });
     
     let mealDatabase;
     
+    // Check if user has religion-specific meal plan preference
+    const useKosher = userReligion === 'jewish';
+    const useChristian = userReligion === 'christian' || userReligion === 'catholic';
+    const useHindu = userReligion === 'hindu' || userReligion === 'hinduism';
+    
     if (userGoal === 'weight-loss') {
-      // Weight loss - select budget tier
-      if (userBudget === 'low') {
-        mealDatabase = LOW_BUDGET_WEIGHT_LOSS;
-      } else if (userBudget === 'high') {
-        mealDatabase = HIGH_BUDGET_WEIGHT_LOSS;
+      // Weight loss - select by religion first, then budget tier
+      if (useKosher) {
+        if (userBudget === 'low') {
+          console.log('✅ Loading LOW BUDGET Kosher Weight Loss meals');
+          mealDatabase = LOW_BUDGET_KOSHER_WEIGHT_LOSS;
+        } else if (userBudget === 'high') {
+          console.log('✅ Loading HIGH BUDGET Kosher Weight Loss meals');
+          mealDatabase = HIGH_BUDGET_KOSHER_WEIGHT_LOSS;
+        } else {
+          console.log('✅ Loading MEDIUM BUDGET Kosher Weight Loss meals');
+          mealDatabase = MEDIUM_BUDGET_KOSHER_WEIGHT_LOSS;
+        }
+      } else if (useChristian) {
+        if (userBudget === 'low') {
+          console.log('✅ Loading LOW BUDGET Christian Weight Loss meals');
+          mealDatabase = LOW_BUDGET_CHRISTIAN_WEIGHT_LOSS;
+        } else if (userBudget === 'high') {
+          console.log('✅ Loading HIGH BUDGET Christian Weight Loss meals');
+          mealDatabase = HIGH_BUDGET_CHRISTIAN_WEIGHT_LOSS;
+        } else {
+          console.log('✅ Loading MEDIUM BUDGET Christian Weight Loss meals');
+          mealDatabase = MEDIUM_BUDGET_CHRISTIAN_WEIGHT_LOSS;
+        }
+      } else if (useHindu) {
+        if (userBudget === 'low') {
+          console.log('✅ Loading LOW BUDGET Hindu Weight Loss meals');
+          mealDatabase = LOW_BUDGET_HINDU_WEIGHT_LOSS;
+        } else if (userBudget === 'high') {
+          console.log('✅ Loading HIGH BUDGET Hindu Weight Loss meals');
+          mealDatabase = HIGH_BUDGET_HINDU_WEIGHT_LOSS;
+        } else {
+          console.log('✅ Loading MEDIUM BUDGET Hindu Weight Loss meals');
+          mealDatabase = MEDIUM_BUDGET_HINDU_WEIGHT_LOSS;
+        }
       } else {
-        mealDatabase = MEDIUM_BUDGET_WEIGHT_LOSS;
+        // Generic/default plans for other religions
+        if (userBudget === 'low') {
+          console.log('✅ Loading LOW BUDGET Weight Loss meals');
+          mealDatabase = LOW_BUDGET_WEIGHT_LOSS;
+        } else if (userBudget === 'high') {
+          console.log('✅ Loading HIGH BUDGET Weight Loss meals');
+          mealDatabase = HIGH_BUDGET_WEIGHT_LOSS;
+        } else {
+          console.log('✅ Loading MEDIUM BUDGET Weight Loss meals');
+          mealDatabase = MEDIUM_BUDGET_WEIGHT_LOSS;
+        }
       }
     } else if (userGoal === 'muscle-gain') {
-      // Muscle gain - select budget tier
-      if (userBudget === 'low') {
-        mealDatabase = LOW_BUDGET_MUSCLE_GAIN;
-      } else if (userBudget === 'high') {
-        mealDatabase = HIGH_BUDGET_MUSCLE_GAIN;
+      // Muscle gain - select by religion first, then budget tier
+      if (useKosher) {
+        if (userBudget === 'low') {
+          console.log('✅ Loading LOW BUDGET Kosher Muscle Gain meals');
+          mealDatabase = LOW_BUDGET_KOSHER_MUSCLE_GAIN;
+        } else if (userBudget === 'high') {
+          console.log('✅ Loading HIGH BUDGET Kosher Muscle Gain meals');
+          mealDatabase = HIGH_BUDGET_KOSHER_MUSCLE_GAIN;
+        } else {
+          console.log('✅ Loading MEDIUM BUDGET Kosher Muscle Gain meals');
+          mealDatabase = MEDIUM_BUDGET_KOSHER_MUSCLE_GAIN;
+        }
+      } else if (useChristian) {
+        if (userBudget === 'low') {
+          console.log('✅ Loading LOW BUDGET Christian Muscle Gain meals');
+          mealDatabase = LOW_BUDGET_CHRISTIAN_MUSCLE_GAIN;
+        } else if (userBudget === 'high') {
+          console.log('✅ Loading HIGH BUDGET Christian Muscle Gain meals');
+          mealDatabase = HIGH_BUDGET_CHRISTIAN_MUSCLE_GAIN;
+        } else {
+          console.log('✅ Loading MEDIUM BUDGET Christian Muscle Gain meals');
+          mealDatabase = MEDIUM_BUDGET_CHRISTIAN_MUSCLE_GAIN;
+        }
+      } else if (useHindu) {
+        if (userBudget === 'low') {
+          console.log('✅ Loading LOW BUDGET Hindu Muscle Gain meals');
+          mealDatabase = LOW_BUDGET_HINDU_MUSCLE_GAIN;
+        } else if (userBudget === 'high') {
+          console.log('✅ Loading HIGH BUDGET Hindu Muscle Gain meals');
+          mealDatabase = HIGH_BUDGET_HINDU_MUSCLE_GAIN;
+        } else {
+          console.log('✅ Loading MEDIUM BUDGET Hindu Muscle Gain meals');
+          mealDatabase = MEDIUM_BUDGET_HINDU_MUSCLE_GAIN;
+        }
       } else {
-        mealDatabase = MEDIUM_BUDGET_MUSCLE_GAIN;
+        // Generic/default plans for other religions
+        if (userBudget === 'low') {
+          console.log('✅ Loading LOW BUDGET Muscle Gain meals');
+          mealDatabase = LOW_BUDGET_MUSCLE_GAIN;
+        } else if (userBudget === 'high') {
+          console.log('✅ Loading HIGH BUDGET Muscle Gain meals');
+          mealDatabase = HIGH_BUDGET_MUSCLE_GAIN;
+        } else {
+          console.log('✅ Loading MEDIUM BUDGET Muscle Gain meals');
+          mealDatabase = MEDIUM_BUDGET_MUSCLE_GAIN;
+        }
+      }
+    } else if (userGoal === 'maintenance') {
+      // Maintenance - select by religion first, then budget tier
+      if (useKosher) {
+        if (userBudget === 'low') {
+          console.log('✅ Loading LOW BUDGET Kosher Maintenance meals');
+          mealDatabase = LOW_BUDGET_KOSHER_MAINTENANCE;
+        } else if (userBudget === 'high') {
+          console.log('✅ Loading HIGH BUDGET Kosher Maintenance meals');
+          mealDatabase = HIGH_BUDGET_KOSHER_MAINTENANCE;
+        } else {
+          console.log('✅ Loading MEDIUM BUDGET Kosher Maintenance meals');
+          mealDatabase = MEDIUM_BUDGET_KOSHER_MAINTENANCE;
+        }
+      } else if (useChristian) {
+        if (userBudget === 'low') {
+          console.log('✅ Loading LOW BUDGET Christian Maintenance meals');
+          mealDatabase = LOW_BUDGET_CHRISTIAN_MAINTENANCE;
+        } else if (userBudget === 'high') {
+          console.log('✅ Loading HIGH BUDGET Christian Maintenance meals');
+          mealDatabase = HIGH_BUDGET_CHRISTIAN_MAINTENANCE;
+        } else {
+          console.log('✅ Loading MEDIUM BUDGET Christian Maintenance meals');
+          mealDatabase = MEDIUM_BUDGET_CHRISTIAN_MAINTENANCE;
+        }
+      } else if (useHindu) {
+        if (userBudget === 'low') {
+          console.log('✅ Loading LOW BUDGET Hindu Maintenance meals');
+          mealDatabase = LOW_BUDGET_HINDU_MAINTENANCE;
+        } else if (userBudget === 'high') {
+          console.log('✅ Loading HIGH BUDGET Hindu Maintenance meals');
+          mealDatabase = HIGH_BUDGET_HINDU_MAINTENANCE;
+        } else {
+          console.log('✅ Loading MEDIUM BUDGET Hindu Maintenance meals');
+          mealDatabase = MEDIUM_BUDGET_HINDU_MAINTENANCE;
+        }
+      } else {
+        // Generic/default plans for other religions
+        if (userBudget === 'low') {
+          console.log('✅ Loading LOW BUDGET Maintenance meals');
+          mealDatabase = LOW_BUDGET_MAINTENANCE;
+        } else if (userBudget === 'high') {
+          console.log('✅ Loading HIGH BUDGET Maintenance meals');
+          mealDatabase = HIGH_BUDGET_MAINTENANCE;
+        } else {
+          console.log('✅ Loading MEDIUM BUDGET Maintenance meals');
+          mealDatabase = MEDIUM_BUDGET_MAINTENANCE;
+        }
       }
     } else {
-      // Maintenance - use existing database (budget not yet implemented for maintenance)
+      // Fallback to old maintenance database
+      console.log('⚠️ Using fallback maintenance database');
       mealDatabase = WEEK_1_MAINTENANCE;
     }
     
-    console.log('🍽️ Using meal database:', { goal: userGoal, budget: userBudget });
+    console.log('🍽️ Meal database selected:', mealDatabase[0]?.id || 'unknown');
     
     // Find the base meal plan for this day from the selected database
     const dayPlan = mealDatabase.find((plan: any) => plan.day === day);
@@ -3764,6 +4168,8 @@ const PremiumWeeklyPlansScreen = ({ onBack, userData, isPremium }: { onBack: () 
     selectedMealTypes.forEach(mealType => {
       const meal = adjustedPlan.meals[mealType];
       const filterResult = smartFilterMeal(meal);
+      
+      console.log(`🍴 ${mealType}:`, meal?.name || 'N/A');
       
       if (filterResult.passed) {
         if (filterResult.filterLevel === 'relaxed') {
@@ -4224,9 +4630,7 @@ const ExerciseFinderScreen = ({
   setExerciseSubView,
   currentWorkout,
   setCurrentWorkout,
-  finishWorkout,
-  isPremium,
-  onUpgradeToPremium
+  finishWorkout
 }: {
   selectedMuscle: string | null;
   setSelectedMuscle: (muscle: string | null) => void;
@@ -4239,8 +4643,6 @@ const ExerciseFinderScreen = ({
   currentWorkout: Array<{ exercise: string; sets: Array<{ reps: number; weight: number }> }>;
   setCurrentWorkout: (workout: Array<{ exercise: string; sets: Array<{ reps: number; weight: number }> }>) => void;
   finishWorkout: () => Promise<void>;
-  isPremium: boolean;
-  onUpgradeToPremium: () => void;
 }) => {
   const [showRoutineConfirm, setShowRoutineConfirm] = useState(false);
 
@@ -4286,8 +4688,13 @@ const ExerciseFinderScreen = ({
   // Stage 1: Muscle Group Selection
   if (!selectedMuscle) {
     return (
-      <div className="p-4 space-y-6">
-        <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-4 border-b border-indigo-300 dark:border-indigo-500/50 pb-2">Select Muscle Group</h2>
+      <div className="h-full flex flex-col">
+        {/* Sticky Header */}
+        <div className="sticky top-0 z-20 bg-gradient-to-br from-indigo-50 via-purple-50 to-pink-50 dark:from-gray-900 dark:via-indigo-900/20 dark:to-gray-900 backdrop-blur-md border-b border-indigo-200 dark:border-indigo-500/30 px-4 py-4 shadow-sm">
+          <h2 className="text-2xl font-bold text-gray-900 dark:text-white">Select Muscle Group</h2>
+        </div>
+        
+        <div className="flex-1 overflow-y-auto px-4 space-y-6 pt-4">
         
         {/* Active Workout Indicator & Finish Button */}
         {currentWorkout.length > 0 && (
@@ -4321,18 +4728,23 @@ const ExerciseFinderScreen = ({
           ))}
         </div>
       </div>
+      </div>
     );
   }
 
   // Stage 2: Location Selection (Gym or Home)
   if (!location) {
     return (
-      <div className="p-4 space-y-6" {...swipeHandlersLocation}>
-        <button onClick={handleBack} className="flex items-center text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 dark:hover:text-indigo-300 transition duration-200 mb-4">
-          <ArrowLeft className="h-4 w-4 mr-2" /> Back to Muscles
-        </button>
-
-        <h2 className="text-2xl font-bold text-gray-900 dark:text-white">Focus: {selectedMuscle}</h2>
+      <div className="h-full flex flex-col">
+        {/* Sticky Header */}
+        <div className="sticky top-0 z-20 bg-gradient-to-br from-indigo-50 via-purple-50 to-pink-50 dark:from-gray-900 dark:via-indigo-900/20 dark:to-gray-900 backdrop-blur-md border-b border-indigo-200 dark:border-indigo-500/30 px-4 py-4 shadow-sm">
+          <button onClick={handleBack} className="flex items-center text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 dark:hover:text-indigo-300 transition duration-200 mb-2">
+            <ArrowLeft className="h-4 w-4 mr-2" /> Back to Muscles
+          </button>
+          <h2 className="text-2xl font-bold text-gray-900 dark:text-white">Focus: {selectedMuscle}</h2>
+        </div>
+        
+        <div className="flex-1 overflow-y-auto px-4 space-y-6 pt-4" {...swipeHandlersLocation}>
         <p className="text-gray-700 dark:text-white/70">Where will you be training today?</p>
 
         <div className="grid grid-cols-2 gap-4">
@@ -4351,6 +4763,7 @@ const ExerciseFinderScreen = ({
             Home Workout
           </button>
         </div>
+        </div>
       </div>
     );
   }
@@ -4359,63 +4772,38 @@ const ExerciseFinderScreen = ({
   const exercises = muscleData && location ? muscleData.exercises[location] : [];
 
   return (
-    <div className="p-4 space-y-6" {...swipeHandlersExerciseList}>
-      <button onClick={handleBack} className="flex items-center text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 dark:hover:text-indigo-300 transition duration-200 mb-4">
-        <ArrowLeft className="h-4 w-4 mr-2" /> Back to Location
-      </button>
-
-      <h2 className="text-2xl font-bold text-gray-900 dark:text-white">{muscleData?.name} Exercises ({location?.toUpperCase()})</h2>
-      <p className="text-gray-700 dark:text-white/70">Top {isPremium ? exercises.length : '3'} recommended moves for today's session:</p>
+    <div className="h-full flex flex-col">
+      {/* Sticky Header */}
+      <div className="sticky top-0 z-20 bg-gradient-to-br from-indigo-50 via-purple-50 to-pink-50 dark:from-gray-900 dark:via-indigo-900/20 dark:to-gray-900 backdrop-blur-md border-b border-indigo-200 dark:border-indigo-500/30 px-4 py-4 shadow-sm">
+        <button onClick={handleBack} className="flex items-center text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 dark:hover:text-indigo-300 transition duration-200 mb-2">
+          <ArrowLeft className="h-4 w-4 mr-2" /> Back to Location
+        </button>
+        <h2 className="text-2xl font-bold text-gray-900 dark:text-white">{muscleData?.name} Exercises ({location?.toUpperCase()})</h2>
+      </div>
+      
+      <div className="flex-1 overflow-y-auto px-4 space-y-6 pt-4" {...swipeHandlersExerciseList}>
+      <p className="text-gray-700 dark:text-white/70">Top {exercises.length} recommended moves for today's session:</p>
 
       <div className="space-y-3">
         {exercises.map((ex, index) => {
-          // Index-based locking: 0-2 are free, 3+ are premium-only
-          const isLocked = index > 2 && !isPremium;
-          
           return (
             <div key={index} className="relative">
               <button 
                 onClick={() => {
-                  if (isLocked) {
-                    onUpgradeToPremium();
-                  } else {
-                    setSelectedExercise(ex);
-                  }
+                  setSelectedExercise(ex);
                 }}
-                className={`w-full bg-white dark:bg-gray-800 p-4 rounded-xl shadow-xl flex items-center justify-between border-l-4 ${
-                  isLocked 
-                    ? 'border-amber-500 opacity-60' 
-                    : 'border-teal-500 hover:bg-gray-50 dark:hover:bg-gray-700'
-                } transition duration-200`}
+                className={`w-full bg-white dark:bg-gray-800 p-4 rounded-xl shadow-xl flex items-center justify-between border-l-4 border-teal-500 hover:bg-gray-50 dark:hover:bg-gray-700 transition duration-200`}
               >
                 <div className="flex items-center">
-                  <span className={`text-xl font-bold mr-4 ${isLocked ? 'text-amber-600 dark:text-amber-400' : 'text-teal-600 dark:text-teal-400'}`}>
+                  <span className="text-xl font-bold mr-4 text-teal-600 dark:text-teal-400">
                     {index + 1}
                   </span>
-                  <p className={`${isLocked ? 'text-gray-500 dark:text-gray-400' : 'text-gray-900 dark:text-white'} font-medium`}>
+                  <p className="text-gray-900 dark:text-white font-medium">
                     {ex}
                   </p>
                 </div>
-                {isLocked ? (
-                  <div className="flex items-center gap-2">
-                    <svg className="w-5 h-5 text-amber-500" fill="currentColor" viewBox="0 0 20 20">
-                      <path fillRule="evenodd" d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" clipRule="evenodd" />
-                    </svg>
-                    <span className="text-xs font-semibold text-amber-600 dark:text-amber-400">PREMIUM</span>
-                  </div>
-                ) : (
-                  <Clock className="h-4 w-4 text-indigo-600 dark:text-indigo-400" />
-                )}
+                <Clock className="h-4 w-4 text-indigo-600 dark:text-indigo-400" />
               </button>
-              
-              {/* Premium badge overlay for locked exercises */}
-              {isLocked && (
-                <div className="absolute top-2 right-2 bg-gradient-to-r from-amber-400 to-yellow-500 px-2 py-1 rounded-full">
-                  <svg className="w-3 h-3 text-white" fill="currentColor" viewBox="0 0 20 20">
-                    <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
-                  </svg>
-                </div>
-              )}
             </div>
           );
         })}
@@ -4443,6 +4831,7 @@ const ExerciseFinderScreen = ({
           onStartLogging={() => setExerciseSubView('log')}
         />
       )}
+    </div>
     </div>
   );
 };
@@ -5006,6 +5395,20 @@ const AccountScreen = ({ onLogout, userData: propUserData, onNavigateToSettings 
     const units = userData?.appPreferences?.units || 'metric';
 
     const handleLogout = async () => {
+      // Clear device session in Firestore first
+      const currentUser = auth.currentUser;
+      if (currentUser) {
+        try {
+          const userDocRef = doc(db, 'users', currentUser.uid);
+          await updateDoc(userDocRef, {
+            activeDeviceId: null,
+            lastActive: new Date().toISOString()
+          });
+        } catch (error) {
+          console.error('Error clearing device session:', error);
+        }
+      }
+      
       try {
         await signOut(auth);
         toast.success('Logged out successfully');
@@ -5017,6 +5420,7 @@ const AccountScreen = ({ onLogout, userData: propUserData, onNavigateToSettings 
       // Clear all app-related localStorage
       localStorage.removeItem('userData');
       localStorage.removeItem('tempUserData');
+      // Note: Keep deviceId for future logins on this device
       onLogout();
     };
 
@@ -5079,17 +5483,22 @@ const AccountScreen = ({ onLogout, userData: propUserData, onNavigateToSettings 
     const weightLost = Math.max(0, startingWeight - userData.weight);
 
     return (
-        <div className="p-6 space-y-8">
-            <div className="flex justify-between items-center border-b border-indigo-300 dark:border-indigo-500/50 pb-3">
-              <h2 className="text-3xl font-bold text-gray-900 dark:text-white">My Account</h2>
-              <button
-                onClick={() => setShowEditModal(true)}
-                className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-indigo-500 to-purple-600 dark:bg-indigo-600 hover:from-indigo-600 hover:to-purple-700 dark:hover:bg-indigo-700 rounded-lg text-white font-semibold transition duration-200 shadow-lg"
-              >
-                <Edit className="w-4 h-4" />
-                Edit
-              </button>
+        <div className="h-full flex flex-col">
+            {/* Sticky Header */}
+            <div className="sticky top-0 z-20 bg-gradient-to-br from-indigo-50 via-purple-50 to-pink-50 dark:from-gray-900 dark:via-indigo-900/20 dark:to-gray-900 backdrop-blur-md border-b border-indigo-200 dark:border-indigo-500/30 px-4 py-4 shadow-sm">
+              <div className="flex justify-between items-center">
+                <h2 className="text-3xl font-bold text-gray-900 dark:text-white">My Account</h2>
+                <button
+                  onClick={() => setShowEditModal(true)}
+                  className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-indigo-500 to-purple-600 dark:bg-indigo-600 hover:from-indigo-600 hover:to-purple-700 dark:hover:bg-indigo-700 rounded-lg text-white font-semibold transition duration-200 shadow-lg"
+                >
+                  <Edit className="w-4 h-4" />
+                  Edit
+                </button>
+              </div>
             </div>
+            
+            <div className="flex-1 overflow-y-auto p-6 space-y-8">
             
             {/* Profile Summary Card */}
             <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-2xl border-2 border-indigo-200 dark:border-gray-700">
@@ -5238,6 +5647,11 @@ const App = () => {
   const [exerciseSubView, setExerciseSubView] = useState<'list' | 'details' | 'log'>('list');
   const [currentWorkout, setCurrentWorkout] = useState<Array<{ exercise: string; sets: Array<{ reps: number; weight: number }> }>>([]);
   const [workoutStartTime, setWorkoutStartTime] = useState<number | null>(null);
+  
+  // Meal Plan State - Lifted to persist across navigation
+  const [currentDay, setCurrentDay] = useState(1); // 1-7 for Mon-Sun
+  const [currentWeek, setCurrentWeek] = useState(1); // 1-4 for weeks
+  const [expandedMeals, setExpandedMeals] = useState<Record<string, boolean>>({});
 
   // Start workout timer when first exercise is added
   useEffect(() => {
@@ -5335,13 +5749,34 @@ const App = () => {
         // Set up real-time listener for user data from Firestore
         const userDocRef = doc(db, 'users', firebaseUser.uid);
         
+        // Generate or retrieve device ID for single-device login enforcement
+        let deviceId = localStorage.getItem('deviceId');
+        if (!deviceId) {
+          deviceId = `device_${Date.now()}_${Math.random().toString(36).substring(2, 15)}`;
+          localStorage.setItem('deviceId', deviceId);
+        }
+        
         // Try to fetch user document
         try {
           const docSnap = await getDoc(userDocRef);
           if (docSnap.exists()) {
-            // User data exists - normal flow
+            // User data exists
             const data = docSnap.data();
             console.log('Fetched existing user data:', data);
+            
+            // Check if user is logged in on a different device
+            if (data.activeDeviceId && data.activeDeviceId !== deviceId) {
+              console.warn('User was logged in on another device. Taking over session...');
+              toast('Logging in... Previous session will be terminated.', { icon: '🔐' });
+            }
+            
+            // Always update active device ID to this device (claim the session)
+            // This will trigger the onSnapshot listener on other devices to log them out
+            await updateDoc(userDocRef, {
+              activeDeviceId: deviceId,
+              lastActive: new Date().toISOString()
+            });
+            
             setUserData(data);
             localStorage.setItem('userData', JSON.stringify(data));
             setLoading(false);
@@ -5357,7 +5792,7 @@ const App = () => {
                 const profileData = JSON.parse(tempData);
                 console.log('Found temp profile data, creating Firestore document...');
                 
-                // Create user document in Firestore
+                // Create user document in Firestore with device session
                 const userData = {
                   email: profileData.email,
                   name: profileData.name || 'User', // Use name from tempUserData or default
@@ -5367,7 +5802,9 @@ const App = () => {
                   heightFeet: profileData.heightFeet || 5,
                   heightInches: profileData.heightInches || 8,
                   targetWeight: profileData.targetWeight || 65,
-                  createdAt: new Date().toISOString()
+                  createdAt: new Date().toISOString(),
+                  activeDeviceId: deviceId,
+                  lastActive: new Date().toISOString()
                 };
                 
                 await setDoc(userDocRef, userData);
@@ -5407,6 +5844,19 @@ const App = () => {
           if (docSnap.exists()) {
             const data = docSnap.data();
             console.log('Snapshot received user data:', data);
+            
+            // Check if device ID has changed (user logged in on another device)
+            if (data.activeDeviceId && data.activeDeviceId !== deviceId) {
+              console.warn('Device ID changed - user logged in on another device');
+              toast.error('Your account was logged in on another device. Logging out...');
+              signOut(auth);
+              localStorage.removeItem('userData');
+              localStorage.removeItem('tempUserData');
+              setLoading(false);
+              if (loadingTimeout) clearTimeout(loadingTimeout);
+              return;
+            }
+            
             setUserData(data);
             localStorage.setItem('userData', JSON.stringify(data));
             setLoading(false);
@@ -5674,7 +6124,7 @@ const App = () => {
           />
         );
       case 'diet':
-        return <DietPlanScreen goal={goal} setGoal={setGoal} showPlanModal={showPlanModal} setShowPlanModal={setShowPlanModal} userData={userData} isPremium={isPremium} />;
+        return <DietPlanScreen goal={goal} setGoal={setGoal} showPlanModal={showPlanModal} setShowPlanModal={setShowPlanModal} userData={userData} isPremium={isPremium} currentDay={currentDay} setCurrentDay={setCurrentDay} currentWeek={currentWeek} setCurrentWeek={setCurrentWeek} expandedMeals={expandedMeals} setExpandedMeals={setExpandedMeals} />;
       case 'exercise':
         return <ExerciseFinderScreen 
           selectedMuscle={selectedMuscle} 
@@ -5688,8 +6138,6 @@ const App = () => {
           currentWorkout={currentWorkout}
           setCurrentWorkout={setCurrentWorkout}
           finishWorkout={finishWorkout}
-          isPremium={isPremium}
-          onUpgradeToPremium={() => console.log('Upgrade modal')}
         />;
       case 'account':
         return <AccountScreen onLogout={handleLogout} userData={userData} onNavigateToSettings={setActiveSettingsScreen} />;
@@ -5700,7 +6148,7 @@ const App = () => {
 
   return (
     // Premium Mobile Container: Theme-aware Background
-    <div className="min-h-screen bg-gradient-to-br from-indigo-50 via-purple-50 to-pink-50 dark:from-gray-900 dark:via-indigo-900/20 dark:to-gray-900 flex justify-center text-gray-900 dark:text-white transition-colors duration-200">
+    <div className="min-h-screen bg-gradient-to-br from-indigo-50 via-purple-50 to-pink-50 dark:from-gray-900 dark:via-indigo-900/20 dark:to-gray-900 flex justify-center text-gray-900 dark:text-white transition-colors duration-200" style={{ paddingTop: 'env(safe-area-inset-top)', paddingLeft: 'env(safe-area-inset-left)', paddingRight: 'env(safe-area-inset-right)' }}>
       <Toaster 
         position="top-center"
         toastOptions={{
@@ -5739,14 +6187,14 @@ const App = () => {
         </button>
       )}
       
-      <div className="w-full max-w-md bg-white/70 dark:bg-gray-900 shadow-2xl flex flex-col transition-colors duration-200 backdrop-blur-sm">
+      <div className="w-full max-w-md bg-white/70 dark:bg-gray-900 shadow-2xl h-screen flex flex-col transition-colors duration-200 backdrop-blur-sm">
         {/* Main Content Area */}
-        <div className="flex-grow overflow-y-auto pt-6 pb-20">
+        <div className="flex-1 pt-6" style={{ paddingBottom: 'calc(80px + env(safe-area-inset-bottom, 0px))', overflowY: 'auto', overflowX: 'hidden' }}>
             {renderContent()}
         </div>
 
-        {/* Premium Tab Bar (Sticky Bottom) */}
-        <nav className="sticky bottom-0 w-full max-w-md h-16 bg-white dark:bg-gray-800 border-t border-gray-200 dark:border-indigo-500/50 shadow-lg z-10 transition-colors duration-200">
+        {/* Premium Tab Bar (Fixed Bottom) */}
+        <nav className="fixed bottom-0 left-0 right-0 max-w-md mx-auto bg-white dark:bg-gray-800 border-t border-gray-200 dark:border-indigo-500/50 shadow-lg z-50 transition-colors duration-200" style={{ height: '64px', paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}>
           <ul className="flex justify-around items-center h-full">
             <NavItem icon={Home} label="Home" active={activeTab === 'home'} onClick={() => { setActiveTab('home'); setActiveSettingsScreen(null); }} />
             <NavItem icon={Soup} label="Diet Plan" active={activeTab === 'diet'} onClick={() => { setActiveTab('diet'); setActiveSettingsScreen(null); }} />

@@ -5,17 +5,54 @@
 # For more details, see
 #   http://developer.android.com/guide/developing/tools/proguard.html
 
-# If your project uses WebView with JS, uncomment the following
-# and specify the fully qualified class name to the JavaScript interface
-# class:
-#-keepclassmembers class fqcn.of.javascript.interface.for.webview {
-#   public *;
-#}
+# Capacitor and WebView Rules
+-keep class com.getcapacitor.** { *; }
+-keep @com.getcapacitor.annotation.CapacitorPlugin class * { *; }
+-keepclassmembers class * {
+    @com.getcapacitor.annotation.CapacitorPlugin *;
+}
 
-# Uncomment this to preserve the line number information for
-# debugging stack traces.
-#-keepattributes SourceFile,LineNumberTable
+# Keep MainActivity
+-keep class com.auraflow.app.MainActivity { *; }
 
-# If you keep the line number information, uncomment this to
-# hide the original source file name.
-#-renamesourcefileattribute SourceFile
+# Keep WebView JavaScript Interface
+-keepclassmembers class * {
+    @android.webkit.JavascriptInterface <methods>;
+}
+-keepattributes JavascriptInterface
+-keepattributes *Annotation*
+
+# Firebase Rules
+-keep class com.google.firebase.** { *; }
+-keep class com.google.android.gms.** { *; }
+-keepclassmembers class com.google.firebase.** { *; }
+-keepclassmembers class com.google.android.gms.** { *; }
+-dontwarn com.google.firebase.**
+-dontwarn com.google.android.gms.**
+
+# Firestore specific
+-keepclassmembers class * extends com.google.firebase.firestore.** { *; }
+-keep class * extends com.google.protobuf.GeneratedMessageLite { *; }
+
+# Keep source file and line numbers for better crash reports
+-keepattributes SourceFile,LineNumberTable
+-renamesourcefileattribute SourceFile
+
+# Remove logging in production (optional - comment out for debugging)
+-assumenosideeffects class android.util.Log {
+    public static *** d(...);
+    public static *** v(...);
+    public static *** i(...);
+}
+
+# Preserve annotations
+-keepattributes *Annotation*,Signature,Exception
+
+# Keep native methods
+-keepclasseswithmembernames class * {
+    native <methods>;
+}
+
+# AndroidX
+-keep class androidx.** { *; }
+-dontwarn androidx.**

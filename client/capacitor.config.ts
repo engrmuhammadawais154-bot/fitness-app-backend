@@ -1,8 +1,8 @@
 import type { CapacitorConfig } from '@capacitor/cli';
 
 const config: CapacitorConfig = {
-  appId: 'com.fitnessapp.app',
-  appName: 'Fitness App',
+  appId: 'com.auraflow.app',
+  appName: 'Aura Flow',
   webDir: 'dist'
 };
 

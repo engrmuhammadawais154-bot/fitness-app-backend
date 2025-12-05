@@ -45,7 +45,8 @@ service cloud.firestore {
       // Update: Only user can update their own data
       allow update: if isSignedIn() 
         && isOwner(userId)
-        && request.resource.data.email == resource.data.email; // Prevent email change
+        && request.resource.data.email == resource.data.email // Prevent email change
+        && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['email', 'createdAt'])); // Prevent changing email or creation date
       
       // Delete: Only user can delete their own account
       allow delete: if isSignedIn() && isOwner(userId);
