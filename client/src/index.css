@@ -28,6 +28,22 @@
   --accent-secondary: #8b5cf6;
 }
 
+/* Strict Mobile Layout Reset - Prevents WebView bounce */
+html, body, #root {
+  height: 100%;
+  width: 100%;
+  overscroll-behavior: none; /* Stops the root "jelly" bounce */
+  overflow: hidden; /* Prevents body scroll */
+  position: fixed; /* Extra iOS safeguard */
+  margin: 0;
+  padding: 0;
+}
+
+/* Remove any default margins/padding that might cause layout shift */
+* {
+  -webkit-tap-highlight-color: transparent;
+}
+
 body {
   background-color: var(--bg-primary);
   color: var(--text-primary);

@@ -1182,14 +1182,14 @@ const HomeScreen = ({
   };
 
   return (
-    <div className="h-full flex flex-col">
+    <>
       {/* Sticky Header */}
-      <div className="sticky top-0 z-20 bg-gradient-to-br from-indigo-50 via-purple-50 to-pink-50 dark:from-gray-900 dark:via-indigo-900/20 dark:to-gray-900 backdrop-blur-md border-b border-indigo-200 dark:border-indigo-500/30 px-4 py-4 shadow-sm">
+      <div className="sticky top-0 z-40 w-full bg-gradient-to-br from-indigo-50 via-purple-50 to-pink-50 dark:from-gray-900 dark:via-indigo-900/20 dark:to-gray-900 backdrop-blur-md border-b border-indigo-200 dark:border-indigo-500/30 px-4 py-4 shadow-sm">
         <h1 className="text-3xl font-extrabold text-gray-900 dark:text-white">Welcome Back!</h1>
         <p className="text-gray-700 dark:text-white/70">Your fitness journey starts now.</p>
       </div>
       
-      <div className="flex-1 overflow-y-auto p-4 space-y-6" style={{ overscrollBehavior: 'none', WebkitOverflowScrolling: 'touch' }}>
+      <div className="p-4 space-y-6">
       
       {/* Dynamic Status Card */}
       <DynamicStatusCard 
@@ -1239,7 +1239,7 @@ const HomeScreen = ({
         />
       </div>
     </div>
-    </div>
+    </>
   );
 };
 
@@ -3155,9 +3155,9 @@ const DietPlanScreen = ({ goal, setGoal, showPlanModal, setShowPlanModal, userDa
   }
 
   return (
-    <div className="h-full flex flex-col">
+    <>
       {/* Sticky Header */}
-      <div className="sticky top-0 z-20 bg-gradient-to-br from-indigo-50 via-purple-50 to-pink-50 dark:from-gray-900 dark:via-indigo-900/20 dark:to-gray-900 backdrop-blur-md border-b border-indigo-200 dark:border-indigo-500/30 px-4 py-4 shadow-sm">
+      <div className="sticky top-0 z-40 w-full bg-gradient-to-br from-indigo-50 via-purple-50 to-pink-50 dark:from-gray-900 dark:via-indigo-900/20 dark:to-gray-900 backdrop-blur-md border-b border-indigo-200 dark:border-indigo-500/30 px-4 py-4 shadow-sm">
         <div className="flex justify-between items-center">
           <h2 className="text-2xl font-bold text-gray-900 dark:text-white">Your Nutrition Goal</h2>
           {hasDietPreferences && (
@@ -3171,7 +3171,7 @@ const DietPlanScreen = ({ goal, setGoal, showPlanModal, setShowPlanModal, userDa
         </div>
       </div>
       
-      <div className="flex-1 overflow-y-auto p-4 space-y-6" style={{ overscrollBehavior: 'none', WebkitOverflowScrolling: 'touch' }}>
+      <div className="p-4 space-y-6">
 
       {showSurvey ? (
         <DietSurveyScreen onComplete={() => setShowSurvey(false)} userData={userData} />
@@ -3736,7 +3736,7 @@ const DietPlanScreen = ({ goal, setGoal, showPlanModal, setShowPlanModal, userDa
         />
       )}
     </div>
-    </div>
+    </>
   );
 };
 
@@ -4690,13 +4690,13 @@ const ExerciseFinderScreen = ({
   // Stage 1: Muscle Group Selection
   if (!selectedMuscle) {
     return (
-      <div className="h-full flex flex-col">
+      <>
         {/* Sticky Header */}
-        <div className="sticky top-0 z-20 bg-gradient-to-br from-indigo-50 via-purple-50 to-pink-50 dark:from-gray-900 dark:via-indigo-900/20 dark:to-gray-900 backdrop-blur-md border-b border-indigo-200 dark:border-indigo-500/30 px-4 py-4 shadow-sm">
+        <div className="sticky top-0 z-40 w-full bg-gradient-to-br from-indigo-50 via-purple-50 to-pink-50 dark:from-gray-900 dark:via-indigo-900/20 dark:to-gray-900 backdrop-blur-md border-b border-indigo-200 dark:border-indigo-500/30 px-4 py-4 shadow-sm">
           <h2 className="text-2xl font-bold text-gray-900 dark:text-white">Select Muscle Group</h2>
         </div>
         
-        <div className="flex-1 overflow-y-auto px-4 space-y-6 pt-4" style={{ overscrollBehavior: 'none', WebkitOverflowScrolling: 'touch' }}>
+        <div className="px-4 space-y-6 pt-4">
         
         {/* Active Workout Indicator & Finish Button */}
         {currentWorkout.length > 0 && (
@@ -4730,23 +4730,23 @@ const ExerciseFinderScreen = ({
           ))}
         </div>
       </div>
-      </div>
+      </>
     );
   }
 
   // Stage 2: Location Selection (Gym or Home)
   if (!location) {
     return (
-      <div className="h-full flex flex-col">
+      <>
         {/* Sticky Header */}
-        <div className="sticky top-0 z-20 bg-gradient-to-br from-indigo-50 via-purple-50 to-pink-50 dark:from-gray-900 dark:via-indigo-900/20 dark:to-gray-900 backdrop-blur-md border-b border-indigo-200 dark:border-indigo-500/30 px-4 py-4 shadow-sm">
+        <div className="sticky top-0 z-40 w-full bg-gradient-to-br from-indigo-50 via-purple-50 to-pink-50 dark:from-gray-900 dark:via-indigo-900/20 dark:to-gray-900 backdrop-blur-md border-b border-indigo-200 dark:border-indigo-500/30 px-4 py-4 shadow-sm">
           <button onClick={handleBack} className="flex items-center text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 dark:hover:text-indigo-300 transition duration-200 mb-2">
             <ArrowLeft className="h-4 w-4 mr-2" /> Back to Muscles
           </button>
           <h2 className="text-2xl font-bold text-gray-900 dark:text-white">Focus: {selectedMuscle}</h2>
         </div>
         
-        <div className="flex-1 overflow-y-auto px-4 space-y-6 pt-4 pb-4" {...swipeHandlersLocation} style={{ overscrollBehavior: 'none', WebkitOverflowScrolling: 'touch' }}>
+        <div className="px-4 space-y-6 pt-4 pb-4" {...swipeHandlersLocation}>
         <p className="text-gray-700 dark:text-white/70">Where will you be training today?</p>
 
         <div className="grid grid-cols-2 gap-4">
@@ -4766,7 +4766,7 @@ const ExerciseFinderScreen = ({
           </button>
         </div>
       </div>
-      </div>
+      </>
     );
   }
 
@@ -4774,16 +4774,16 @@ const ExerciseFinderScreen = ({
   const exercises = muscleData && location ? muscleData.exercises[location] : [];
 
   return (
-    <div className="h-full flex flex-col">
+    <>
       {/* Sticky Header */}
-      <div className="sticky top-0 z-20 bg-gradient-to-br from-indigo-50 via-purple-50 to-pink-50 dark:from-gray-900 dark:via-indigo-900/20 dark:to-gray-900 backdrop-blur-md border-b border-indigo-200 dark:border-indigo-500/30 px-4 py-4 shadow-sm">
+      <div className="sticky top-0 z-40 w-full bg-gradient-to-br from-indigo-50 via-purple-50 to-pink-50 dark:from-gray-900 dark:via-indigo-900/20 dark:to-gray-900 backdrop-blur-md border-b border-indigo-200 dark:border-indigo-500/30 px-4 py-4 shadow-sm">
         <button onClick={handleBack} className="flex items-center text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 dark:hover:text-indigo-300 transition duration-200 mb-2">
           <ArrowLeft className="h-4 w-4 mr-2" /> Back to Location
         </button>
         <h2 className="text-2xl font-bold text-gray-900 dark:text-white">{muscleData?.name} Exercises ({location?.toUpperCase()})</h2>
       </div>
       
-      <div className="flex-1 overflow-y-auto px-4 space-y-6 pt-4 pb-4" {...swipeHandlersExerciseList} style={{ overscrollBehavior: 'none', WebkitOverflowScrolling: 'touch' }}>
+      <div className="px-4 space-y-6 pt-4 pb-4" {...swipeHandlersExerciseList}>
       <p className="text-gray-700 dark:text-white/70">Top {exercises.length} recommended moves for today's session:</p>
 
       <div className="space-y-3">
@@ -4834,7 +4834,7 @@ const ExerciseFinderScreen = ({
         />
       )}
     </div>
-    </div>
+    </>
   );
 };
 
@@ -5471,12 +5471,14 @@ const AccountScreen = ({ onLogout, userData: propUserData, onNavigateToSettings 
 
     if (!userData) {
       return (
+        <>
         <div className="p-6 space-y-8 flex items-center justify-center min-h-screen">
           <div className="text-center">
             <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600 dark:border-indigo-400 mx-auto mb-4"></div>
             <h2 className="text-xl font-semibold text-gray-900 dark:text-white">Loading your profile...</h2>
           </div>
         </div>
+        </>
       );
     }
 
@@ -5485,9 +5487,9 @@ const AccountScreen = ({ onLogout, userData: propUserData, onNavigateToSettings 
     const weightLost = Math.max(0, startingWeight - userData.weight);
 
     return (
-        <div className="h-full flex flex-col">
+        <>
             {/* Sticky Header */}
-            <div className="sticky top-0 z-20 bg-gradient-to-br from-indigo-50 via-purple-50 to-pink-50 dark:from-gray-900 dark:via-indigo-900/20 dark:to-gray-900 backdrop-blur-md border-b border-indigo-200 dark:border-indigo-500/30 px-4 py-4 shadow-sm">
+            <div className="sticky top-0 z-40 w-full bg-gradient-to-br from-indigo-50 via-purple-50 to-pink-50 dark:from-gray-900 dark:via-indigo-900/20 dark:to-gray-900 backdrop-blur-md border-b border-indigo-200 dark:border-indigo-500/30 px-4 py-4 shadow-sm">
               <div className="flex justify-between items-center">
                 <h2 className="text-3xl font-bold text-gray-900 dark:text-white">My Account</h2>
                 <button
@@ -5500,7 +5502,7 @@ const AccountScreen = ({ onLogout, userData: propUserData, onNavigateToSettings 
               </div>
             </div>
             
-            <div className="flex-1 overflow-y-auto p-6 space-y-8" style={{ overscrollBehavior: 'none', WebkitOverflowScrolling: 'touch' }}>
+            <div className="p-6 space-y-8">
             
             {/* Profile Summary Card */}
             <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-2xl border-2 border-indigo-200 dark:border-gray-700">
@@ -5610,7 +5612,7 @@ const AccountScreen = ({ onLogout, userData: propUserData, onNavigateToSettings 
               />
             )}
         </div>
-        </div>
+        </>
     );
 };
 
@@ -6190,21 +6192,35 @@ const App = () => {
         </button>
       )}
       
-      <div className="w-full max-w-md bg-white/70 dark:bg-gray-900 shadow-2xl h-screen flex flex-col transition-colors duration-200 backdrop-blur-sm">
-        {/* Main Content Area */}
-        <div className="flex-1" style={{ overflowY: 'auto', overflowX: 'hidden', overscrollBehavior: 'none', WebkitOverflowScrolling: 'touch', paddingBottom: '80px' }}>
+      {/* CRITICAL: Single Scroll Container Pattern */}
+      <div className="fixed inset-0 flex flex-col w-full max-w-md mx-auto bg-white/70 dark:bg-gray-900 shadow-2xl transition-colors duration-200 backdrop-blur-sm overflow-hidden">
+        
+        {/* --- SECTION A: MAIN SCROLLABLE AREA --- */}
+        {/* This is the ONLY element with overflow-y-auto */}
+        <main 
+          className="flex-1 overflow-y-auto w-full relative"
+          id="main-scroll-container"
+          style={{ overscrollBehavior: 'none', WebkitOverflowScrolling: 'touch' }}
+        >
+          {/* Padding bottom prevents content from being hidden behind fixed nav */}
+          <div className="min-h-full pb-[calc(72px+env(safe-area-inset-bottom)+20px)]">
             {renderContent()}
-        </div>
+          </div>
+        </main>
 
-        {/* Premium Tab Bar (Fixed Bottom) */}
-        <nav className="fixed bottom-0 left-0 right-0 w-full bg-white dark:bg-gray-800 border-t-2 border-gray-300 dark:border-indigo-400 shadow-2xl transition-colors duration-200" style={{ height: '72px', zIndex: 9999, maxWidth: '448px', margin: '0 auto' }}>
-          <ul className="flex justify-around items-center h-full px-2">
-            <NavItem icon={Home} label="Home" active={activeTab === 'home'} onClick={() => { setActiveTab('home'); setActiveSettingsScreen(null); }} />
-            <NavItem icon={Soup} label="Diet Plan" active={activeTab === 'diet'} onClick={() => { setActiveTab('diet'); setActiveSettingsScreen(null); }} />
-            <NavItem icon={Dumbbell} label="Exercises" active={activeTab === 'exercise'} onClick={() => { setActiveTab('exercise'); setActiveSettingsScreen(null); }} />
-            <NavItem icon={User} label="Account" active={activeTab === 'account'} onClick={() => { setActiveTab('account'); setActiveSettingsScreen(null); }} />
-          </ul>
+        {/* --- SECTION B: FIXED BOTTOM NAVIGATION --- */}
+        {/* Completely outside scrolling context */}
+        <nav className="block w-full z-50 bg-white dark:bg-gray-800 border-t-2 border-gray-300 dark:border-indigo-400 shadow-2xl transition-colors duration-200">
+          <div className="pb-[env(safe-area-inset-bottom)]">
+            <ul className="h-[72px] flex justify-around items-center px-2">
+              <NavItem icon={Home} label="Home" active={activeTab === 'home'} onClick={() => { setActiveTab('home'); setActiveSettingsScreen(null); }} />
+              <NavItem icon={Soup} label="Diet Plan" active={activeTab === 'diet'} onClick={() => { setActiveTab('diet'); setActiveSettingsScreen(null); }} />
+              <NavItem icon={Dumbbell} label="Exercises" active={activeTab === 'exercise'} onClick={() => { setActiveTab('exercise'); setActiveSettingsScreen(null); }} />
+              <NavItem icon={User} label="Account" active={activeTab === 'account'} onClick={() => { setActiveTab('account'); setActiveSettingsScreen(null); }} />
+            </ul>
+          </div>
         </nav>
+        
       </div>
     </div>
   );
