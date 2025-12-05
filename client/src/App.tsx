@@ -1189,7 +1189,7 @@ const HomeScreen = ({
         <p className="text-gray-700 dark:text-white/70">Your fitness journey starts now.</p>
       </div>
       
-      <div className="flex-1 overflow-y-auto p-4 space-y-6 pb-24" style={{ overscrollBehavior: 'none', WebkitOverflowScrolling: 'touch' }}>
+      <div className="flex-1 overflow-y-auto p-4 space-y-6" style={{ overscrollBehavior: 'none', WebkitOverflowScrolling: 'touch' }}>
       
       {/* Dynamic Status Card */}
       <DynamicStatusCard 
@@ -4746,7 +4746,7 @@ const ExerciseFinderScreen = ({
           <h2 className="text-2xl font-bold text-gray-900 dark:text-white">Focus: {selectedMuscle}</h2>
         </div>
         
-        <div className="flex-1 overflow-y-auto px-4 space-y-6 pt-4" {...swipeHandlersLocation} style={{ overscrollBehavior: 'none', WebkitOverflowScrolling: 'touch' }}>
+        <div className="flex-1 overflow-y-auto px-4 space-y-6 pt-4 pb-4" {...swipeHandlersLocation} style={{ overscrollBehavior: 'none', WebkitOverflowScrolling: 'touch' }}>
         <p className="text-gray-700 dark:text-white/70">Where will you be training today?</p>
 
         <div className="grid grid-cols-2 gap-4">
@@ -4783,7 +4783,7 @@ const ExerciseFinderScreen = ({
         <h2 className="text-2xl font-bold text-gray-900 dark:text-white">{muscleData?.name} Exercises ({location?.toUpperCase()})</h2>
       </div>
       
-      <div className="flex-1 overflow-y-auto px-4 space-y-6 pt-4" {...swipeHandlersExerciseList} style={{ overscrollBehavior: 'none', WebkitOverflowScrolling: 'touch' }}>
+      <div className="flex-1 overflow-y-auto px-4 space-y-6 pt-4 pb-4" {...swipeHandlersExerciseList} style={{ overscrollBehavior: 'none', WebkitOverflowScrolling: 'touch' }}>
       <p className="text-gray-700 dark:text-white/70">Top {exercises.length} recommended moves for today's session:</p>
 
       <div className="space-y-3">
@@ -6192,12 +6192,12 @@ const App = () => {
       
       <div className="w-full max-w-md bg-white/70 dark:bg-gray-900 shadow-2xl h-screen flex flex-col transition-colors duration-200 backdrop-blur-sm">
         {/* Main Content Area */}
-        <div className="flex-1 pt-6 pb-20" style={{ overflowY: 'auto', overflowX: 'hidden', overscrollBehavior: 'none', WebkitOverflowScrolling: 'touch' }}>
+        <div className="flex-1" style={{ overflowY: 'auto', overflowX: 'hidden', overscrollBehavior: 'none', WebkitOverflowScrolling: 'touch', paddingBottom: '80px' }}>
             {renderContent()}
         </div>
 
         {/* Premium Tab Bar (Fixed Bottom) */}
-        <nav className="fixed bottom-0 left-0 right-0 max-w-md mx-auto bg-white dark:bg-gray-800 border-t-2 border-gray-300 dark:border-indigo-400 shadow-2xl z-50 transition-colors duration-200" style={{ height: '72px', paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}>
+        <nav className="fixed bottom-0 left-0 right-0 w-full bg-white dark:bg-gray-800 border-t-2 border-gray-300 dark:border-indigo-400 shadow-2xl transition-colors duration-200" style={{ height: '72px', zIndex: 9999, maxWidth: '448px', margin: '0 auto' }}>
           <ul className="flex justify-around items-center h-full px-2">
             <NavItem icon={Home} label="Home" active={activeTab === 'home'} onClick={() => { setActiveTab('home'); setActiveSettingsScreen(null); }} />
             <NavItem icon={Soup} label="Diet Plan" active={activeTab === 'diet'} onClick={() => { setActiveTab('diet'); setActiveSettingsScreen(null); }} />
