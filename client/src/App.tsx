@@ -1189,7 +1189,7 @@ const HomeScreen = ({
         <p className="text-gray-700 dark:text-white/70">Your fitness journey starts now.</p>
       </div>
       
-      <div className="flex-1 overflow-y-auto p-4 space-y-6 pb-24">
+      <div className="flex-1 overflow-y-auto p-4 space-y-6 pb-24" style={{ overscrollBehavior: 'none', WebkitOverflowScrolling: 'touch' }}>
       
       {/* Dynamic Status Card */}
       <DynamicStatusCard 
@@ -1238,6 +1238,7 @@ const HomeScreen = ({
           color="bg-gradient-to-br from-pink-400 via-rose-500 to-fuchsia-600 text-white shadow-lg shadow-pink-500/50"
         />
       </div>
+    </div>
     </div>
   );
 };
@@ -3170,7 +3171,7 @@ const DietPlanScreen = ({ goal, setGoal, showPlanModal, setShowPlanModal, userDa
         </div>
       </div>
       
-      <div className="flex-1 overflow-y-auto p-4 space-y-6">
+      <div className="flex-1 overflow-y-auto p-4 space-y-6" style={{ overscrollBehavior: 'none', WebkitOverflowScrolling: 'touch' }}>
 
       {showSurvey ? (
         <DietSurveyScreen onComplete={() => setShowSurvey(false)} userData={userData} />
@@ -3734,6 +3735,7 @@ const DietPlanScreen = ({ goal, setGoal, showPlanModal, setShowPlanModal, userDa
           }}
         />
       )}
+    </div>
     </div>
   );
 };
@@ -4694,7 +4696,7 @@ const ExerciseFinderScreen = ({
           <h2 className="text-2xl font-bold text-gray-900 dark:text-white">Select Muscle Group</h2>
         </div>
         
-        <div className="flex-1 overflow-y-auto px-4 space-y-6 pt-4">
+        <div className="flex-1 overflow-y-auto px-4 space-y-6 pt-4" style={{ overscrollBehavior: 'none', WebkitOverflowScrolling: 'touch' }}>
         
         {/* Active Workout Indicator & Finish Button */}
         {currentWorkout.length > 0 && (
@@ -4744,7 +4746,7 @@ const ExerciseFinderScreen = ({
           <h2 className="text-2xl font-bold text-gray-900 dark:text-white">Focus: {selectedMuscle}</h2>
         </div>
         
-        <div className="flex-1 overflow-y-auto px-4 space-y-6 pt-4" {...swipeHandlersLocation}>
+        <div className="flex-1 overflow-y-auto px-4 space-y-6 pt-4" {...swipeHandlersLocation} style={{ overscrollBehavior: 'none', WebkitOverflowScrolling: 'touch' }}>
         <p className="text-gray-700 dark:text-white/70">Where will you be training today?</p>
 
         <div className="grid grid-cols-2 gap-4">
@@ -4763,7 +4765,7 @@ const ExerciseFinderScreen = ({
             Home Workout
           </button>
         </div>
-        </div>
+      </div>
       </div>
     );
   }
@@ -4781,7 +4783,7 @@ const ExerciseFinderScreen = ({
         <h2 className="text-2xl font-bold text-gray-900 dark:text-white">{muscleData?.name} Exercises ({location?.toUpperCase()})</h2>
       </div>
       
-      <div className="flex-1 overflow-y-auto px-4 space-y-6 pt-4" {...swipeHandlersExerciseList}>
+      <div className="flex-1 overflow-y-auto px-4 space-y-6 pt-4" {...swipeHandlersExerciseList} style={{ overscrollBehavior: 'none', WebkitOverflowScrolling: 'touch' }}>
       <p className="text-gray-700 dark:text-white/70">Top {exercises.length} recommended moves for today's session:</p>
 
       <div className="space-y-3">
@@ -5498,7 +5500,7 @@ const AccountScreen = ({ onLogout, userData: propUserData, onNavigateToSettings 
               </div>
             </div>
             
-            <div className="flex-1 overflow-y-auto p-6 space-y-8">
+            <div className="flex-1 overflow-y-auto p-6 space-y-8" style={{ overscrollBehavior: 'none', WebkitOverflowScrolling: 'touch' }}>
             
             {/* Profile Summary Card */}
             <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-2xl border-2 border-indigo-200 dark:border-gray-700">
@@ -5607,6 +5609,7 @@ const AccountScreen = ({ onLogout, userData: propUserData, onNavigateToSettings 
                 userData={userData}
               />
             )}
+        </div>
         </div>
     );
 };
@@ -6189,13 +6192,13 @@ const App = () => {
       
       <div className="w-full max-w-md bg-white/70 dark:bg-gray-900 shadow-2xl h-screen flex flex-col transition-colors duration-200 backdrop-blur-sm">
         {/* Main Content Area */}
-        <div className="flex-1 pt-6" style={{ paddingBottom: 'calc(80px + env(safe-area-inset-bottom, 0px))', overflowY: 'auto', overflowX: 'hidden' }}>
+        <div className="flex-1 pt-6 pb-20" style={{ overflowY: 'auto', overflowX: 'hidden', overscrollBehavior: 'none', WebkitOverflowScrolling: 'touch' }}>
             {renderContent()}
         </div>
 
         {/* Premium Tab Bar (Fixed Bottom) */}
-        <nav className="fixed bottom-0 left-0 right-0 max-w-md mx-auto bg-white dark:bg-gray-800 border-t border-gray-200 dark:border-indigo-500/50 shadow-lg z-50 transition-colors duration-200" style={{ height: '64px', paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}>
-          <ul className="flex justify-around items-center h-full">
+        <nav className="fixed bottom-0 left-0 right-0 max-w-md mx-auto bg-white dark:bg-gray-800 border-t-2 border-gray-300 dark:border-indigo-400 shadow-2xl z-50 transition-colors duration-200" style={{ height: '72px', paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}>
+          <ul className="flex justify-around items-center h-full px-2">
             <NavItem icon={Home} label="Home" active={activeTab === 'home'} onClick={() => { setActiveTab('home'); setActiveSettingsScreen(null); }} />
             <NavItem icon={Soup} label="Diet Plan" active={activeTab === 'diet'} onClick={() => { setActiveTab('diet'); setActiveSettingsScreen(null); }} />
             <NavItem icon={Dumbbell} label="Exercises" active={activeTab === 'exercise'} onClick={() => { setActiveTab('exercise'); setActiveSettingsScreen(null); }} />
