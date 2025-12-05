@@ -6193,7 +6193,7 @@ const App = () => {
       )}
       
       {/* CRITICAL: Single Scroll Container Pattern */}
-      <div className="fixed inset-0 flex flex-col w-full max-w-md mx-auto bg-white/70 dark:bg-gray-900 shadow-2xl transition-colors duration-200 backdrop-blur-sm overflow-hidden">
+      <div className="fixed inset-0 flex flex-col w-full max-w-md mx-auto bg-white/70 dark:bg-gray-900 shadow-2xl transition-colors duration-200 backdrop-blur-sm overflow-hidden" style={{ paddingTop: 'env(safe-area-inset-top)' }}>
         
         {/* --- SECTION A: MAIN SCROLLABLE AREA --- */}
         {/* This is the ONLY element with overflow-y-auto */}
