@@ -1375,6 +1375,15 @@ const HomeScreen = ({
       
       if (permResult.granted) {
         setHealthConnected(true);
+        
+        // Save connection status to Firebase for future auto-sync
+        const user = auth.currentUser;
+        if (user) {
+          await setDoc(doc(db, 'users', user.uid), {
+            healthConnectConnected: true
+          }, { merge: true });
+        }
+        
         toast.success('✅ Connected to Health Connect!');
         await syncHealthData();
       } else {
@@ -1409,6 +1418,7 @@ const HomeScreen = ({
       };
 
       setHealthData(newHealthData);
+      setHealthConnected(true);
 
       // Save to Firebase
       const user = auth.currentUser;
@@ -1417,13 +1427,15 @@ const HomeScreen = ({
         await setDoc(doc(db, 'users', user.uid), {
           healthData: {
             [today]: newHealthData
-          }
+          },
+          healthConnectConnected: true // Ensure connection status is saved
         }, { merge: true });
       }
 
       toast.success('🔄 Health data synced!');
     } catch (error) {
       console.error('Failed to sync health data:', error);
+      toast.error('Failed to sync health data. Please try again.');
     }
   };
 
@@ -1440,7 +1452,31 @@ const HomeScreen = ({
           const todayHealth = data.healthData?.[today];
           if (todayHealth) {
             setHealthData(todayHealth);
-            setHealthConnected(true);
+          }
+          
+          // Check if user has previously connected Health Connect
+          const hasConnectedBefore = data.healthConnectConnected === true;
+          if (hasConnectedBefore) {
+            // Check if permissions are still granted
+            console.log('Health Connect was previously connected, checking permissions...');
+            try {
+              const permCheck = await HealthConnect.checkPermissions();
+              console.log('Permission check result:', permCheck);
+              
+              if (permCheck.granted) {
+                // Permissions still granted, auto-sync
+                console.log('✅ Permissions granted, auto-syncing...');
+                setHealthConnected(true);
+                await autoSyncHealthData();
+              } else {
+                // Permissions revoked, clear connection status
+                console.log('⚠️ Permissions revoked, user needs to reconnect');
+                setHealthConnected(false);
+              }
+            } catch (error) {
+              console.error('Error checking permissions:', error);
+              setHealthConnected(false);
+            }
           }
         }
       } catch (error) {
@@ -1449,6 +1485,66 @@ const HomeScreen = ({
     };
     loadHealthData();
   }, [userData?.uid]);
+
+  // Auto-sync function (silent, no toast notifications)
+  const autoSyncHealthData = async () => {
+    try {
+      // Check if Health Connect is still available
+      const result = await HealthConnect.isAvailable();
+      if (!result.available) {
+        console.log('Health Connect no longer available');
+        setHealthConnected(false);
+        return;
+      }
+
+      // Try to fetch data - this will succeed if permissions are granted
+      const startOfDay = new Date();
+      startOfDay.setHours(0, 0, 0, 0);
+      const now = new Date();
+
+      const [steps, calories, distance, heartRate] = await Promise.all([
+        HealthConnect.getSteps({ startTime: startOfDay.getTime(), endTime: now.getTime() }).catch(e => ({ steps: 0 })),
+        HealthConnect.getCalories({ startTime: startOfDay.getTime(), endTime: now.getTime() }).catch(e => ({ calories: 0 })),
+        HealthConnect.getDistance({ startTime: startOfDay.getTime(), endTime: now.getTime() }).catch(e => ({ distance: 0 })),
+        HealthConnect.getHeartRate({ startTime: startOfDay.getTime(), endTime: now.getTime() }).catch(e => ({ heartRate: 0 }))
+      ]);
+
+      // If all values are 0, permissions might not be granted
+      const newHealthData = {
+        steps: steps.steps || 0,
+        calories: calories.calories || 0,
+        distance: distance.distance || 0,
+        heartRate: heartRate.heartRate || 0
+      };
+      
+      // Check if we got any real data
+      const hasData = newHealthData.steps > 0 || newHealthData.calories > 0 || newHealthData.distance > 0;
+      
+      if (hasData) {
+        console.log('✅ Auto-sync successful:', newHealthData);
+        setHealthData(newHealthData);
+        setHealthConnected(true);
+
+        // Save to Firebase
+        const user = auth.currentUser;
+        if (user) {
+          const today = new Date().toISOString().split('T')[0];
+          await setDoc(doc(db, 'users', user.uid), {
+            healthData: {
+              [today]: newHealthData
+            }
+          }, { merge: true });
+        }
+      } else {
+        console.log('⚠️ No health data available - permissions may not be granted');
+        setHealthConnected(false);
+      }
+    } catch (error) {
+      console.error('Auto-sync failed (silent):', error);
+      setHealthConnected(false);
+      // Silent fail - don't show error to user on auto-sync
+    }
+  };
 
   const updateStartingWeight = async (newStarting: number) => {
     setStartingWeight(newStarting);

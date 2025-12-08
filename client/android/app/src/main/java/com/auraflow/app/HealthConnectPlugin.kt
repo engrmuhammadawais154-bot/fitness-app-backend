@@ -144,6 +144,30 @@ class HealthConnectPlugin : Plugin() {
     }
     
     @PluginMethod
+    override fun checkPermissions(call: PluginCall) {
+        val client = healthConnectClient
+        if (client == null) {
+            call.reject("Health Connect not initialized")
+            return
+        }
+        
+        CoroutineScope(Dispatchers.Main).launch {
+            try {
+                val granted = client.permissionController.getGrantedPermissions()
+                val allGranted = granted.containsAll(permissions)
+                
+                val ret = JSObject()
+                ret.put("granted", allGranted)
+                ret.put("grantedCount", granted.size)
+                ret.put("requiredCount", permissions.size)
+                call.resolve(ret)
+            } catch (e: Exception) {
+                call.reject("Failed to check permissions: ${e.message}")
+            }
+        }
+    }
+    
+    @PluginMethod
     fun getSteps(call: PluginCall) {
         val client = healthConnectClient
         if (client == null) {
