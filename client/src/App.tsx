@@ -3119,39 +3119,21 @@ const DietPlanScreen = ({
   const jumpToToday = async () => {
     setCurrentDay(todayDayOfWeek);
     
-    // Calculate current week from meal plan start date - fetch from Firebase directly
-    try {
-      if (!userData?.uid) {
-        // Fallback to week 1 if no user
-        setCurrentWeek(1);
-        return;
-      }
-
-      const userDocRef = doc(db, 'users', userData.uid);
-      const userDoc = await getDoc(userDocRef);
-      
-      if (userDoc.exists()) {
-        const data = userDoc.data();
-        const mealPlanStartDate = data.mealPlanStartDate;
-        
-        if (mealPlanStartDate) {
-          const daysSinceStart = Math.floor((Date.now() - mealPlanStartDate) / (1000 * 60 * 60 * 24));
-          const calculatedWeek = (Math.floor(daysSinceStart / 7) % 4) + 1; // Rotate through weeks 1-4
-          setCurrentWeek(calculatedWeek);
-        } else {
-          // No start date set yet, initialize it
-          await updateDoc(userDocRef, {
-            mealPlanStartDate: Date.now()
-          });
-          setCurrentWeek(1);
-        }
-      } else {
-        setCurrentWeek(1);
-      }
-    } catch (error) {
-      console.error('Error calculating current week:', error);
-      setCurrentWeek(1); // Fallback to week 1
-    }
+    // Calculate week based on current week of the year (rotating 1-4)
+    const now = new Date();
+    const startOfYear = new Date(now.getFullYear(), 0, 1);
+    const daysSinceYearStart = Math.floor((now.getTime() - startOfYear.getTime()) / (1000 * 60 * 60 * 24));
+    const weekOfYear = Math.floor(daysSinceYearStart / 7);
+    const calculatedWeek = (weekOfYear % 4) + 1; // Rotate weeks 1-4
+    
+    console.log('Jump to Today:', {
+      date: now.toLocaleDateString(),
+      day: todayDayOfWeek,
+      weekOfYear,
+      calculatedWeek
+    });
+    
+    setCurrentWeek(calculatedWeek);
   };
 
   // @ts-ignore - unused but kept for future feature
@@ -4232,7 +4214,7 @@ const DietPlanScreen = ({
                                   {isSwapped && (
                                     <div className="flex-1 bg-purple-100 dark:bg-purple-900/30 p-2 rounded-lg flex items-center justify-between">
                                       <span className="text-[10px] text-purple-700 dark:text-purple-300 font-semibold">
-                                        🔄 Swapped from W{isSwapped.week}D{isSwapped.day}
+                                        🔄 Showing meal from W{isSwapped.week}D{isSwapped.day}
                                       </span>
                                       <button
                                         onClick={() => resetSwap(currentWeek, currentDay, mealType.key)}
@@ -6435,14 +6417,27 @@ const App = () => {
           
           // If no start date exists, set it to today
           if (!mealPlanStartDate) {
+            const newStartDate = Date.now();
             await updateDoc(userDocRef, {
-              mealPlanStartDate: Date.now()
+              mealPlanStartDate: newStartDate
             });
+            console.log('Initialized meal plan start date:', new Date(newStartDate).toLocaleDateString());
             setCurrentWeek(1); // Start at week 1
           } else {
             // Calculate current week based on days since start
-            const daysSinceStart = Math.floor((Date.now() - mealPlanStartDate) / (1000 * 60 * 60 * 24));
+            const startDate = new Date(mealPlanStartDate);
+            const today = new Date();
+            const daysSinceStart = Math.floor((today.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24));
             const calculatedWeek = (Math.floor(daysSinceStart / 7) % 4) + 1; // Rotate through weeks 1-4
+            
+            console.log('Meal Plan Initialization:', {
+              startDate: startDate.toLocaleDateString(),
+              today: today.toLocaleDateString(),
+              daysSinceStart,
+              weekNumber: Math.floor(daysSinceStart / 7),
+              calculatedWeek
+            });
+            
             setCurrentWeek(calculatedWeek);
           }
           
