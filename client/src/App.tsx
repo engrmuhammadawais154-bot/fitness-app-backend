@@ -4,6 +4,7 @@ import { Home, Dumbbell, Soup, User, ArrowLeft, Heart, Target, TrendingUp, Trend
 import { App as CapacitorApp } from '@capacitor/app';
 import { StatusBar, Style } from '@capacitor/status-bar';
 import { auth, db } from './firebase';
+import { APP_VERSION, BUILD_DATE } from './config';
 import { 
   signInWithEmailAndPassword, 
   createUserWithEmailAndPassword, 
@@ -486,34 +487,62 @@ const EXERCISE_DETAILS: { [key: string]: { description: string; steps: string[] 
 
 // Exercise image/GIF mappings
 const EXERCISE_IMAGES: { [key: string]: string } = {
-  // Legs
-  "Barbell Back Squat": "/exercises/legs/Barbell-Back-Squat.gif",
-  "Romanian Deadlift (RDL)": "/exercises/legs/Romanian-Deadlift-(RDL).gif",
-  "Walking Lunges": "/exercises/legs/Walking-Lunges.gif",
-  "Lying Leg Curl": "/exercises/legs/Lying-Leg-Curl.gif",
-  "Leg Extension": "/exercises/legs/Leg-Extension.gif",
-  "Standing Calf Raise": "/exercises/legs/Standing-Calf-Raise.gif",
-  "Seated Calf Raise": "/exercises/legs/Seated-Calf-Raise.gif",
+  // Legs - Gym
+  "Barbell Back Squat": "/exercises/legs/gym/Barbell-Back-Squat.gif",
+  "Romanian Deadlift (RDL)": "/exercises/legs/gym/Romanian-Deadlift-(RDL).gif",
+  "Walking Lunges": "/exercises/legs/gym/Walking-Lunges.gif",
+  "Lying Leg Curl": "/exercises/legs/gym/Lying-Leg-Curl.gif",
+  "Leg Extension": "/exercises/legs/gym/Leg-Extension.gif",
+  "Standing Calf Raise": "/exercises/legs/gym/Standing-Calf-Raise.gif",
+  "Seated Calf Raise": "/exercises/legs/gym/Seated-Calf-Raise.gif",
   
-  // Back
-  "Barbell Bent-Over Row": "/exercises/back/Barbell-Bent-Over-Row.gif",
-  "Weighted Pull-ups": "/exercises/back/Weighted-Pull-ups.gif",
-  "Single-Arm Dumbbell Row": "/exercises/back/Single-Arm-Dumbbell-Row.gif",
-  "Close-Grip Lat Pulldown": "/exercises/back/Close-Grip-Lat-Pulldown.gif",
-  "Face Pulls": "/exercises/back/Face-Pulls.gif",
-  "Dumbbell Shrugs": "/exercises/back/Dumbbell-Shrugs.gif",
-  "Hyperextensions (Back Extensions)": "/exercises/back/Hyperextensions-(Back-Extensions).gif",
+  // Legs - Home
+  "Bodyweight Squats": "/exercises/legs/home/bodyweight-squats.gif",
+  "Bulgarian Split Squats": "/exercises/legs/home/bulgarian-split-squats.gif",
+  "Lunges": "/exercises/legs/home/lunges.gif",
+  "Pistol Squats (assisted)": "/exercises/legs/home/pistol-squates-(assisted).gif",
+  "Glute Bridges": "/exercises/legs/home/glute-bridges.gif",
+  "Single-Leg Deadlifts": "/exercises/legs/home/single-led-deadlifts.gif",
+  "Calf Raises on Steps": "/exercises/legs/home/bodyweight-calf-raises-on-steps.gif",
   
-  // Chest
-  "Flat Barbell Bench Press": "/exercises/chest/Flat-Barbell-Bench-Press.gif",
-  "Incline Dumbbell Press": "/exercises/chest/Incline-Dumbbell-Press.gif",
-  "Dips (Chest Focus)": "/exercises/chest/Dips-(Chest-Focus).gif",
-  "Cable Crossover (High-to-Low)": "/exercises/chest/Cable-Crossover-(High-to-Low).gif",
-  "Flat Dumbbell Fly": "/exercises/chest/Flat-Dumbbell-Fly.gif",
-  "Pec Deck Fly": "/exercises/chest/Pec-Deck-Fly.gif",
-  "Push-ups (Weighted or High Rep)": "/exercises/chest/Push-ups-(Weighted-or-High-Rep).gif",
+  // Back - Gym
+  "Barbell Bent-Over Row": "/exercises/back/gym/Barbell-Bent-Over-Row.gif",
+  "Weighted Pull-ups": "/exercises/back/gym/Weighted-Pull-ups.gif",
+  "Single-Arm Dumbbell Row": "/exercises/back/gym/Single-Arm-Dumbbell-Row.gif",
+  "Close-Grip Lat Pulldown": "/exercises/back/gym/Close-Grip-Lat-Pulldown.gif",
+  "Face Pulls": "/exercises/back/gym/Face-Pulls.gif",
+  "Dumbbell Shrugs": "/exercises/back/gym/Dumbbell-Shrugs.gif",
+  "Hyperextensions (Back Extensions)": "/exercises/back/gym/Hyperextensions-(Back-Extensions).gif",
   
-  // Shoulders
+  // Back - Home
+  "Pull-ups/Chin-ups": "/exercises/back/home/pull-ups--chin-ups.gif",
+  "Inverted Rows": "/exercises/back/home/inverted-rows.gif",
+  "Supermans": "/exercises/back/home/supermans.gif",
+  "Bodyweight Rows": "/exercises/back/home/bodyweight-rows.gif",
+  "Reverse Snow Angels": "/exercises/back/home/reverse-snow-angels.gif",
+  "Door Frame Rows": "/exercises/back/home/Door Frame-Rows.gif",
+  "Band Pull-aparts": "/exercises/back/home/band-pull-aparts.gif",
+  
+  // Chest - Gym
+  "Flat Barbell Bench Press": "/exercises/chest/gym/Flat-Barbell-Bench-Press.gif",
+  "Incline Dumbbell Press": "/exercises/chest/gym/Incline-Dumbbell-Press.gif",
+  "Dips (Chest Focus)": "/exercises/chest/gym/Dips-(Chest-Focus).gif",
+  "Cable Crossover (High-to-Low)": "/exercises/chest/gym/Cable-Crossover-(High-to-Low).gif",
+  "Flat Dumbbell Fly": "/exercises/chest/gym/Flat-Dumbbell-Fly.gif",
+  "Pec Deck Fly": "/exercises/chest/gym/Pec-Deck-Fly.gif",
+  "Push-ups (Weighted or High Rep)": "/exercises/chest/gym/Push-ups-(Weighted-or-High-Rep).gif",
+  
+  // Chest - Home
+  "Push-ups (various angles)": "/exercises/chest/home/pushups.gif",
+  "Decline Push-ups": "/exercises/chest/home/decline-pushups.gif",
+  "Diamond Push-ups": "/exercises/chest/home/diamond-push-ups.gif",
+  "Wide Push-ups": "/exercises/chest/home/wide-push-ups.gif",
+  "Dips (between chairs)": "/exercises/chest/home/dips-between-chairs.gif",
+  "Resistance Band Flyes": "/exercises/chest/home/resistance-band-flyes.gif",
+  "Plyometric Push-ups": "/exercises/chest/home/plyometric-push-ups.gif",
+  "Incline Push-ups": "/exercises/chest/home/incline-pushups.gif",
+  
+  // Shoulders - Old structure (no gym/home subfolders yet)
   "Seated Dumbbell Overhead Press": "/exercises/shoulders/Seated-Dumbbell-Overhead-Press.gif",
   "Standing Dumbbell Lateral Raise": "/exercises/shoulders/Standing-Dumbbell-Lateral-Raise.gif",
   "Bent-Over Dumbbell Reverse Fly": "/exercises/shoulders/Bent-Over-Dumbbell-Reverse-Fly.gif",
@@ -522,14 +551,14 @@ const EXERCISE_IMAGES: { [key: string]: string } = {
   "Arnold Press": "/exercises/shoulders/Arnold-Press.gif",
   "Cable External Rotation": "/exercises/shoulders/Cable-External-Rotation.gif",
   
-  // Arms
-  "Close-Grip Bench Press": "/exercises/arms/Close-Grip-Bench-Press.gif",
-  "Barbell Curl": "/exercises/arms/Barbell-Curl.gif",
-  "Skullcrushers (Lying Tricep Extension)": "/exercises/arms/Skullcrushers-(Lying-Tricep-Extension).gif",
-  "Hammer Curls": "/exercises/arms/Hammer-Curls.gif",
-  "Rope Triceps Pushdown": "/exercises/arms/Rope-Triceps-Pushdown.gif",
+  // Arms - Gym
+  "Close-Grip Bench Press": "/exercises/arms/gym/Close-Grip-Bench-Press.gif",
+  "Barbell Curl": "/exercises/arms/gym/Barbell-Curl.gif",
+  "Skullcrushers (Lying Tricep Extension)": "/exercises/arms/gym/Skullcrushers-(Lying-Tricep-Extension).gif",
+  "Hammer Curls": "/exercises/arms/gym/Hammer-Curls.gif",
+  "Rope Triceps Pushdown": "/exercises/arms/gym/Rope-Triceps-Pushdown.gif",
   
-  // Core
+  // Core - Old structure (no gym/home subfolders yet)
   "Hanging Leg Raises": "/exercises/core/Hanging-Leg-Raises.gif",
   "Ab Wheel Rollout": "/exercises/core/Ab-Wheel-Rollout.gif",
   "Cable Crunch": "/exercises/core/cable-crunch.gif",
@@ -2007,15 +2036,21 @@ const AuthScreen = ({ onLogin }: { onLogin: () => void }) => {
 const ExerciseLogger = ({ 
   exercise, 
   onBack, 
-  onSaveWorkout
+  onSaveWorkout,
+  userData
 }: { 
   exercise: string; 
   onBack: () => void; 
   onSaveWorkout: (sets: Array<{ reps: number; weight: number }>) => void;
+  userData: any;
 }) => {
   const [sets, setSets] = useState<Array<{ reps: number; weight: number }>>([]);
   const [currentReps, setCurrentReps] = useState('');
   const [currentWeight, setCurrentWeight] = useState('');
+  
+  // Get user's measurement unit preference (default to metric/kg)
+  const useMetric = userData?.measurementUnit !== 'imperial';
+  const weightUnit = useMetric ? 'kg' : 'lbs';
 
   const addSet = () => {
     const reps = parseInt(currentReps);
@@ -2098,12 +2133,12 @@ const ExerciseLogger = ({
           </div>
           
           <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Weight (lbs)</label>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Weight ({weightUnit})</label>
             <input
               type="number"
               value={currentWeight}
               onChange={(e) => setCurrentWeight(e.target.value)}
-              placeholder="135"
+              placeholder={useMetric ? "60" : "135"}
               step="0.5"
               className="w-full px-4 py-3 rounded-lg border-2 border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:border-indigo-500 dark:focus:border-indigo-400 focus:ring-2 focus:ring-indigo-200 dark:focus:ring-indigo-500/20 transition outline-none"
             />
@@ -2130,7 +2165,7 @@ const ExerciseLogger = ({
               <div className="flex items-center gap-4">
                 <span className="text-xl font-bold text-teal-600 dark:text-teal-400">#{index + 1}</span>
                 <div>
-                  <p className="text-gray-900 dark:text-white font-semibold">{set.reps} reps × {set.weight} lbs</p>
+                  <p className="text-gray-900 dark:text-white font-semibold">{set.reps} reps × {set.weight} {weightUnit}</p>
                 </div>
               </div>
               <button
@@ -2177,9 +2212,9 @@ const ExerciseDetailModal = ({
   
   return (
     <AnimatePresence>
-      <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4" onClick={onClose}>
+      <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-[60] p-4" onClick={onClose}>
         <motion.div 
-          className="bg-white dark:bg-gray-800 rounded-2xl p-6 max-w-md w-full shadow-2xl border border-gray-300 dark:border-indigo-500/30 max-h-[90vh] overflow-y-auto" 
+          className="bg-white dark:bg-gray-800 rounded-2xl max-w-md w-full shadow-2xl border border-gray-300 dark:border-indigo-500/30 max-h-[85vh] flex flex-col" 
           onClick={(e) => e.stopPropagation()}
           initial={{ x: '100%', opacity: 0 }}
           animate={{ x: 0, opacity: 1 }}
@@ -2187,15 +2222,17 @@ const ExerciseDetailModal = ({
           transition={{ type: 'spring', damping: 25, stiffness: 200 }}
           {...swipeHandlers}
         >
-          <div className="flex justify-between items-center mb-4">
+          {/* Header - Fixed at top */}
+          <div className="flex justify-between items-center p-6 pb-4 border-b border-gray-200 dark:border-gray-700 flex-shrink-0">
             <h3 className="text-2xl font-bold text-gray-900 dark:text-white">{exercise}</h3>
             <button onClick={onClose} className="text-gray-400 hover:text-gray-600 dark:hover:text-white transition">
               <ArrowLeft className="h-6 w-6 transform rotate-180" />
             </button>
           </div>
           
-          <div className="space-y-4">
-            {/* Exercise Image/GIF or Placeholder */}
+          {/* Scrollable Content */}
+          <div className="overflow-y-auto flex-1">
+            <div className="p-6 pt-4 space-y-4">{/* Exercise Image/GIF or Placeholder */}
             {exerciseImage ? (
               <div className="rounded-lg overflow-hidden bg-gray-100 dark:bg-gray-700">
                 <img 
@@ -2249,11 +2286,12 @@ const ExerciseDetailModal = ({
             {onStartLogging && (
               <button
                 onClick={onStartLogging}
-                className="w-full py-3 bg-gradient-to-r from-teal-500 to-emerald-600 hover:from-teal-600 hover:to-emerald-700 rounded-xl text-white font-bold transition duration-300 shadow-lg"
+                className="w-full py-3 bg-gradient-to-r from-teal-500 to-emerald-600 hover:from-teal-600 hover:to-emerald-700 rounded-xl text-white font-bold transition duration-300 shadow-lg mb-4"
               >
                 Start Logging Sets 📊
               </button>
             )}
+            </div>
           </div>
         </motion.div>
       </div>
@@ -2888,7 +2926,14 @@ const DietSurveyScreen = ({ onComplete, userData, initialStep }: { onComplete: (
 };
 
 // 2. Diet Plan Screens
-const DietPlanScreen = ({ goal, setGoal, showPlanModal, setShowPlanModal, userData, isPremium, currentDay, setCurrentDay, currentWeek, setCurrentWeek, expandedMeals, setExpandedMeals }: {
+const DietPlanScreen = ({ 
+  goal, setGoal, showPlanModal, setShowPlanModal, userData, isPremium, 
+  currentDay, setCurrentDay, currentWeek, setCurrentWeek, expandedMeals, setExpandedMeals, 
+  logMeal, loggedMeals, removeLoggedMeal, calculateDailyTotals, showMacroSummary, setShowMacroSummary,
+  swappedMeals, selectedMealForSwap, setSelectedMealForSwap, showSwapModal, setShowSwapModal, swapMeal, resetSwap,
+  customizedMeals, selectedMealForSub, setSelectedMealForSub, showSubstitutionModal, setShowSubstitutionModal, 
+  customizeMeal, resetCustomization, getActualMeal, applyCustomizations
+}: {
   goal: string | null;
   setGoal: (goal: string | null) => void;
   showPlanModal: boolean;
@@ -2901,11 +2946,54 @@ const DietPlanScreen = ({ goal, setGoal, showPlanModal, setShowPlanModal, userDa
   setCurrentWeek: (week: number | ((prev: number) => number)) => void;
   expandedMeals: Record<string, boolean>;
   setExpandedMeals: (meals: Record<string, boolean> | ((prev: Record<string, boolean>) => Record<string, boolean>)) => void;
+  logMeal: (mealData: any, mealType: string) => Promise<void>;
+  loggedMeals: Record<string, any[]>;
+  removeLoggedMeal: (date: string, index: number) => Promise<void>;
+  calculateDailyTotals: (date: string) => { calories: number; protein: number; carbs: number; fats: number };
+  showMacroSummary: boolean;
+  setShowMacroSummary: (show: boolean) => void;
+  swappedMeals: Record<string, any>;
+  selectedMealForSwap: {week: number, day: number, mealType: string, meal: any} | null;
+  setSelectedMealForSwap: (meal: {week: number, day: number, mealType: string, meal: any} | null) => void;
+  showSwapModal: boolean;
+  setShowSwapModal: (show: boolean) => void;
+  swapMeal: (targetWeek: number, targetDay: number, targetMealType: string) => Promise<void>;
+  resetSwap: (week: number, day: number, mealType: string) => Promise<void>;
+  customizedMeals: Record<string, any>;
+  selectedMealForSub: {week: number, day: number, mealType: string, meal: any} | null;
+  setSelectedMealForSub: (meal: {week: number, day: number, mealType: string, meal: any} | null) => void;
+  showSubstitutionModal: boolean;
+  setShowSubstitutionModal: (show: boolean) => void;
+  customizeMeal: (week: number, day: number, mealType: string, customizations: any) => Promise<void>;
+  resetCustomization: (week: number, day: number, mealType: string) => Promise<void>;
+  getActualMeal: (week: number, day: number, mealType: string, originalMeal: any) => any;
+  applyCustomizations: (week: number, day: number, mealType: string, meal: any) => any;
 }) => {
   const [showPremiumLock, setShowPremiumLock] = useState(false);
 
   const dayNames = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
   const dayNamesShort = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+  
+  // Get current day of week for highlighting
+  const getCurrentDayOfWeek = () => {
+    const jsDay = new Date().getDay();
+    return ((jsDay + 6) % 7) + 1;
+  };
+  const todayDayOfWeek = getCurrentDayOfWeek();
+  
+  // Handler to jump to today
+  const jumpToToday = async () => {
+    setCurrentDay(todayDayOfWeek);
+    
+    // Calculate current week from meal plan start date
+    if (userData?.mealPlanStartDate) {
+      const daysSinceStart = Math.floor((Date.now() - userData.mealPlanStartDate) / (1000 * 60 * 60 * 24));
+      const calculatedWeek = (Math.floor(daysSinceStart / 7) % 4) + 1;
+      setCurrentWeek(calculatedWeek);
+    } else {
+      setCurrentWeek(1);
+    }
+  };
 
   // @ts-ignore - unused but kept for future feature
   const goalOptions = useMemo(() => [
@@ -3359,28 +3447,170 @@ const DietPlanScreen = ({ goal, setGoal, showPlanModal, setShowPlanModal, userDa
                   </div>
 
                   {/* Day Tabs */}
-                  <div className="flex gap-1 overflow-x-auto pb-2">
-                    {dayNamesShort.map((day, idx) => (
-                      <button
-                        key={idx}
-                        onClick={() => setCurrentDay(idx + 1)}
-                        className={`flex-1 min-w-[50px] py-2.5 px-2 rounded-lg text-xs font-semibold transition ${
-                          currentDay === idx + 1
-                            ? 'bg-gradient-to-br from-indigo-500 to-purple-500 text-white shadow-lg scale-105'
-                            : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700'
-                        }`}
-                      >
-                        {day}
-                      </button>
-                    ))}
+                  <div className="space-y-2">
+                    <div className="flex gap-1 overflow-x-auto pb-2">
+                      {dayNamesShort.map((day, idx) => {
+                        const isToday = (idx + 1) === todayDayOfWeek;
+                        const isSelected = currentDay === (idx + 1);
+                        
+                        return (
+                          <button
+                            key={idx}
+                            onClick={() => setCurrentDay(idx + 1)}
+                            className={`relative flex-1 min-w-[50px] py-2.5 px-2 rounded-lg text-xs font-semibold transition ${
+                              isSelected
+                                ? 'bg-gradient-to-br from-indigo-500 to-purple-500 text-white shadow-lg scale-105'
+                                : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700'
+                            }`}
+                          >
+                            {day}
+                            {isToday && (
+                              <span className={`absolute -top-1 -right-1 w-2 h-2 rounded-full ${isSelected ? 'bg-yellow-300' : 'bg-green-500'}`} />
+                            )}
+                          </button>
+                        );
+                      })}
+                    </div>
+                    
+                    {/* Today Button */}
+                    <button
+                      onClick={jumpToToday}
+                      className="w-full py-2 px-4 bg-gradient-to-r from-green-500 to-emerald-500 hover:from-green-600 hover:to-emerald-600 text-white text-sm font-semibold rounded-lg shadow-md transition flex items-center justify-center gap-2"
+                    >
+                      <span>📍</span>
+                      <span>Jump to Today ({dayNames[todayDayOfWeek - 1]})</span>
+                    </button>
                   </div>
 
                   {/* Current Day Display */}
                   <div className="bg-gradient-to-r from-indigo-50 to-purple-50 dark:from-indigo-900/20 dark:to-purple-900/20 p-3 rounded-xl text-center">
                     <p className="text-sm font-semibold text-indigo-700 dark:text-indigo-300">
                       📅 {dayNames[currentDay - 1]} - Week {currentWeek}
+                      {currentDay === todayDayOfWeek && <span className="ml-2 text-green-600 dark:text-green-400">• Today</span>}
                     </p>
                   </div>
+
+                  {/* Daily Macro Tracking Summary */}
+                  {(() => {
+                    const today = new Date().toISOString().split('T')[0];
+                    const dailyTotals = calculateDailyTotals(today);
+                    const loggedMealsToday = loggedMeals[today] || [];
+                    
+                    // Calculate daily goals based on user's fitness goal
+                    const preferenceGoal = userData?.dietPreferences?.fitnessGoal;
+                    let userGoal = 'maintenance';
+                    if (preferenceGoal) {
+                      userGoal = preferenceGoal;
+                    } else {
+                      const current = userData?.weight || 70;
+                      const target = userData?.targetWeight || 75;
+                      userGoal = current > target + 2 ? 'weight-loss' : current < target - 2 ? 'muscle-gain' : 'maintenance';
+                    }
+                    
+                    const calorieMultiplier = userGoal === 'weight-loss' ? 0.85 : userGoal === 'muscle-gain' ? 1.15 : 1.0;
+                    const dailyGoals = {
+                      calories: Math.round(2000 * calorieMultiplier),
+                      protein: Math.round(150 * calorieMultiplier),
+                      carbs: Math.round(200 * calorieMultiplier),
+                      fats: Math.round(65 * calorieMultiplier)
+                    };
+
+                    const calorieProgress = Math.min((dailyTotals.calories / dailyGoals.calories) * 100, 100);
+                    const proteinProgress = Math.min((dailyTotals.protein / dailyGoals.protein) * 100, 100);
+                    const carbsProgress = Math.min((dailyTotals.carbs / dailyGoals.carbs) * 100, 100);
+                    const fatsProgress = Math.min((dailyTotals.fats / dailyGoals.fats) * 100, 100);
+
+                    return (
+                      <div className="space-y-3">
+                        {/* Toggle Button */}
+                        <button
+                          onClick={() => setShowMacroSummary(!showMacroSummary)}
+                          className="w-full py-2 px-4 bg-gradient-to-r from-teal-500 to-emerald-500 hover:from-teal-600 hover:to-emerald-600 text-white text-sm font-semibold rounded-lg shadow-md transition flex items-center justify-between"
+                        >
+                          <span>📊 Today's Nutrition</span>
+                          <span>{showMacroSummary ? '▼' : '▶'}</span>
+                        </button>
+
+                        {showMacroSummary && (
+                          <div className="bg-gradient-to-br from-teal-50 to-emerald-50 dark:from-teal-900/20 dark:to-emerald-900/20 p-4 rounded-xl border-2 border-teal-300 dark:border-teal-600/30 space-y-3">
+                            {/* Calories Progress */}
+                            <div>
+                              <div className="flex justify-between items-center mb-1">
+                                <span className="text-xs font-semibold text-gray-700 dark:text-gray-300">🔥 Calories</span>
+                                <span className="text-xs font-bold text-teal-700 dark:text-teal-300">
+                                  {dailyTotals.calories} / {dailyGoals.calories}
+                                </span>
+                              </div>
+                              <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-3 overflow-hidden">
+                                <div 
+                                  className="h-full bg-gradient-to-r from-orange-400 to-red-500 transition-all duration-500 rounded-full"
+                                  style={{ width: `${calorieProgress}%` }}
+                                />
+                              </div>
+                            </div>
+
+                            {/* Macros Grid */}
+                            <div className="grid grid-cols-3 gap-2">
+                              {/* Protein */}
+                              <div className="bg-white dark:bg-gray-800 p-2 rounded-lg">
+                                <div className="flex justify-between items-center mb-1">
+                                  <span className="text-[10px] font-semibold text-gray-600 dark:text-gray-400">Protein</span>
+                                </div>
+                                <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2 overflow-hidden mb-1">
+                                  <div 
+                                    className="h-full bg-gradient-to-r from-red-400 to-red-600 transition-all duration-500"
+                                    style={{ width: `${proteinProgress}%` }}
+                                  />
+                                </div>
+                                <p className="text-[10px] font-bold text-red-600 dark:text-red-400 text-center">
+                                  {dailyTotals.protein}g / {dailyGoals.protein}g
+                                </p>
+                              </div>
+
+                              {/* Carbs */}
+                              <div className="bg-white dark:bg-gray-800 p-2 rounded-lg">
+                                <div className="flex justify-between items-center mb-1">
+                                  <span className="text-[10px] font-semibold text-gray-600 dark:text-gray-400">Carbs</span>
+                                </div>
+                                <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2 overflow-hidden mb-1">
+                                  <div 
+                                    className="h-full bg-gradient-to-r from-blue-400 to-blue-600 transition-all duration-500"
+                                    style={{ width: `${carbsProgress}%` }}
+                                  />
+                                </div>
+                                <p className="text-[10px] font-bold text-blue-600 dark:text-blue-400 text-center">
+                                  {dailyTotals.carbs}g / {dailyGoals.carbs}g
+                                </p>
+                              </div>
+
+                              {/* Fats */}
+                              <div className="bg-white dark:bg-gray-800 p-2 rounded-lg">
+                                <div className="flex justify-between items-center mb-1">
+                                  <span className="text-[10px] font-semibold text-gray-600 dark:text-gray-400">Fats</span>
+                                </div>
+                                <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2 overflow-hidden mb-1">
+                                  <div 
+                                    className="h-full bg-gradient-to-r from-yellow-400 to-yellow-600 transition-all duration-500"
+                                    style={{ width: `${fatsProgress}%` }}
+                                  />
+                                </div>
+                                <p className="text-[10px] font-bold text-yellow-600 dark:text-yellow-400 text-center">
+                                  {dailyTotals.fats}g / {dailyGoals.fats}g
+                                </p>
+                              </div>
+                            </div>
+
+                            {/* Logged Meals Count */}
+                            <div className="text-center pt-2 border-t border-teal-200 dark:border-teal-700">
+                              <p className="text-xs text-teal-700 dark:text-teal-300 font-semibold">
+                                🍽️ {loggedMealsToday.length} meal{loggedMealsToday.length !== 1 ? 's' : ''} logged today
+                              </p>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })()}
                 </div>
               )}
               
@@ -3531,8 +3761,14 @@ const DietPlanScreen = ({ goal, setGoal, showPlanModal, setShowPlanModal, userDa
                     
                     if (!dayPlan) return null;
                     
-                    // Filter meals by cooking skill preference
-                    const filterMealBySkill = (meal: any) => {
+                    // Filter meals by cooking skill preference - DISABLED to prevent filtering out meals
+                    // All mealStyles are set to 'intermediate' so this was blocking valid meals
+                    const filterMealBySkill = (_meal: any) => {
+                      // Always return true - show all meals regardless of cooking skill
+                      // Users can decide if a meal is too complex for them
+                      return true;
+                      
+                      /* ORIGINAL LOGIC - Too restrictive, disabled
                       if (!meal?.cookingSkill) return true;
                       
                       // Match exact cooking skill or show meals that match user's preference
@@ -3543,6 +3779,53 @@ const DietPlanScreen = ({ goal, setGoal, showPlanModal, setShowPlanModal, userDa
                       } else {
                         return true; // Advanced users see all
                       }
+                      */
+                    };
+
+                    // Filter meals by allergy preferences
+                    const filterMealByAllergies = (meal: any) => {
+                      // Get user's allergies
+                      const userAllergies = userData?.dietPreferences?.allergies || [];
+                      
+                      // If user has no allergies or selected 'none', show all meals
+                      if (userAllergies.length === 0 || userAllergies.includes('none')) {
+                        return true;
+                      }
+                      
+                      // If meal has no ingredients listed, show it (safety: can't verify)
+                      if (!meal?.ingredients || meal.ingredients.length === 0) {
+                        return true;
+                      }
+                      
+                      // Check if any ingredient contains an allergen
+                      // Convert both to lowercase for case-insensitive matching
+                      const ingredientsText = meal.ingredients.join(' ').toLowerCase();
+                      
+                      // Define allergen keywords to search for
+                      const allergenKeywords: { [key: string]: string[] } = {
+                        'dairy': ['milk', 'cheese', 'yogurt', 'butter', 'cream', 'whey', 'lactose', 'casein', 'ghee', 'paneer'],
+                        'eggs': ['egg', 'eggs'],
+                        'nuts': ['almond', 'cashew', 'walnut', 'pecan', 'pistachio', 'hazelnut', 'macadamia', 'peanut', 'nut'],
+                        'shellfish': ['shrimp', 'crab', 'lobster', 'prawn', 'crawfish', 'crayfish', 'shellfish'],
+                        'gluten': ['wheat', 'flour', 'bread', 'pasta', 'barley', 'rye', 'gluten', 'couscous', 'seitan'],
+                        'soy': ['soy', 'tofu', 'tempeh', 'edamame', 'miso'],
+                      };
+                      
+                      // Check each user allergy
+                      for (const allergy of userAllergies) {
+                        if (allergy === 'none') continue;
+                        
+                        const keywords = allergenKeywords[allergy] || [];
+                        
+                        // Check if any keyword appears in ingredients
+                        for (const keyword of keywords) {
+                          if (ingredientsText.includes(keyword)) {
+                            return false; // Filter out this meal - contains allergen
+                          }
+                        }
+                      }
+                      
+                      return true; // Safe - no allergens found
                     };
                     
                     // Get meals based on user preference
@@ -3569,6 +3852,9 @@ const DietPlanScreen = ({ goal, setGoal, showPlanModal, setShowPlanModal, userDa
                       // Check if meal matches cooking skill preference
                       const skillMatch = filterMealBySkill(meal);
                       
+                      // Check if meal is safe for user's allergies
+                      const allergyMatch = filterMealByAllergies(meal);
+                      
                       // Skip meals that don't match skill level (show placeholder)
                       if (!skillMatch) {
                         return (
@@ -3579,6 +3865,23 @@ const DietPlanScreen = ({ goal, setGoal, showPlanModal, setShowPlanModal, userDa
                                 <p className="text-sm font-semibold text-gray-400 dark:text-gray-500">{mealType.name}</p>
                                 <p className="text-xs text-gray-400 dark:text-gray-600 italic">
                                   Meal filtered by cooking skill preference
+                                </p>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      }
+
+                      // Skip meals that contain allergens (show placeholder)
+                      if (!allergyMatch) {
+                        return (
+                          <div key={index} className="bg-red-50 dark:bg-red-900/20 p-4 rounded-xl border-2 border-dashed border-red-300 dark:border-red-700">
+                            <div className="flex items-center gap-3">
+                              <span className="text-xl opacity-40">⚠️</span>
+                              <div>
+                                <p className="text-sm font-semibold text-red-600 dark:text-red-400">{mealType.name}</p>
+                                <p className="text-xs text-red-500 dark:text-red-400 italic">
+                                  Contains allergen - filtered for your safety
                                 </p>
                               </div>
                             </div>
@@ -3680,6 +3983,83 @@ const DietPlanScreen = ({ goal, setGoal, showPlanModal, setShowPlanModal, userDa
                               )}
                             </div>
                           )}
+
+                          {/* Log This Meal Button */}
+                          <button
+                            onClick={() => logMeal({ name: meal.name, macros: adjustedMacros }, mealType.name)}
+                            className="w-full py-2 px-4 bg-gradient-to-r from-teal-500 to-emerald-500 hover:from-teal-600 hover:to-emerald-600 text-white text-xs font-semibold rounded-lg shadow-md transition flex items-center justify-center gap-2 mb-2"
+                          >
+                            <span>✓</span>
+                            <span>Log This Meal</span>
+                          </button>
+
+                          {/* Action Buttons Grid */}
+                          <div className="grid grid-cols-2 gap-2 mb-2">
+                            {/* Swap Meal Button */}
+                            <button
+                              onClick={() => {
+                                setSelectedMealForSwap({ week: currentWeek, day: currentDay, mealType: mealType.key, meal });
+                                setShowSwapModal(true);
+                              }}
+                              className="py-2 px-3 bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 text-white text-xs font-semibold rounded-lg shadow-md transition flex items-center justify-center gap-1"
+                            >
+                              <span>🔄</span>
+                              <span>Swap</span>
+                            </button>
+
+                            {/* Customize Meal Button */}
+                            <button
+                              onClick={() => {
+                                setSelectedMealForSub({ week: currentWeek, day: currentDay, mealType: mealType.key, meal });
+                                setShowSubstitutionModal(true);
+                              }}
+                              className="py-2 px-3 bg-gradient-to-r from-orange-500 to-red-500 hover:from-orange-600 hover:to-red-600 text-white text-xs font-semibold rounded-lg shadow-md transition flex items-center justify-center gap-1"
+                            >
+                              <span>✏️</span>
+                              <span>Customize</span>
+                            </button>
+                          </div>
+
+                          {/* Show if meal is swapped or customized */}
+                          {(() => {
+                            const swapKey = `w${currentWeek}-d${currentDay}-${mealType.key}`;
+                            const isSwapped = swappedMeals[swapKey];
+                            const isCustomized = customizedMeals[swapKey];
+
+                            if (isSwapped || isCustomized) {
+                              return (
+                                <div className="flex gap-2 mb-2">
+                                  {isSwapped && (
+                                    <div className="flex-1 bg-purple-100 dark:bg-purple-900/30 p-2 rounded-lg flex items-center justify-between">
+                                      <span className="text-[10px] text-purple-700 dark:text-purple-300 font-semibold">
+                                        🔄 Swapped from W{isSwapped.week}D{isSwapped.day}
+                                      </span>
+                                      <button
+                                        onClick={() => resetSwap(currentWeek, currentDay, mealType.key)}
+                                        className="text-[10px] bg-purple-600 hover:bg-purple-700 text-white px-2 py-0.5 rounded"
+                                      >
+                                        Reset
+                                      </button>
+                                    </div>
+                                  )}
+                                  {isCustomized && (
+                                    <div className="flex-1 bg-orange-100 dark:bg-orange-900/30 p-2 rounded-lg flex items-center justify-between">
+                                      <span className="text-[10px] text-orange-700 dark:text-orange-300 font-semibold">
+                                        ✨ Customized
+                                      </span>
+                                      <button
+                                        onClick={() => resetCustomization(currentWeek, currentDay, mealType.key)}
+                                        className="text-[10px] bg-orange-600 hover:bg-orange-700 text-white px-2 py-0.5 rounded"
+                                      >
+                                        Reset
+                                      </button>
+                                    </div>
+                                  )}
+                                </div>
+                              );
+                            }
+                            return null;
+                          })()}
                           
                           {/* Tags */}
                           <div className="flex flex-wrap gap-1 mt-2">
@@ -3715,6 +4095,99 @@ const DietPlanScreen = ({ goal, setGoal, showPlanModal, setShowPlanModal, userDa
                   }
                 })()}
               </div>
+
+              {/* Meal History Section */}
+              <div className="mt-6 space-y-4">
+                <h3 className="text-xl font-bold text-indigo-700 dark:text-indigo-300">📜 Meal History</h3>
+                
+                {(() => {
+                  // Get last 7 days of logged meals
+                  const today = new Date();
+                  const dates = [];
+                  for (let i = 0; i < 7; i++) {
+                    const date = new Date(today);
+                    date.setDate(date.getDate() - i);
+                    dates.push(date.toISOString().split('T')[0]);
+                  }
+
+                  // Filter dates that have logged meals
+                  const datesWithMeals = dates.filter(date => loggedMeals[date] && loggedMeals[date].length > 0);
+
+                  if (datesWithMeals.length === 0) {
+                    return (
+                      <div className="bg-gray-100 dark:bg-gray-800 p-6 rounded-xl text-center">
+                        <p className="text-gray-500 dark:text-gray-400">No meals logged yet. Start logging meals to track your nutrition!</p>
+                      </div>
+                    );
+                  }
+
+                  return datesWithMeals.map(date => {
+                    const dateObj = new Date(date + 'T00:00:00');
+                    const dayName = dateObj.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' });
+                    const meals = loggedMeals[date] || [];
+                    const totals = calculateDailyTotals(date);
+
+                    return (
+                      <div key={date} className="bg-white dark:bg-gray-800 rounded-xl shadow-lg border-2 border-gray-200 dark:border-gray-700 overflow-hidden">
+                        {/* Date Header */}
+                        <div className="bg-gradient-to-r from-indigo-500 to-purple-500 p-3">
+                          <div className="flex justify-between items-center">
+                            <p className="text-white font-bold">{dayName}</p>
+                            <div className="text-white text-xs font-semibold bg-white/20 px-2 py-1 rounded">
+                              {totals.calories} cal
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Meals List */}
+                        <div className="p-4 space-y-2">
+                          {meals.map((meal: any, idx: number) => (
+                            <div key={idx} className="bg-gray-50 dark:bg-gray-700/50 p-3 rounded-lg flex justify-between items-center">
+                              <div className="flex-1">
+                                <p className="text-sm font-semibold text-gray-900 dark:text-white">{meal.mealType}</p>
+                                <p className="text-xs text-gray-600 dark:text-gray-400">{meal.name}</p>
+                                <div className="flex gap-3 mt-1">
+                                  <span className="text-xs text-red-600 dark:text-red-400">P: {meal.macros.protein}g</span>
+                                  <span className="text-xs text-blue-600 dark:text-blue-400">C: {meal.macros.carbs}g</span>
+                                  <span className="text-xs text-yellow-600 dark:text-yellow-400">F: {meal.macros.fats}g</span>
+                                </div>
+                              </div>
+                              <button
+                                onClick={() => removeLoggedMeal(date, idx)}
+                                className="ml-2 p-2 bg-red-500 hover:bg-red-600 text-white rounded-lg text-xs transition"
+                              >
+                                🗑️
+                              </button>
+                            </div>
+                          ))}
+
+                          {/* Daily Totals */}
+                          <div className="mt-3 pt-3 border-t border-gray-200 dark:border-gray-600">
+                            <div className="grid grid-cols-4 gap-2 text-center">
+                              <div className="bg-orange-100 dark:bg-orange-900/30 p-2 rounded">
+                                <p className="text-xs text-gray-600 dark:text-gray-400">Calories</p>
+                                <p className="text-sm font-bold text-orange-600 dark:text-orange-400">{totals.calories}</p>
+                              </div>
+                              <div className="bg-red-100 dark:bg-red-900/30 p-2 rounded">
+                                <p className="text-xs text-gray-600 dark:text-gray-400">Protein</p>
+                                <p className="text-sm font-bold text-red-600 dark:text-red-400">{totals.protein}g</p>
+                              </div>
+                              <div className="bg-blue-100 dark:bg-blue-900/30 p-2 rounded">
+                                <p className="text-xs text-gray-600 dark:text-gray-400">Carbs</p>
+                                <p className="text-sm font-bold text-blue-600 dark:text-blue-400">{totals.carbs}g</p>
+                              </div>
+                              <div className="bg-yellow-100 dark:bg-yellow-900/30 p-2 rounded">
+                                <p className="text-xs text-gray-600 dark:text-gray-400">Fats</p>
+                                <p className="text-sm font-bold text-yellow-600 dark:text-yellow-400">{totals.fats}g</p>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  });
+                })()}
+              </div>
             </div>
         </>
       )}
@@ -3722,6 +4195,181 @@ const DietPlanScreen = ({ goal, setGoal, showPlanModal, setShowPlanModal, userDa
       {/* Weekly Plan Modal */}
       {showPlanModal && (
         <WeeklyPlanModal onClose={() => setShowPlanModal(false)} />
+      )}
+
+      {/* Meal Swap Modal */}
+      {showSwapModal && selectedMealForSwap && (
+        <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4" onClick={() => setShowSwapModal(false)}>
+          <div className="bg-white dark:bg-gray-800 rounded-2xl p-6 max-w-md w-full max-h-[85vh] overflow-y-auto shadow-2xl border border-gray-300 dark:border-purple-500/30" onClick={(e) => e.stopPropagation()}>
+            <h3 className="text-2xl font-bold text-purple-600 dark:text-purple-400 mb-4">🔄 Swap Meal</h3>
+            
+            <div className="bg-purple-50 dark:bg-purple-900/20 p-3 rounded-lg mb-4">
+              <p className="text-sm font-semibold text-purple-900 dark:text-purple-300">Selected Meal:</p>
+              <p className="text-xs text-purple-700 dark:text-purple-400">{selectedMealForSwap.meal.name}</p>
+              <p className="text-xs text-purple-600 dark:text-purple-500">Week {selectedMealForSwap.week}, Day {selectedMealForSwap.day}</p>
+            </div>
+
+            <p className="text-sm text-gray-700 dark:text-gray-300 mb-4">Select a meal to swap with:</p>
+
+            <div className="space-y-2 max-h-96 overflow-y-auto">
+              {[1, 2, 3, 4].map(week => (
+                <div key={week} className="border-2 border-gray-200 dark:border-gray-700 rounded-lg p-3">
+                  <p className="text-sm font-bold text-gray-900 dark:text-white mb-2">Week {week}</p>
+                  <div className="grid grid-cols-7 gap-1">
+                    {[1, 2, 3, 4, 5, 6, 7].map(day => (
+                      <button
+                        key={day}
+                        onClick={() => swapMeal(week, day, selectedMealForSwap.mealType)}
+                        disabled={week === selectedMealForSwap.week && day === selectedMealForSwap.day}
+                        className="p-2 text-xs bg-purple-100 dark:bg-purple-900/30 hover:bg-purple-200 dark:hover:bg-purple-800/50 text-purple-700 dark:text-purple-300 rounded disabled:opacity-30 disabled:cursor-not-allowed transition"
+                      >
+                        D{day}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <button
+              onClick={() => setShowSwapModal(false)}
+              className="mt-4 w-full py-3 bg-gray-200 dark:bg-gray-700 text-gray-900 dark:text-white hover:bg-gray-300 dark:hover:bg-gray-600 rounded-xl font-semibold transition"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Ingredient Substitution Modal */}
+      {showSubstitutionModal && selectedMealForSub && (
+        <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4" onClick={() => setShowSubstitutionModal(false)}>
+          <div className="bg-white dark:bg-gray-800 rounded-2xl p-6 max-w-md w-full max-h-[85vh] overflow-y-auto shadow-2xl border border-gray-300 dark:border-orange-500/30" onClick={(e) => e.stopPropagation()}>
+            <h3 className="text-2xl font-bold text-orange-600 dark:text-orange-400 mb-4">✏️ Customize Meal</h3>
+            
+            <div className="bg-orange-50 dark:bg-orange-900/20 p-3 rounded-lg mb-4">
+              <p className="text-sm font-semibold text-orange-900 dark:text-orange-300">{selectedMealForSub.meal.name}</p>
+              <p className="text-xs text-orange-700 dark:text-orange-400">Week {selectedMealForSub.week}, Day {selectedMealForSub.day}</p>
+            </div>
+
+            {(() => {
+              const [localIngredients, setLocalIngredients] = React.useState(selectedMealForSub.meal.ingredients || []);
+              const [portionSize, setPortionSize] = React.useState(1.0);
+
+              // Common substitutions database
+              const substitutions: Record<string, string[]> = {
+                'chicken': ['turkey', 'tofu', 'tempeh', 'seitan', 'chickpeas'],
+                'beef': ['turkey', 'lamb', 'bison', 'portobello mushrooms', 'lentils'],
+                'fish': ['salmon', 'tuna', 'cod', 'tilapia', 'shrimp', 'tofu'],
+                'milk': ['almond milk', 'oat milk', 'soy milk', 'coconut milk'],
+                'butter': ['olive oil', 'coconut oil', 'ghee', 'avocado oil'],
+                'eggs': ['flax eggs', 'chia eggs', 'applesauce', 'silken tofu'],
+                'rice': ['quinoa', 'cauliflower rice', 'couscous', 'pasta'],
+                'pasta': ['zucchini noodles', 'shirataki noodles', 'whole wheat pasta', 'rice noodles'],
+              };
+
+              const handleSubstituteIngredient = (index: number, oldIngredient: string) => {
+                const ingredientLower = oldIngredient.toLowerCase();
+                const matchedKey = Object.keys(substitutions).find(key => ingredientLower.includes(key));
+                
+                if (matchedKey) {
+                  const alternatives = substitutions[matchedKey];
+                  const selected = alternatives[0]; // Use first alternative
+                  
+                  const newIngredients = [...localIngredients];
+                  newIngredients[index] = oldIngredient.replace(new RegExp(matchedKey, 'gi'), selected);
+                  setLocalIngredients(newIngredients);
+                }
+              };
+
+              const handleSaveCustomization = () => {
+                customizeMeal(selectedMealForSub.week, selectedMealForSub.day, selectedMealForSub.mealType, {
+                  ingredients: localIngredients,
+                  portionSize
+                });
+              };
+
+              return (
+                <>
+                  {/* Portion Size Adjuster */}
+                  <div className="mb-4">
+                    <p className="text-sm font-semibold text-gray-900 dark:text-white mb-2">Portion Size</p>
+                    <div className="flex items-center gap-3">
+                      <button
+                        onClick={() => setPortionSize(Math.max(0.5, portionSize - 0.25))}
+                        className="px-3 py-2 bg-orange-500 hover:bg-orange-600 text-white rounded-lg font-bold"
+                      >
+                        -
+                      </button>
+                      <span className="text-lg font-bold text-gray-900 dark:text-white min-w-[60px] text-center">
+                        {portionSize.toFixed(2)}x
+                      </span>
+                      <button
+                        onClick={() => setPortionSize(Math.min(2.0, portionSize + 0.25))}
+                        className="px-3 py-2 bg-orange-500 hover:bg-orange-600 text-white rounded-lg font-bold"
+                      >
+                        +
+                      </button>
+                    </div>
+                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                      Macros will be adjusted: {Math.round(selectedMealForSub.meal.macros.calories * portionSize)} cal
+                    </p>
+                  </div>
+
+                  {/* Ingredients List with Substitution */}
+                  <div className="mb-4">
+                    <p className="text-sm font-semibold text-gray-900 dark:text-white mb-2">Ingredients</p>
+                    <div className="space-y-2 max-h-64 overflow-y-auto">
+                      {localIngredients.map((ingredient: string, idx: number) => {
+                        const ingredientLower = ingredient.toLowerCase();
+                        const hasSubstitution = Object.keys(substitutions).some(key => ingredientLower.includes(key));
+                        
+                        return (
+                          <div key={idx} className="flex items-center gap-2">
+                            <input
+                              type="text"
+                              value={ingredient}
+                              onChange={(e) => {
+                                const newIngredients = [...localIngredients];
+                                newIngredients[idx] = e.target.value;
+                                setLocalIngredients(newIngredients);
+                              }}
+                              className="flex-1 px-3 py-2 bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-white text-xs rounded-lg border-2 border-gray-300 dark:border-gray-600"
+                            />
+                            {hasSubstitution && (
+                              <button
+                                onClick={() => handleSubstituteIngredient(idx, ingredient)}
+                                className="px-2 py-2 bg-blue-500 hover:bg-blue-600 text-white text-xs rounded-lg"
+                                title="Suggest substitute"
+                              >
+                                🔁
+                              </button>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* Save Button */}
+                  <button
+                    onClick={handleSaveCustomization}
+                    className="w-full py-3 bg-gradient-to-r from-orange-500 to-red-500 hover:from-orange-600 hover:to-red-600 text-white rounded-xl font-semibold transition mb-2"
+                  >
+                    Save Customization
+                  </button>
+
+                  <button
+                    onClick={() => setShowSubstitutionModal(false)}
+                    className="w-full py-3 bg-gray-200 dark:bg-gray-700 text-gray-900 dark:text-white hover:bg-gray-300 dark:hover:bg-gray-600 rounded-xl font-semibold transition"
+                  >
+                    Cancel
+                  </button>
+                </>
+              );
+            })()}
+          </div>
+        </div>
       )}
 
       {/* Premium Lock Overlay */}
@@ -4632,13 +5280,15 @@ const ExerciseFinderScreen = ({
   setExerciseSubView,
   currentWorkout,
   setCurrentWorkout,
-  finishWorkout
+  finishWorkout,
+  userData
 }: {
   selectedMuscle: string | null;
   setSelectedMuscle: (muscle: string | null) => void;
   location: 'gym' | 'home' | null;
   setLocation: (loc: 'gym' | 'home' | null) => void;
   selectedExercise: any;
+  userData: any;
   setSelectedExercise: (exercise: any) => void;
   exerciseSubView: 'list' | 'details' | 'log';
   setExerciseSubView: (view: 'list' | 'details' | 'log') => void;
@@ -4683,6 +5333,7 @@ const ExerciseFinderScreen = ({
         exercise={selectedExercise}
         onBack={() => setExerciseSubView('list')}
         onSaveWorkout={handleSaveWorkout}
+        userData={userData}
       />
     );
   }
@@ -5362,11 +6013,11 @@ const AppPreferencesScreen = ({ onBack, userData }: { onBack: () => void; userDa
           <div className="space-y-2 text-sm">
             <div className="flex justify-between">
               <span className="text-gray-600 dark:text-white/70">Version:</span>
-              <span className="text-gray-900 dark:text-white font-semibold">1.0.0</span>
+              <span className="text-gray-900 dark:text-white font-semibold">{APP_VERSION}</span>
             </div>
             <div className="flex justify-between">
               <span className="text-gray-600 dark:text-white/70">Build:</span>
-              <span className="text-gray-900 dark:text-white font-semibold">2025.11.24</span>
+              <span className="text-gray-900 dark:text-white font-semibold">{BUILD_DATE}</span>
             </div>
           </div>
         </div>
@@ -5653,10 +6304,30 @@ const App = () => {
   const [currentWorkout, setCurrentWorkout] = useState<Array<{ exercise: string; sets: Array<{ reps: number; weight: number }> }>>([]);
   const [workoutStartTime, setWorkoutStartTime] = useState<number | null>(null);
   
+  // Helper function to get current day (1=Monday, 7=Sunday) based on timezone
+  const getCurrentDayOfWeek = () => {
+    const jsDay = new Date().getDay(); // 0=Sunday, 1=Monday, ..., 6=Saturday
+    return ((jsDay + 6) % 7) + 1; // Convert to 1=Monday, 7=Sunday
+  };
+  
   // Meal Plan State - Lifted to persist across navigation
-  const [currentDay, setCurrentDay] = useState(1); // 1-7 for Mon-Sun
+  const [currentDay, setCurrentDay] = useState(getCurrentDayOfWeek()); // Auto-detect current day
   const [currentWeek, setCurrentWeek] = useState(1); // 1-4 for weeks
   const [expandedMeals, setExpandedMeals] = useState<Record<string, boolean>>({});
+
+  // Macro Tracking State
+  const [loggedMeals, setLoggedMeals] = useState<Record<string, any[]>>({});
+  const [showMacroSummary, setShowMacroSummary] = useState(true);
+
+  // Meal Swapping State
+  const [swappedMeals, setSwappedMeals] = useState<Record<string, any>>({});
+  const [selectedMealForSwap, setSelectedMealForSwap] = useState<{week: number, day: number, mealType: string, meal: any} | null>(null);
+  const [showSwapModal, setShowSwapModal] = useState(false);
+
+  // Ingredient Substitution State
+  const [customizedMeals, setCustomizedMeals] = useState<Record<string, any>>({});
+  const [showSubstitutionModal, setShowSubstitutionModal] = useState(false);
+  const [selectedMealForSub, setSelectedMealForSub] = useState<{week: number, day: number, mealType: string, meal: any} | null>(null);
 
   // Start workout timer when first exercise is added
   useEffect(() => {
@@ -5666,6 +6337,331 @@ const App = () => {
       setWorkoutStartTime(null);
     }
   }, [currentWorkout.length, workoutStartTime]);
+
+  // Initialize meal plan start date and auto-detect current week
+  useEffect(() => {
+    const initializeMealPlan = async () => {
+      if (!user?.uid) return;
+      
+      try {
+        const userDocRef = doc(db, 'users', user.uid);
+        const userDoc = await getDoc(userDocRef);
+        
+        if (userDoc.exists()) {
+          const data = userDoc.data();
+          const mealPlanStartDate = data.mealPlanStartDate;
+          
+          // Always set current day to today based on user's timezone
+          const todayDay = getCurrentDayOfWeek();
+          setCurrentDay(todayDay);
+          
+          // If no start date exists, set it to today
+          if (!mealPlanStartDate) {
+            await updateDoc(userDocRef, {
+              mealPlanStartDate: Date.now()
+            });
+            setCurrentWeek(1); // Start at week 1
+          } else {
+            // Calculate current week based on days since start
+            const daysSinceStart = Math.floor((Date.now() - mealPlanStartDate) / (1000 * 60 * 60 * 24));
+            const calculatedWeek = (Math.floor(daysSinceStart / 7) % 4) + 1; // Rotate through weeks 1-4
+            setCurrentWeek(calculatedWeek);
+          }
+          
+          // Note: We DO NOT restore last viewed day/week anymore
+          // Always default to current day for better user experience
+        }
+      } catch (error) {
+        console.error('Error initializing meal plan:', error);
+      }
+    };
+    
+    initializeMealPlan();
+  }, [user?.uid]);
+  
+  // Load logged meals from Firebase
+  useEffect(() => {
+    const loadLoggedMeals = async () => {
+      if (!user?.uid) return;
+      
+      try {
+        const userDocRef = doc(db, 'users', user.uid);
+        const userDoc = await getDoc(userDocRef);
+        
+        if (userDoc.exists()) {
+          const data = userDoc.data();
+          if (data.loggedMeals) {
+            setLoggedMeals(data.loggedMeals);
+          }
+        }
+      } catch (error) {
+        console.error('Error loading logged meals:', error);
+      }
+    };
+    
+    loadLoggedMeals();
+  }, [user?.uid]);
+
+  // Function to log a meal
+  const logMeal = async (mealData: any, mealType: string) => {
+    if (!user?.uid) return;
+    
+    const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD format
+    const logEntry = {
+      ...mealData,
+      mealType,
+      loggedAt: Date.now(),
+      date: today
+    };
+
+    try {
+      const newLoggedMeals = { ...loggedMeals };
+      if (!newLoggedMeals[today]) {
+        newLoggedMeals[today] = [];
+      }
+      newLoggedMeals[today].push(logEntry);
+      
+      setLoggedMeals(newLoggedMeals);
+      
+      // Save to Firebase
+      await updateDoc(doc(db, 'users', user.uid), {
+        loggedMeals: newLoggedMeals
+      });
+
+      toast.success(`${mealType} logged! 🍽️`);
+    } catch (error) {
+      console.error('Error logging meal:', error);
+      toast.error('Failed to log meal');
+    }
+  };
+
+  // Function to remove a logged meal
+  const removeLoggedMeal = async (date: string, index: number) => {
+    if (!user?.uid) return;
+    
+    try {
+      const newLoggedMeals = { ...loggedMeals };
+      if (newLoggedMeals[date]) {
+        newLoggedMeals[date].splice(index, 1);
+        if (newLoggedMeals[date].length === 0) {
+          delete newLoggedMeals[date];
+        }
+      }
+      
+      setLoggedMeals(newLoggedMeals);
+      
+      // Save to Firebase
+      await updateDoc(doc(db, 'users', user.uid), {
+        loggedMeals: newLoggedMeals
+      });
+
+      toast.success('Meal removed');
+    } catch (error) {
+      console.error('Error removing meal:', error);
+      toast.error('Failed to remove meal');
+    }
+  };
+
+  // Calculate daily totals for a specific date
+  const calculateDailyTotals = (date: string) => {
+    const meals = loggedMeals[date] || [];
+    return meals.reduce((totals, meal) => ({
+      calories: totals.calories + (meal.macros?.calories || 0),
+      protein: totals.protein + (meal.macros?.protein || 0),
+      carbs: totals.carbs + (meal.macros?.carbs || 0),
+      fats: totals.fats + (meal.macros?.fats || 0)
+    }), { calories: 0, protein: 0, carbs: 0, fats: 0 });
+  };
+
+  // Load swapped meals and customizations from Firebase
+  useEffect(() => {
+    const loadMealCustomizations = async () => {
+      if (!user?.uid) return;
+      
+      try {
+        const userDocRef = doc(db, 'users', user.uid);
+        const userDoc = await getDoc(userDocRef);
+        
+        if (userDoc.exists()) {
+          const data = userDoc.data();
+          if (data.swappedMeals) {
+            setSwappedMeals(data.swappedMeals);
+          }
+          if (data.customizedMeals) {
+            setCustomizedMeals(data.customizedMeals);
+          }
+        }
+      } catch (error) {
+        console.error('Error loading meal customizations:', error);
+      }
+    };
+    
+    loadMealCustomizations();
+  }, [user?.uid]);
+
+  // Function to swap meals between days/weeks
+  const swapMeal = async (targetWeek: number, targetDay: number, targetMealType: string) => {
+    if (!user?.uid || !selectedMealForSwap) return;
+    
+    try {
+      const swapKey1 = `w${selectedMealForSwap.week}-d${selectedMealForSwap.day}-${selectedMealForSwap.mealType}`;
+      const swapKey2 = `w${targetWeek}-d${targetDay}-${targetMealType}`;
+      
+      const newSwappedMeals = { ...swappedMeals };
+      
+      // Store the swap mapping
+      newSwappedMeals[swapKey1] = { week: targetWeek, day: targetDay, mealType: targetMealType };
+      newSwappedMeals[swapKey2] = { week: selectedMealForSwap.week, day: selectedMealForSwap.day, mealType: selectedMealForSwap.mealType };
+      
+      setSwappedMeals(newSwappedMeals);
+      
+      // Save to Firebase
+      await updateDoc(doc(db, 'users', user.uid), {
+        swappedMeals: newSwappedMeals
+      });
+
+      toast.success('Meals swapped successfully! 🔄');
+      setShowSwapModal(false);
+      setSelectedMealForSwap(null);
+    } catch (error) {
+      console.error('Error swapping meals:', error);
+      toast.error('Failed to swap meals');
+    }
+  };
+
+  // Function to reset a swap
+  const resetSwap = async (week: number, day: number, mealType: string) => {
+    if (!user?.uid) return;
+    
+    try {
+      const swapKey = `w${week}-d${day}-${mealType}`;
+      const newSwappedMeals = { ...swappedMeals };
+      
+      // Find and remove both sides of the swap
+      const swappedTo = newSwappedMeals[swapKey];
+      if (swappedTo) {
+        const reverseKey = `w${swappedTo.week}-d${swappedTo.day}-${swappedTo.mealType}`;
+        delete newSwappedMeals[reverseKey];
+      }
+      delete newSwappedMeals[swapKey];
+      
+      setSwappedMeals(newSwappedMeals);
+      
+      // Save to Firebase
+      await updateDoc(doc(db, 'users', user.uid), {
+        swappedMeals: newSwappedMeals
+      });
+
+      toast.success('Swap reset!');
+    } catch (error) {
+      console.error('Error resetting swap:', error);
+      toast.error('Failed to reset swap');
+    }
+  };
+
+  // Function to customize meal ingredients
+  const customizeMeal = async (week: number, day: number, mealType: string, customizations: any) => {
+    if (!user?.uid) return;
+    
+    try {
+      const customKey = `w${week}-d${day}-${mealType}`;
+      const newCustomizedMeals = { ...customizedMeals };
+      
+      newCustomizedMeals[customKey] = customizations;
+      
+      setCustomizedMeals(newCustomizedMeals);
+      
+      // Save to Firebase
+      await updateDoc(doc(db, 'users', user.uid), {
+        customizedMeals: newCustomizedMeals
+      });
+
+      toast.success('Meal customized! ✨');
+      setShowSubstitutionModal(false);
+      setSelectedMealForSub(null);
+    } catch (error) {
+      console.error('Error customizing meal:', error);
+      toast.error('Failed to customize meal');
+    }
+  };
+
+  // Function to reset customizations
+  const resetCustomization = async (week: number, day: number, mealType: string) => {
+    if (!user?.uid) return;
+    
+    try {
+      const customKey = `w${week}-d${day}-${mealType}`;
+      const newCustomizedMeals = { ...customizedMeals };
+      
+      delete newCustomizedMeals[customKey];
+      
+      setCustomizedMeals(newCustomizedMeals);
+      
+      // Save to Firebase
+      await updateDoc(doc(db, 'users', user.uid), {
+        customizedMeals: newCustomizedMeals
+      });
+
+      toast.success('Customization reset!');
+    } catch (error) {
+      console.error('Error resetting customization:', error);
+      toast.error('Failed to reset customization');
+    }
+  };
+
+  // Helper function to get the actual meal (considering swaps)
+  const getActualMeal = (week: number, day: number, mealType: string, originalMeal: any) => {
+    const swapKey = `w${week}-d${day}-${mealType}`;
+    const swapInfo = swappedMeals[swapKey];
+    
+    if (swapInfo) {
+      // This meal has been swapped, return the swapped meal info
+      return { ...originalMeal, isSwapped: true, swappedFrom: swapInfo };
+    }
+    
+    return { ...originalMeal, isSwapped: false };
+  };
+
+  // Helper function to apply customizations to a meal
+  const applyCustomizations = (week: number, day: number, mealType: string, meal: any) => {
+    const customKey = `w${week}-d${day}-${mealType}`;
+    const customizations = customizedMeals[customKey];
+    
+    if (!customizations) return meal;
+    
+    return {
+      ...meal,
+      ingredients: customizations.ingredients || meal.ingredients,
+      portionSize: customizations.portionSize || 1.0,
+      macros: {
+        calories: Math.round(meal.macros.calories * (customizations.portionSize || 1.0)),
+        protein: Math.round(meal.macros.protein * (customizations.portionSize || 1.0)),
+        carbs: Math.round(meal.macros.carbs * (customizations.portionSize || 1.0)),
+        fats: Math.round(meal.macros.fats * (customizations.portionSize || 1.0))
+      },
+      isCustomized: true
+    };
+  };
+  
+  // Save last viewed day/week to Firebase when changed
+  useEffect(() => {
+    const saveMealPlanPreferences = async () => {
+      if (!user?.uid) return;
+      
+      try {
+        await updateDoc(doc(db, 'users', user.uid), {
+          'mealPlanPreferences.lastViewedDay': currentDay,
+          'mealPlanPreferences.lastViewedWeek': currentWeek
+        });
+      } catch (error) {
+        console.error('Error saving meal plan preferences:', error);
+      }
+    };
+    
+    // Debounce save to avoid too many writes
+    const timeoutId = setTimeout(saveMealPlanPreferences, 1000);
+    return () => clearTimeout(timeoutId);
+  }, [currentDay, currentWeek, user?.uid]);
 
   // Apply theme on mount and when userData changes
   useEffect(() => {
@@ -5694,24 +6690,43 @@ const App = () => {
       if (docSnapshot.exists()) {
         const data = docSnapshot.data();
         
+        // Debug logging
+        console.log('🔍 Premium Status Check:', {
+          hasPremiumField: !!data.premium,
+          premiumData: data.premium,
+          isActive: data.premium?.isActive,
+          expiryDate: data.premium?.expiryDate,
+          now: Date.now()
+        });
+        
         if (data.premium?.isActive) {
           const expiryDate = data.premium.expiryDate;
           const now = Date.now();
           
+          console.log('✅ Premium is active, checking expiry:', {
+            expiryDate,
+            now,
+            isValid: expiryDate && expiryDate > now
+          });
+          
           if (expiryDate && expiryDate > now) {
             setIsPremium(true);
             setPremiumExpiry(expiryDate);
+            console.log('🎉 User is PREMIUM!');
           } else {
             setIsPremium(false);
             setPremiumExpiry(null);
+            console.log('❌ Premium expired or no valid expiry date');
           }
         } else {
           setIsPremium(false);
           setPremiumExpiry(null);
+          console.log('❌ Premium not active or field missing');
         }
       } else {
         setIsPremium(false);
         setPremiumExpiry(null);
+        console.log('❌ User document does not exist');
       }
     }, (error) => {
       console.error('Error listening to premium status:', error);
@@ -6129,7 +7144,42 @@ const App = () => {
           />
         );
       case 'diet':
-        return <DietPlanScreen goal={goal} setGoal={setGoal} showPlanModal={showPlanModal} setShowPlanModal={setShowPlanModal} userData={userData} isPremium={isPremium} currentDay={currentDay} setCurrentDay={setCurrentDay} currentWeek={currentWeek} setCurrentWeek={setCurrentWeek} expandedMeals={expandedMeals} setExpandedMeals={setExpandedMeals} />;
+        return <DietPlanScreen 
+          goal={goal} 
+          setGoal={setGoal} 
+          showPlanModal={showPlanModal} 
+          setShowPlanModal={setShowPlanModal} 
+          userData={userData} 
+          isPremium={isPremium} 
+          currentDay={currentDay} 
+          setCurrentDay={setCurrentDay} 
+          currentWeek={currentWeek} 
+          setCurrentWeek={setCurrentWeek} 
+          expandedMeals={expandedMeals} 
+          setExpandedMeals={setExpandedMeals} 
+          logMeal={logMeal} 
+          loggedMeals={loggedMeals} 
+          removeLoggedMeal={removeLoggedMeal} 
+          calculateDailyTotals={calculateDailyTotals} 
+          showMacroSummary={showMacroSummary} 
+          setShowMacroSummary={setShowMacroSummary}
+          swappedMeals={swappedMeals}
+          selectedMealForSwap={selectedMealForSwap}
+          setSelectedMealForSwap={setSelectedMealForSwap}
+          showSwapModal={showSwapModal}
+          setShowSwapModal={setShowSwapModal}
+          swapMeal={swapMeal}
+          resetSwap={resetSwap}
+          customizedMeals={customizedMeals}
+          selectedMealForSub={selectedMealForSub}
+          setSelectedMealForSub={setSelectedMealForSub}
+          showSubstitutionModal={showSubstitutionModal}
+          setShowSubstitutionModal={setShowSubstitutionModal}
+          customizeMeal={customizeMeal}
+          resetCustomization={resetCustomization}
+          getActualMeal={getActualMeal}
+          applyCustomizations={applyCustomizations}
+        />;
       case 'exercise':
         return <ExerciseFinderScreen 
           selectedMuscle={selectedMuscle} 
@@ -6143,6 +7193,7 @@ const App = () => {
           currentWorkout={currentWorkout}
           setCurrentWorkout={setCurrentWorkout}
           finishWorkout={finishWorkout}
+          userData={userData}
         />;
       case 'account':
         return <AccountScreen onLogout={handleLogout} userData={userData} onNavigateToSettings={setActiveSettingsScreen} />;
