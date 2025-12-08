@@ -6398,57 +6398,36 @@ const App = () => {
     }
   }, [currentWorkout.length, workoutStartTime]);
 
-  // Initialize meal plan start date and auto-detect current week
+  // Initialize meal plan - auto-detect current week and day from user's timezone
   useEffect(() => {
     const initializeMealPlan = async () => {
       if (!user?.uid) return;
       
       try {
-        const userDocRef = doc(db, 'users', user.uid);
-        const userDoc = await getDoc(userDocRef);
+        // Always set current day to today based on user's timezone
+        const todayDay = getCurrentDayOfWeek();
+        setCurrentDay(todayDay);
         
-        if (userDoc.exists()) {
-          const data = userDoc.data();
-          const mealPlanStartDate = data.mealPlanStartDate;
-          
-          // Always set current day to today based on user's timezone
-          const todayDay = getCurrentDayOfWeek();
-          setCurrentDay(todayDay);
-          
-          // If no start date exists, set it to today
-          if (!mealPlanStartDate) {
-            const newStartDate = Date.now();
-            await updateDoc(userDocRef, {
-              mealPlanStartDate: newStartDate
-            });
-            console.log('Initialized meal plan start date:', new Date(newStartDate).toLocaleDateString());
-            setCurrentWeek(1); // Start at week 1
-          } else {
-            // Calculate current week based on days since start
-            const startDate = new Date(mealPlanStartDate);
-            const today = new Date();
-            const daysSinceStart = Math.floor((today.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24));
-            const calculatedWeek = (Math.floor(daysSinceStart / 7) % 4) + 1; // Rotate through weeks 1-4
-            
-            console.log('Meal Plan Initialization:', {
-              startDate: startDate.toLocaleDateString(),
-              today: today.toLocaleDateString(),
-              daysSinceStart,
-              weekNumber: Math.floor(daysSinceStart / 7),
-              calculatedWeek
-            });
-            
-            setCurrentWeek(calculatedWeek);
-          }
-          
-          // Note: We DO NOT restore last viewed day/week anymore
-          // Always default to current day for better user experience
-        }
+        // Calculate week based on current week of the year (rotating 1-4)
+        const now = new Date();
+        const startOfYear = new Date(now.getFullYear(), 0, 1);
+        const daysSinceYearStart = Math.floor((now.getTime() - startOfYear.getTime()) / (1000 * 60 * 60 * 24));
+        const weekOfYear = Math.floor(daysSinceYearStart / 7);
+        const calculatedWeek = (weekOfYear % 4) + 1; // Rotate weeks 1-4
+        
+        console.log('Meal Plan Auto-Detection:', {
+          date: now.toLocaleDateString(),
+          day: todayDay,
+          weekOfYear,
+          calculatedWeek
+        });
+        
+        setCurrentWeek(calculatedWeek);
       } catch (error) {
         console.error('Error initializing meal plan:', error);
       }
     };
-    
+
     initializeMealPlan();
   }, [user?.uid]);
   
