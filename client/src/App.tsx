@@ -1113,59 +1113,97 @@ const HomeScreen = ({
 
   // Schedule water reminder notifications
   useEffect(() => {
-    const scheduleWaterReminders = async () => {
+    const initializeNotifications = async () => {
       try {
-        // Request notification permissions
+        // Request notification permissions first
         const permission = await LocalNotifications.requestPermissions();
         
-        if (permission.display === 'granted') {
-          // Cancel existing notifications
-          await LocalNotifications.cancel({ notifications: [{ id: 1 }, { id: 2 }, { id: 3 }, { id: 4 }] });
-          
-          // Get current time
-          const now = new Date();
-          const notifications = [];
-          
-          // Schedule 4 reminders throughout the day (10 AM, 1 PM, 4 PM, 7 PM)
-          const reminderTimes = [
-            { hour: 10, minute: 0, id: 1, title: 'Morning Hydration 💧', body: 'Time for a glass of water! Stay refreshed.' },
-            { hour: 13, minute: 0, id: 2, title: 'Afternoon Hydration 💧', body: 'Keep hydrated! Drink a glass of water.' },
-            { hour: 16, minute: 0, id: 3, title: 'Evening Hydration 💧', body: 'Don\'t forget to drink water!' },
-            { hour: 19, minute: 0, id: 4, title: 'Dinner Time Hydration 💧', body: 'Last reminder! Reach your daily water goal.' }
-          ];
-
-          for (const reminder of reminderTimes) {
-            const scheduleDate = new Date();
-            scheduleDate.setHours(reminder.hour, reminder.minute, 0, 0);
-            
-            // If the time has passed today, schedule for tomorrow
-            if (scheduleDate <= now) {
-              scheduleDate.setDate(scheduleDate.getDate() + 1);
-            }
-
-            notifications.push({
-              id: reminder.id,
-              title: reminder.title,
-              body: reminder.body,
-              schedule: {
-                at: scheduleDate,
-                allowWhileIdle: true
-              },
-              sound: 'default' as any,
-              smallIcon: 'ic_stat_icon_config_sample',
-              iconColor: '#4F46E5'
-            });
-          }
-
-          await LocalNotifications.schedule({ notifications });
-          console.log('Water reminders scheduled:', notifications.length);
+        if (permission.display !== 'granted') {
+          console.log('Notification permission denied');
+          toast.error('Please enable notifications in settings for water reminders');
+          return;
         }
+
+        // Create notification channel for Android 8+
+        try {
+          await LocalNotifications.createChannel({
+            id: 'water-reminders',
+            name: 'Water Reminders',
+            description: 'Daily hydration reminders',
+            importance: 5, // High importance
+            visibility: 1, // Public
+            sound: 'default',
+            vibration: true,
+            lights: true,
+            lightColor: '#4F46E5'
+          });
+          console.log('Notification channel created');
+        } catch (channelError) {
+          console.log('Channel creation not needed or failed:', channelError);
+        }
+
+        await scheduleWaterReminders();
       } catch (error) {
-        console.log('Notification scheduling not available:', error);
+        console.error('Notification initialization error:', error);
       }
     };
 
-    scheduleWaterReminders();
+    const scheduleWaterReminders = async () => {
+      try {
+        // Cancel existing notifications first
+        await LocalNotifications.cancel({ notifications: [{ id: 1 }, { id: 2 }, { id: 3 }, { id: 4 }] });
+        
+        // Get current time
+        const now = new Date();
+        const notifications = [];
+        
+        // Schedule 4 DAILY REPEATING reminders (10 AM, 1 PM, 4 PM, 7 PM)
+        const reminderTimes = [
+          { hour: 10, minute: 0, id: 1, title: 'Morning Hydration 💧', body: 'Time for a glass of water! Stay refreshed.' },
+          { hour: 13, minute: 0, id: 2, title: 'Afternoon Hydration 💧', body: 'Keep hydrated! Drink a glass of water.' },
+          { hour: 16, minute: 0, id: 3, title: 'Evening Hydration 💧', body: 'Don\'t forget to drink water!' },
+          { hour: 19, minute: 0, id: 4, title: 'Dinner Time Hydration 💧', body: 'Last reminder! Reach your daily water goal.' }
+        ];
+
+        for (const reminder of reminderTimes) {
+          const scheduleDate = new Date();
+          scheduleDate.setHours(reminder.hour, reminder.minute, 0, 0);
+          
+          // If the time has passed today, schedule for tomorrow
+          if (scheduleDate <= now) {
+            scheduleDate.setDate(scheduleDate.getDate() + 1);
+          }
+
+          notifications.push({
+            id: reminder.id,
+            title: reminder.title,
+            body: reminder.body,
+            schedule: {
+              at: scheduleDate,
+              every: 'day' as any, // Repeat daily
+              allowWhileIdle: true
+            },
+            sound: 'default' as any,
+            smallIcon: 'ic_stat_icon_config_sample',
+            iconColor: '#4F46E5',
+            channelId: 'water-reminders'
+          });
+        }
+
+        await LocalNotifications.schedule({ notifications });
+        console.log('Daily water reminders scheduled:', notifications.length);
+        
+        // Get pending notifications to verify
+        const pending = await LocalNotifications.getPending();
+        console.log('Pending notifications:', pending.notifications.length);
+        
+      } catch (error) {
+        console.error('Error scheduling water reminders:', error);
+        throw error;
+      }
+    };
+
+    initializeNotifications();
   }, []);
 
   // Update local state when userData changes
