@@ -11,5 +11,5 @@ export const API_URL = 'https://fitness-app-backend-6fbi.onrender.com';
 // export const API_URL = 'https://your-app-name.onrender.com';
 
 // App Version - Update this to match build.gradle versionName
-export const APP_VERSION = '1.3.0.4.4';
+export const APP_VERSION = '1.3.0.5';
 export const BUILD_DATE = '2025.12.08';

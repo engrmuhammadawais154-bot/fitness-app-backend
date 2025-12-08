@@ -5,6 +5,7 @@ import { Home, Dumbbell, Soup, User, ArrowLeft, Heart, Target, TrendingUp, Trend
 import { App as CapacitorApp } from '@capacitor/app';
 import { StatusBar, Style } from '@capacitor/status-bar';
 import { LocalNotifications } from '@capacitor/local-notifications';
+import HealthConnect from './plugins/HealthConnect';
 import { auth, db } from './firebase';
 import { APP_VERSION, BUILD_DATE } from './config';
 import { 
@@ -1086,6 +1087,8 @@ const HomeScreen = ({
   const [startingWeight, setStartingWeight] = useState(userData?.startingWeight || userData?.weight || 80.0);
   const [waterIntake, setWaterIntake] = useState(0); // glasses of water today
   const [waterGoal] = useState(8); // recommended 8 glasses per day
+  const [healthData, setHealthData] = useState({ steps: 0, calories: 0, distance: 0, heartRate: 0 });
+  const [healthConnected, setHealthConnected] = useState(false);
   const units = userData?.appPreferences?.units || 'metric';
 
   // Load today's water intake from Firebase
@@ -1312,6 +1315,91 @@ const HomeScreen = ({
     }
   };
 
+  // Connect to Health Connect
+  const connectHealthConnect = async () => {
+    try {
+      const { available } = await HealthConnect.isAvailable();
+      
+      if (!available) {
+        toast.error('Health Connect is not available on this device');
+        return;
+      }
+
+      const { granted } = await HealthConnect.requestPermissions();
+      
+      if (granted) {
+        setHealthConnected(true);
+        toast.success('✅ Connected to Health Connect!');
+        await syncHealthData();
+      }
+    } catch (error) {
+      console.error('Failed to connect Health Connect:', error);
+      toast.error('Failed to connect Health Connect');
+    }
+  };
+
+  // Sync health data from Health Connect
+  const syncHealthData = async () => {
+    try {
+      const startOfDay = new Date();
+      startOfDay.setHours(0, 0, 0, 0);
+      const now = new Date();
+
+      const [steps, calories, distance, heartRate] = await Promise.all([
+        HealthConnect.getSteps({ startTime: startOfDay.getTime(), endTime: now.getTime() }),
+        HealthConnect.getCalories({ startTime: startOfDay.getTime(), endTime: now.getTime() }),
+        HealthConnect.getDistance({ startTime: startOfDay.getTime(), endTime: now.getTime() }),
+        HealthConnect.getHeartRate({ startTime: startOfDay.getTime(), endTime: now.getTime() })
+      ]);
+
+      const newHealthData = {
+        steps: steps.steps || 0,
+        calories: calories.calories || 0,
+        distance: distance.distance || 0,
+        heartRate: heartRate.heartRate || 0
+      };
+
+      setHealthData(newHealthData);
+
+      // Save to Firebase
+      const user = auth.currentUser;
+      if (user) {
+        const today = new Date().toISOString().split('T')[0];
+        await setDoc(doc(db, 'users', user.uid), {
+          healthData: {
+            [today]: newHealthData
+          }
+        }, { merge: true });
+      }
+
+      toast.success('🔄 Health data synced!');
+    } catch (error) {
+      console.error('Failed to sync health data:', error);
+    }
+  };
+
+  // Load health data from Firebase on mount
+  useEffect(() => {
+    const loadHealthData = async () => {
+      if (!userData?.uid) return;
+      try {
+        const userDocRef = doc(db, 'users', userData.uid);
+        const userDoc = await getDoc(userDocRef);
+        if (userDoc.exists()) {
+          const data = userDoc.data();
+          const today = new Date().toISOString().split('T')[0];
+          const todayHealth = data.healthData?.[today];
+          if (todayHealth) {
+            setHealthData(todayHealth);
+            setHealthConnected(true);
+          }
+        }
+      } catch (error) {
+        console.error('Error loading health data:', error);
+      }
+    };
+    loadHealthData();
+  }, [userData?.uid]);
 
   const updateStartingWeight = async (newStarting: number) => {
     setStartingWeight(newStarting);
@@ -1394,6 +1482,92 @@ const HomeScreen = ({
           color="bg-gradient-to-br from-pink-400 via-rose-500 to-fuchsia-600 text-white shadow-lg shadow-pink-500/50"
         />
       </div>
+
+      {/* Health Connect Integration */}
+      {!healthConnected ? (
+        <div className="bg-gradient-to-br from-green-400 via-emerald-500 to-teal-600 rounded-2xl p-6 shadow-xl shadow-green-500/50">
+          <div className="flex items-center justify-between mb-4">
+            <div>
+              <h3 className="text-xl font-bold text-white">📊 Connect Health App</h3>
+              <p className="text-sm text-green-100">Sync data from your smartwatch & fitness trackers</p>
+            </div>
+            <div className="text-4xl">⌚</div>
+          </div>
+          <p className="text-sm text-green-100 mb-4">
+            Automatically track steps, calories, heart rate, and more from:
+          </p>
+          <div className="flex flex-wrap gap-2 mb-4">
+            <span className="text-xs px-3 py-1 bg-white/20 rounded-full text-white">Fitbit</span>
+            <span className="text-xs px-3 py-1 bg-white/20 rounded-full text-white">Garmin</span>
+            <span className="text-xs px-3 py-1 bg-white/20 rounded-full text-white">Samsung Health</span>
+            <span className="text-xs px-3 py-1 bg-white/20 rounded-full text-white">Mi Band</span>
+            <span className="text-xs px-3 py-1 bg-white/20 rounded-full text-white">Wear OS</span>
+          </div>
+          <button
+            onClick={connectHealthConnect}
+            className="w-full bg-white text-green-600 font-bold py-3 px-4 rounded-xl hover:bg-green-50 transition shadow-lg"
+          >
+            Connect Health Connect
+          </button>
+        </div>
+      ) : (
+        <div className="bg-gradient-to-br from-purple-400 via-violet-500 to-indigo-600 rounded-2xl p-6 shadow-xl shadow-purple-500/50">
+          <div className="flex items-center justify-between mb-4">
+            <div>
+              <h3 className="text-xl font-bold text-white">📊 Today's Activity</h3>
+              <p className="text-sm text-purple-100">Synced from Health Connect</p>
+            </div>
+            <button
+              onClick={syncHealthData}
+              className="bg-white/20 hover:bg-white/30 text-white p-2 rounded-lg transition"
+            >
+              <RefreshCw className="w-5 h-5" />
+            </button>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3 mb-4">
+            <div className="bg-white/10 rounded-xl p-3">
+              <div className="text-2xl mb-1">👟</div>
+              <p className="text-2xl font-bold text-white">{healthData.steps.toLocaleString()}</p>
+              <p className="text-xs text-purple-100">Steps</p>
+              <div className="w-full bg-purple-900/30 rounded-full h-1.5 mt-2">
+                <div 
+                  className="bg-white h-1.5 rounded-full transition-all"
+                  style={{ width: `${Math.min((healthData.steps / 10000) * 100, 100)}%` }}
+                />
+              </div>
+            </div>
+
+            <div className="bg-white/10 rounded-xl p-3">
+              <div className="text-2xl mb-1">🔥</div>
+              <p className="text-2xl font-bold text-white">{healthData.calories}</p>
+              <p className="text-xs text-purple-100">Calories Burned</p>
+              <div className="w-full bg-purple-900/30 rounded-full h-1.5 mt-2">
+                <div 
+                  className="bg-orange-400 h-1.5 rounded-full transition-all"
+                  style={{ width: `${Math.min((healthData.calories / 500) * 100, 100)}%` }}
+                />
+              </div>
+            </div>
+
+            <div className="bg-white/10 rounded-xl p-3">
+              <div className="text-2xl mb-1">📏</div>
+              <p className="text-2xl font-bold text-white">{healthData.distance.toFixed(1)}</p>
+              <p className="text-xs text-purple-100">km Traveled</p>
+            </div>
+
+            <div className="bg-white/10 rounded-xl p-3">
+              <div className="text-2xl mb-1">❤️</div>
+              <p className="text-2xl font-bold text-white">{healthData.heartRate || '--'}</p>
+              <p className="text-xs text-purple-100">Avg Heart Rate</p>
+            </div>
+          </div>
+
+          <p className="text-xs text-purple-100 text-center">
+            ✅ Connected to Health Connect
+          </p>
+        </div>
+      )}
 
       {/* Water Intake Tracker */}
       <div className="bg-gradient-to-br from-cyan-400 via-blue-500 to-indigo-600 rounded-2xl p-6 shadow-xl shadow-blue-500/50">
