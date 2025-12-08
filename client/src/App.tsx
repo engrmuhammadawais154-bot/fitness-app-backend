@@ -4,6 +4,7 @@ import React from 'react';
 import { Home, Dumbbell, Soup, User, ArrowLeft, Heart, Target, TrendingUp, TrendingDown, Clock, Search, Mail, Lock, Eye, EyeOff, Edit, X, RefreshCw } from 'lucide-react';
 import { App as CapacitorApp } from '@capacitor/app';
 import { StatusBar, Style } from '@capacitor/status-bar';
+import { LocalNotifications } from '@capacitor/local-notifications';
 import { auth, db } from './firebase';
 import { APP_VERSION, BUILD_DATE } from './config';
 import { 
@@ -1083,7 +1084,86 @@ const HomeScreen = ({
   const [targetWeight, setTargetWeight] = useState(userData?.targetWeight || 75.0);
   const [currentWeight, setCurrentWeight] = useState(userData?.weight || 80.0);
   const [startingWeight, setStartingWeight] = useState(userData?.startingWeight || userData?.weight || 80.0);
+  const [waterIntake, setWaterIntake] = useState(0); // glasses of water today
+  const [waterGoal] = useState(8); // recommended 8 glasses per day
   const units = userData?.appPreferences?.units || 'metric';
+
+  // Load today's water intake from Firebase
+  useEffect(() => {
+    const loadWaterIntake = async () => {
+      if (!userData?.uid) return;
+      try {
+        const userDocRef = doc(db, 'users', userData.uid);
+        const userDoc = await getDoc(userDocRef);
+        if (userDoc.exists()) {
+          const data = userDoc.data();
+          const today = new Date().toISOString().split('T')[0];
+          const todayWater = data.waterIntake?.[today] || 0;
+          setWaterIntake(todayWater);
+        }
+      } catch (error) {
+        console.error('Error loading water intake:', error);
+      }
+    };
+    loadWaterIntake();
+  }, [userData?.uid]);
+
+  // Schedule water reminder notifications
+  useEffect(() => {
+    const scheduleWaterReminders = async () => {
+      try {
+        // Request notification permissions
+        const permission = await LocalNotifications.requestPermissions();
+        
+        if (permission.display === 'granted') {
+          // Cancel existing notifications
+          await LocalNotifications.cancel({ notifications: [{ id: 1 }, { id: 2 }, { id: 3 }, { id: 4 }] });
+          
+          // Get current time
+          const now = new Date();
+          const notifications = [];
+          
+          // Schedule 4 reminders throughout the day (10 AM, 1 PM, 4 PM, 7 PM)
+          const reminderTimes = [
+            { hour: 10, minute: 0, id: 1, title: 'Morning Hydration 💧', body: 'Time for a glass of water! Stay refreshed.' },
+            { hour: 13, minute: 0, id: 2, title: 'Afternoon Hydration 💧', body: 'Keep hydrated! Drink a glass of water.' },
+            { hour: 16, minute: 0, id: 3, title: 'Evening Hydration 💧', body: 'Don\'t forget to drink water!' },
+            { hour: 19, minute: 0, id: 4, title: 'Dinner Time Hydration 💧', body: 'Last reminder! Reach your daily water goal.' }
+          ];
+
+          for (const reminder of reminderTimes) {
+            const scheduleDate = new Date();
+            scheduleDate.setHours(reminder.hour, reminder.minute, 0, 0);
+            
+            // If the time has passed today, schedule for tomorrow
+            if (scheduleDate <= now) {
+              scheduleDate.setDate(scheduleDate.getDate() + 1);
+            }
+
+            notifications.push({
+              id: reminder.id,
+              title: reminder.title,
+              body: reminder.body,
+              schedule: {
+                at: scheduleDate,
+                allowWhileIdle: true
+              },
+              sound: 'default' as any,
+              smallIcon: 'ic_stat_icon_config_sample',
+              iconColor: '#4F46E5'
+            });
+          }
+
+          await LocalNotifications.schedule({ notifications });
+          console.log('Water reminders scheduled:', notifications.length);
+        }
+      } catch (error) {
+        console.log('Notification scheduling not available:', error);
+      }
+    };
+
+    scheduleWaterReminders();
+  }, []);
 
   // Update local state when userData changes
   useEffect(() => {
@@ -1187,6 +1267,52 @@ const HomeScreen = ({
     }
   };
 
+  // Add water glass
+  const addWaterGlass = async () => {
+    const newIntake = waterIntake + 1;
+    setWaterIntake(newIntake);
+    
+    const user = auth.currentUser;
+    if (user) {
+      try {
+        const today = new Date().toISOString().split('T')[0];
+        await setDoc(doc(db, 'users', user.uid), {
+          waterIntake: {
+            [today]: newIntake
+          }
+        }, { merge: true });
+        
+        if (newIntake >= waterGoal) {
+          toast.success('🎉 Daily water goal reached!');
+        }
+      } catch (error) {
+        console.error('Failed to update water intake:', error);
+      }
+    }
+  };
+
+  // Remove water glass
+  const removeWaterGlass = async () => {
+    if (waterIntake === 0) return;
+    const newIntake = waterIntake - 1;
+    setWaterIntake(newIntake);
+    
+    const user = auth.currentUser;
+    if (user) {
+      try {
+        const today = new Date().toISOString().split('T')[0];
+        await setDoc(doc(db, 'users', user.uid), {
+          waterIntake: {
+            [today]: newIntake
+          }
+        }, { merge: true });
+      } catch (error) {
+        console.error('Failed to update water intake:', error);
+      }
+    }
+  };
+
+
   const updateStartingWeight = async (newStarting: number) => {
     setStartingWeight(newStarting);
     
@@ -1267,6 +1393,67 @@ const HomeScreen = ({
           icon={Heart} 
           color="bg-gradient-to-br from-pink-400 via-rose-500 to-fuchsia-600 text-white shadow-lg shadow-pink-500/50"
         />
+      </div>
+
+      {/* Water Intake Tracker */}
+      <div className="bg-gradient-to-br from-cyan-400 via-blue-500 to-indigo-600 rounded-2xl p-6 shadow-xl shadow-blue-500/50">
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-2">
+            <div className="text-3xl">💧</div>
+            <div>
+              <h3 className="text-xl font-bold text-white">Water Intake</h3>
+              <p className="text-sm text-blue-100">Stay hydrated!</p>
+            </div>
+          </div>
+          <div className="text-right">
+            <p className="text-3xl font-bold text-white">{waterIntake}/{waterGoal}</p>
+            <p className="text-xs text-blue-100">glasses</p>
+          </div>
+        </div>
+        
+        {/* Progress Bar */}
+        <div className="w-full bg-blue-900/30 rounded-full h-3 mb-4 overflow-hidden">
+          <div 
+            className="bg-gradient-to-r from-cyan-300 to-blue-200 h-3 rounded-full transition-all duration-500"
+            style={{ width: `${Math.min((waterIntake / waterGoal) * 100, 100)}%` }}
+          />
+        </div>
+
+        {/* Water Glasses Visualization */}
+        <div className="flex gap-2 mb-4 flex-wrap">
+          {[...Array(waterGoal)].map((_, i) => (
+            <div 
+              key={i} 
+              className={`text-2xl transition-all ${i < waterIntake ? 'opacity-100 scale-110' : 'opacity-30'}`}
+            >
+              {i < waterIntake ? '💧' : '🫗'}
+            </div>
+          ))}
+        </div>
+
+        {/* Action Buttons */}
+        <div className="flex gap-2">
+          <button
+            onClick={addWaterGlass}
+            className="flex-1 bg-white/20 hover:bg-white/30 backdrop-blur-sm text-white font-semibold py-3 px-4 rounded-xl transition flex items-center justify-center gap-2"
+          >
+            <span className="text-xl">+</span>
+            <span>Add Glass</span>
+          </button>
+          <button
+            onClick={removeWaterGlass}
+            disabled={waterIntake === 0}
+            className="flex-1 bg-white/20 hover:bg-white/30 backdrop-blur-sm text-white font-semibold py-3 px-4 rounded-xl transition flex items-center justify-center gap-2 disabled:opacity-30 disabled:cursor-not-allowed"
+          >
+            <span className="text-xl">-</span>
+            <span>Remove</span>
+          </button>
+        </div>
+
+        {/* Daily Recommendation */}
+        <p className="text-xs text-blue-100 text-center mt-3">
+          💡 Recommended: 8 glasses (2 liters) per day
+        </p>
       </div>
     </div>
     </>
@@ -3124,7 +3311,7 @@ const DietPlanScreen = ({
     const startOfYear = new Date(now.getFullYear(), 0, 1);
     const daysSinceYearStart = Math.floor((now.getTime() - startOfYear.getTime()) / (1000 * 60 * 60 * 24));
     const weekOfYear = Math.floor(daysSinceYearStart / 7);
-    const calculatedWeek = (weekOfYear % 4) + 1; // Rotate weeks 1-4
+    const calculatedWeek = ((weekOfYear + 1) % 4) + 1; // Rotate weeks 1-4 with offset
     
     console.log('Jump to Today:', {
       date: now.toLocaleDateString(),
@@ -6413,7 +6600,7 @@ const App = () => {
         const startOfYear = new Date(now.getFullYear(), 0, 1);
         const daysSinceYearStart = Math.floor((now.getTime() - startOfYear.getTime()) / (1000 * 60 * 60 * 24));
         const weekOfYear = Math.floor(daysSinceYearStart / 7);
-        const calculatedWeek = (weekOfYear % 4) + 1; // Rotate weeks 1-4
+        const calculatedWeek = ((weekOfYear + 1) % 4) + 1; // Rotate weeks 1-4 with offset
         
         console.log('Meal Plan Auto-Detection:', {
           date: now.toLocaleDateString(),
