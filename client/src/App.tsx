@@ -1318,23 +1318,34 @@ const HomeScreen = ({
   // Connect to Health Connect
   const connectHealthConnect = async () => {
     try {
-      const { available } = await HealthConnect.isAvailable();
+      const result = await HealthConnect.isAvailable();
+      console.log('Health Connect availability:', result);
       
-      if (!available) {
-        toast.error('Health Connect is not available on this device');
+      if (!result.available) {
+        if (result.status === 'update_required') {
+          toast.error('Please update Health Connect app from Play Store');
+        } else if (result.status === 'unavailable') {
+          toast.error('Health Connect is not available. Please install it from Play Store.');
+        } else {
+          toast.error(`Health Connect status: ${result.status || 'unavailable'}`);
+        }
         return;
       }
 
-      const { granted } = await HealthConnect.requestPermissions();
+      const permResult = await HealthConnect.requestPermissions();
+      console.log('Permission result:', permResult);
       
-      if (granted) {
+      if (permResult.granted) {
         setHealthConnected(true);
         toast.success('✅ Connected to Health Connect!');
         await syncHealthData();
+      } else {
+        toast.success('Opening Health Connect for permissions...');
+        // Will open Health Connect app for user to grant permissions
       }
     } catch (error) {
       console.error('Failed to connect Health Connect:', error);
-      toast.error('Failed to connect Health Connect');
+      toast.error('Failed to connect Health Connect. Please try again.');
     }
   };
 

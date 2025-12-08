@@ -1,6 +1,9 @@
 package com.auraflow.app
 
+import android.content.Intent
+import android.net.Uri
 import androidx.health.connect.client.HealthConnectClient
+import androidx.health.connect.client.PermissionController
 import androidx.health.connect.client.permission.HealthPermission
 import androidx.health.connect.client.records.*
 import androidx.health.connect.client.request.ReadRecordsRequest
@@ -32,28 +35,50 @@ class HealthConnectPlugin : Plugin() {
     
     override fun load() {
         super.load()
-        // Don't initialize here, do it on-demand
+        initializeClient()
+    }
+    
+    private fun initializeClient() {
+        try {
+            val availabilityStatus = HealthConnectClient.getSdkStatus(context)
+            if (availabilityStatus == HealthConnectClient.SDK_AVAILABLE) {
+                healthConnectClient = HealthConnectClient.getOrCreate(context)
+            }
+        } catch (e: Exception) {
+            // Health Connect SDK not available
+        }
     }
     
     @PluginMethod
     fun isAvailable(call: PluginCall) {
         val ret = JSObject()
         try {
-            // Check if Health Connect package is installed
-            val packageManager = context.packageManager
-            val healthConnectPackage = "com.google.android.apps.healthdata"
-            packageManager.getPackageInfo(healthConnectPackage, 0)
-            
-            // Package is installed, Health Connect is available
-            ret.put("available", true)
-            
-            // Initialize client if not already done
-            if (healthConnectClient == null) {
-                healthConnectClient = HealthConnectClient.getOrCreate(context)
+            val availabilityStatus = HealthConnectClient.getSdkStatus(context)
+            when (availabilityStatus) {
+                HealthConnectClient.SDK_AVAILABLE -> {
+                    ret.put("available", true)
+                    ret.put("status", "available")
+                    if (healthConnectClient == null) {
+                        healthConnectClient = HealthConnectClient.getOrCreate(context)
+                    }
+                }
+                HealthConnectClient.SDK_UNAVAILABLE -> {
+                    ret.put("available", false)
+                    ret.put("status", "unavailable")
+                }
+                HealthConnectClient.SDK_UNAVAILABLE_PROVIDER_UPDATE_REQUIRED -> {
+                    ret.put("available", false)
+                    ret.put("status", "update_required")
+                }
+                else -> {
+                    ret.put("available", false)
+                    ret.put("status", "unknown")
+                }
             }
         } catch (e: Exception) {
-            // Health Connect not installed
             ret.put("available", false)
+            ret.put("status", "error")
+            ret.put("error", e.message)
         }
         call.resolve(ret)
     }
@@ -62,11 +87,20 @@ class HealthConnectPlugin : Plugin() {
     override fun requestPermissions(call: PluginCall) {
         val client = healthConnectClient
         if (client == null) {
-            call.reject("Health Connect not available")
+            // Try to open Health Connect app on Play Store
+            try {
+                val intent = Intent(Intent.ACTION_VIEW).apply {
+                    data = Uri.parse("market://details?id=com.google.android.apps.healthdata")
+                }
+                activity.startActivity(intent)
+            } catch (e: Exception) {
+                // Ignore
+            }
+            call.reject("Health Connect not initialized. Please install Health Connect from Play Store.")
             return
         }
         
-        CoroutineScope(Dispatchers.IO).launch {
+        CoroutineScope(Dispatchers.Main).launch {
             try {
                 // Check current permissions
                 val granted = client.permissionController.getGrantedPermissions()
@@ -74,11 +108,28 @@ class HealthConnectPlugin : Plugin() {
                 val ret = JSObject()
                 if (granted.containsAll(permissions)) {
                     ret.put("granted", true)
+                    ret.put("message", "All permissions already granted")
+                    call.resolve(ret)
                 } else {
-                    ret.put("granted", false)
-                    ret.put("message", "Please grant permissions in Health Connect app")
+                    // Open Health Connect to grant permissions
+                    try {
+                        val intent = PermissionController.createRequestPermissionResultContract()
+                            .createIntent(context, permissions)
+                        activity.startActivityForResult(intent, 1001)
+                        ret.put("granted", false)
+                        ret.put("message", "Permission request opened")
+                        call.resolve(ret)
+                    } catch (e: Exception) {
+                        // Fallback: Open Health Connect app directly
+                        val intent = Intent().apply {
+                            action = "androidx.health.ACTION_HEALTH_CONNECT_SETTINGS"
+                        }
+                        activity.startActivity(intent)
+                        ret.put("granted", false)
+                        ret.put("message", "Opened Health Connect settings")
+                        call.resolve(ret)
+                    }
                 }
-                call.resolve(ret)
             } catch (e: Exception) {
                 call.reject("Failed to check permissions: ${e.message}")
             }

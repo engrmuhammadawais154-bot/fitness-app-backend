@@ -1,24 +1,24 @@
 import { registerPlugin } from '@capacitor/core';
 
 export interface HealthConnectPlugin {
-  requestPermissions(): Promise<{ granted: boolean }>;
+  requestPermissions(): Promise<{ granted: boolean; message?: string }>;
   getSteps(options: { startTime: number; endTime: number }): Promise<{ steps: number }>;
   getCalories(options: { startTime: number; endTime: number }): Promise<{ calories: number }>;
   getDistance(options: { startTime: number; endTime: number }): Promise<{ distance: number }>;
   getActiveMinutes(options: { startTime: number; endTime: number }): Promise<{ minutes: number }>;
   getHeartRate(options: { startTime: number; endTime: number }): Promise<{ heartRate: number }>;
-  isAvailable(): Promise<{ available: boolean }>;
+  isAvailable(): Promise<{ available: boolean; status?: string; error?: string }>;
 }
 
 const HealthConnect = registerPlugin<HealthConnectPlugin>('HealthConnect', {
   web: () => ({
-    requestPermissions: async () => ({ granted: false }),
+    requestPermissions: async () => ({ granted: false, message: 'Not available on web' }),
     getSteps: async () => ({ steps: 0 }),
     getCalories: async () => ({ calories: 0 }),
     getDistance: async () => ({ distance: 0 }),
     getActiveMinutes: async () => ({ minutes: 0 }),
     getHeartRate: async () => ({ heartRate: 0 }),
-    isAvailable: async () => ({ available: false }),
+    isAvailable: async () => ({ available: false, status: 'web' }),
   }),
 });
 
