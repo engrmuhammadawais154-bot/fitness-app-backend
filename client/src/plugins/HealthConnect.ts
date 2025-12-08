@@ -3,6 +3,7 @@ import { registerPlugin } from '@capacitor/core';
 export interface HealthConnectPlugin {
   requestPermissions(): Promise<{ granted: boolean; message?: string }>;
   checkPermissions(): Promise<{ granted: boolean; grantedCount?: number; requiredCount?: number }>;
+  fetchHealthData(): Promise<{ success: boolean; steps?: number; calories?: number; distance?: number; heartRate?: number; error?: string }>;
   getSteps(options: { startTime: number; endTime: number }): Promise<{ steps: number }>;
   getCalories(options: { startTime: number; endTime: number }): Promise<{ calories: number }>;
   getDistance(options: { startTime: number; endTime: number }): Promise<{ distance: number }>;
@@ -15,6 +16,7 @@ const HealthConnect = registerPlugin<HealthConnectPlugin>('HealthConnect', {
   web: () => ({
     requestPermissions: async () => ({ granted: false, message: 'Not available on web' }),
     checkPermissions: async () => ({ granted: false }),
+    fetchHealthData: async () => ({ success: false, error: 'Not available on web' }),
     getSteps: async () => ({ steps: 0 }),
     getCalories: async () => ({ calories: 0 }),
     getDistance: async () => ({ distance: 0 }),

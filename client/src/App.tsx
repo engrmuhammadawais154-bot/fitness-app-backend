@@ -1397,42 +1397,38 @@ const HomeScreen = ({
   };
 
   // Sync health data from Health Connect
+  // Sync health data from Health Connect (manual refresh)
   const syncHealthData = async () => {
     try {
-      const startOfDay = new Date();
-      startOfDay.setHours(0, 0, 0, 0);
-      const now = new Date();
+      const result = await HealthConnect.fetchHealthData();
+      
+      if (result.success) {
+        const newHealthData = {
+          steps: result.steps || 0,
+          calories: result.calories || 0,
+          distance: result.distance || 0,
+          heartRate: result.heartRate || 0
+        };
 
-      const [steps, calories, distance, heartRate] = await Promise.all([
-        HealthConnect.getSteps({ startTime: startOfDay.getTime(), endTime: now.getTime() }),
-        HealthConnect.getCalories({ startTime: startOfDay.getTime(), endTime: now.getTime() }),
-        HealthConnect.getDistance({ startTime: startOfDay.getTime(), endTime: now.getTime() }),
-        HealthConnect.getHeartRate({ startTime: startOfDay.getTime(), endTime: now.getTime() })
-      ]);
+        setHealthData(newHealthData);
+        setHealthConnected(true);
 
-      const newHealthData = {
-        steps: steps.steps || 0,
-        calories: calories.calories || 0,
-        distance: distance.distance || 0,
-        heartRate: heartRate.heartRate || 0
-      };
+        // Save to Firebase
+        const user = auth.currentUser;
+        if (user) {
+          const today = new Date().toISOString().split('T')[0];
+          await setDoc(doc(db, 'users', user.uid), {
+            healthData: {
+              [today]: newHealthData
+            },
+            healthConnectConnected: true
+          }, { merge: true });
+        }
 
-      setHealthData(newHealthData);
-      setHealthConnected(true);
-
-      // Save to Firebase
-      const user = auth.currentUser;
-      if (user) {
-        const today = new Date().toISOString().split('T')[0];
-        await setDoc(doc(db, 'users', user.uid), {
-          healthData: {
-            [today]: newHealthData
-          },
-          healthConnectConnected: true // Ensure connection status is saved
-        }, { merge: true });
+        toast.success('🔄 Health data synced!');
+      } else {
+        toast.error('Permissions not granted. Please connect to Health Connect first.');
       }
-
-      toast.success('🔄 Health data synced!');
     } catch (error) {
       console.error('Failed to sync health data:', error);
       toast.error('Failed to sync health data. Please try again.');
@@ -1454,7 +1450,7 @@ const HomeScreen = ({
           const todayHealth = data.healthData?.[today];
           if (todayHealth) {
             setHealthData(todayHealth);
-            setHealthConnected(true);
+            // Don't set healthConnected yet - wait for fresh fetch
           }
         }
       } catch (error) {
@@ -1471,53 +1467,42 @@ const HomeScreen = ({
   // Auto-fetch health data - runs every time app opens
   const tryAutoFetchHealthData = async () => {
     try {
-      // Check if Health Connect is available
-      const availResult = await HealthConnect.isAvailable();
-      if (!availResult.available) {
-        console.log('Health Connect not available');
-        return;
-      }
-
-      // Try to fetch data directly - if permissions are granted, this will work
-      const startOfDay = new Date();
-      startOfDay.setHours(0, 0, 0, 0);
-      const now = new Date();
-
       console.log('🔄 Auto-fetching health data...');
+      const result = await HealthConnect.fetchHealthData();
       
-      const [steps, calories, distance, heartRate] = await Promise.all([
-        HealthConnect.getSteps({ startTime: startOfDay.getTime(), endTime: now.getTime() }),
-        HealthConnect.getCalories({ startTime: startOfDay.getTime(), endTime: now.getTime() }),
-        HealthConnect.getDistance({ startTime: startOfDay.getTime(), endTime: now.getTime() }),
-        HealthConnect.getHeartRate({ startTime: startOfDay.getTime(), endTime: now.getTime() })
-      ]);
+      // Only update state if the fetch was actually successful
+      if (result.success) {
+        console.log('✅ Health data fetched:', result);
+        const newHealthData = {
+          steps: result.steps || 0,
+          calories: result.calories || 0,
+          distance: result.distance || 0,
+          heartRate: result.heartRate || 0
+        };
+        
+        setHealthData(newHealthData);
+        setHealthConnected(true); // Hides the "Connect" button
 
-      const newHealthData = {
-        steps: steps.steps || 0,
-        calories: calories.calories || 0,
-        distance: distance.distance || 0,
-        heartRate: heartRate.heartRate || 0
-      };
-      
-      console.log('✅ Health data fetched:', newHealthData);
-      setHealthData(newHealthData);
-      setHealthConnected(true);
-
-      // Save to Firebase
-      const user = auth.currentUser;
-      if (user) {
-        const today = new Date().toISOString().split('T')[0];
-        await setDoc(doc(db, 'users', user.uid), {
-          healthData: {
-            [today]: newHealthData
-          },
-          healthConnectConnected: true
-        }, { merge: true });
+        // Save to Firebase
+        const user = auth.currentUser;
+        if (user) {
+          const today = new Date().toISOString().split('T')[0];
+          await setDoc(doc(db, 'users', user.uid), {
+            healthData: {
+              [today]: newHealthData
+            },
+            healthConnectConnected: true
+          }, { merge: true });
+        }
+      } else {
+        console.log('⚠️ Permissions not granted or fetch failed:', result.error);
+        // Intentionally leave healthConnected as false to show the "Connect" button
+        setHealthConnected(false);
       }
     } catch (error) {
-      // If fetch fails, user probably hasn't granted permissions yet
-      // That's fine - they can tap "Connect" button
-      console.log('Health data fetch failed (user may need to grant permissions):', error);
+      console.error('Health data fetch error:', error);
+      // Keep healthConnected false - show Connect button
+      setHealthConnected(false);
     }
   };
 

@@ -168,6 +168,117 @@ class HealthConnectPlugin : Plugin() {
     }
     
     @PluginMethod
+    fun fetchHealthData(call: PluginCall) {
+        CoroutineScope(Dispatchers.IO).launch {
+            try {
+                val context = activity.applicationContext
+                if (healthConnectClient == null) {
+                    healthConnectClient = HealthConnectClient.getOrCreate(context)
+                }
+                
+                val client = healthConnectClient
+                if (client == null) {
+                    val ret = JSObject()
+                    ret.put("success", false)
+                    ret.put("error", "Health Connect client not available")
+                    call.resolve(ret)
+                    return@launch
+                }
+
+                // CRITICAL FIX: Verify permissions BEFORE reading data
+                val granted = client.permissionController.getGrantedPermissions()
+                if (!granted.containsAll(permissions)) {
+                    // Permissions not granted - return success:false to show Connect button
+                    val ret = JSObject()
+                    ret.put("success", false)
+                    ret.put("error", "Permissions not granted")
+                    call.resolve(ret)
+                    return@launch
+                }
+
+                // Get today's date range
+                val startOfDay = Instant.now().atZone(java.time.ZoneId.systemDefault())
+                    .toLocalDate().atStartOfDay(java.time.ZoneId.systemDefault()).toInstant()
+                val now = Instant.now()
+                val timeRangeFilter = TimeRangeFilter.between(startOfDay, now)
+
+                // Fetch steps
+                var totalSteps = 0L
+                try {
+                    val stepsResponse = client.readRecords(
+                        ReadRecordsRequest(
+                            StepsRecord::class,
+                            timeRangeFilter = timeRangeFilter
+                        )
+                    )
+                    totalSteps = stepsResponse.records.sumOf { it.count }
+                } catch (e: Exception) {
+                    // Log but continue - user might not have step data
+                }
+
+                // Fetch calories
+                var totalCalories = 0.0
+                try {
+                    val caloriesResponse = client.readRecords(
+                        ReadRecordsRequest(
+                            TotalCaloriesBurnedRecord::class,
+                            timeRangeFilter = timeRangeFilter
+                        )
+                    )
+                    totalCalories = caloriesResponse.records.sumOf { it.energy.inKilocalories }
+                } catch (e: Exception) {
+                    // Log but continue
+                }
+
+                // Fetch distance
+                var totalDistance = 0.0
+                try {
+                    val distanceResponse = client.readRecords(
+                        ReadRecordsRequest(
+                            DistanceRecord::class,
+                            timeRangeFilter = timeRangeFilter
+                        )
+                    )
+                    totalDistance = distanceResponse.records.sumOf { it.distance.inKilometers }
+                } catch (e: Exception) {
+                    // Log but continue
+                }
+
+                // Fetch heart rate (average)
+                var avgHeartRate = 0L
+                try {
+                    val heartRateResponse = client.readRecords(
+                        ReadRecordsRequest(
+                            HeartRateRecord::class,
+                            timeRangeFilter = timeRangeFilter
+                        )
+                    )
+                    val allSamples = heartRateResponse.records.flatMap { it.samples }
+                    if (allSamples.isNotEmpty()) {
+                        avgHeartRate = allSamples.map { it.beatsPerMinute }.average().toLong()
+                    }
+                } catch (e: Exception) {
+                    // Log but continue
+                }
+
+                val ret = JSObject()
+                ret.put("steps", totalSteps.toInt())
+                ret.put("calories", totalCalories.toInt())
+                ret.put("distance", totalDistance)
+                ret.put("heartRate", avgHeartRate.toInt())
+                ret.put("success", true)
+                call.resolve(ret)
+
+            } catch (e: Exception) {
+                val ret = JSObject()
+                ret.put("success", false)
+                ret.put("error", e.message ?: "Unknown error")
+                call.resolve(ret)
+            }
+        }
+    }
+    
+    @PluginMethod
     fun getSteps(call: PluginCall) {
         val client = healthConnectClient
         if (client == null) {
