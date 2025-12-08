@@ -2926,6 +2926,141 @@ const DietSurveyScreen = ({ onComplete, userData, initialStep }: { onComplete: (
   );
 };
 
+// Ingredient Substitution Modal Component
+const IngredientSubstitutionModal = ({ 
+  selectedMealForSub, 
+  onClose, 
+  onSave 
+}: { 
+  selectedMealForSub: {week: number, day: number, mealType: string, meal: any};
+  onClose: () => void;
+  onSave: (week: number, day: number, mealType: string, customizations: any) => void;
+}) => {
+  const [localIngredients, setLocalIngredients] = useState(selectedMealForSub.meal.ingredients || []);
+  const [portionSize, setPortionSize] = useState(1.0);
+
+  // Common substitutions database
+  const substitutions: Record<string, string[]> = {
+    'chicken': ['turkey', 'tofu', 'tempeh', 'seitan', 'chickpeas'],
+    'beef': ['turkey', 'lamb', 'bison', 'portobello mushrooms', 'lentils'],
+    'fish': ['salmon', 'tuna', 'cod', 'tilapia', 'shrimp', 'tofu'],
+    'milk': ['almond milk', 'oat milk', 'soy milk', 'coconut milk'],
+    'butter': ['olive oil', 'coconut oil', 'ghee', 'avocado oil'],
+    'eggs': ['flax eggs', 'chia eggs', 'applesauce', 'silken tofu'],
+    'rice': ['quinoa', 'cauliflower rice', 'couscous', 'pasta'],
+    'pasta': ['zucchini noodles', 'shirataki noodles', 'whole wheat pasta', 'rice noodles'],
+  };
+
+  const handleSubstituteIngredient = (index: number, oldIngredient: string) => {
+    const ingredientLower = oldIngredient.toLowerCase();
+    const matchedKey = Object.keys(substitutions).find(key => ingredientLower.includes(key));
+    
+    if (matchedKey) {
+      const alternatives = substitutions[matchedKey];
+      const selected = alternatives[0]; // Use first alternative
+      
+      const newIngredients = [...localIngredients];
+      newIngredients[index] = oldIngredient.replace(new RegExp(matchedKey, 'gi'), selected);
+      setLocalIngredients(newIngredients);
+    }
+  };
+
+  const handleSaveCustomization = () => {
+    onSave(selectedMealForSub.week, selectedMealForSub.day, selectedMealForSub.mealType, {
+      ingredients: localIngredients,
+      portionSize
+    });
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4" onClick={onClose}>
+      <div className="bg-white dark:bg-gray-800 rounded-2xl p-6 max-w-md w-full max-h-[85vh] overflow-y-auto shadow-2xl border border-gray-300 dark:border-orange-500/30" onClick={(e) => e.stopPropagation()}>
+        <h3 className="text-2xl font-bold text-orange-600 dark:text-orange-400 mb-4">✏️ Customize Meal</h3>
+        
+        <div className="bg-orange-50 dark:bg-orange-900/20 p-3 rounded-lg mb-4">
+          <p className="text-sm font-semibold text-orange-900 dark:text-orange-300">{selectedMealForSub.meal.name}</p>
+          <p className="text-xs text-orange-700 dark:text-orange-400">Week {selectedMealForSub.week}, Day {selectedMealForSub.day}</p>
+        </div>
+
+        {/* Portion Size Adjuster */}
+        <div className="mb-4">
+          <p className="text-sm font-semibold text-gray-900 dark:text-white mb-2">Portion Size</p>
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => setPortionSize(Math.max(0.5, portionSize - 0.25))}
+              className="px-3 py-2 bg-orange-500 hover:bg-orange-600 text-white rounded-lg font-bold"
+            >
+              -
+            </button>
+            <span className="text-lg font-bold text-gray-900 dark:text-white min-w-[60px] text-center">
+              {portionSize.toFixed(2)}x
+            </span>
+            <button
+              onClick={() => setPortionSize(Math.min(2.0, portionSize + 0.25))}
+              className="px-3 py-2 bg-orange-500 hover:bg-orange-600 text-white rounded-lg font-bold"
+            >
+              +
+            </button>
+          </div>
+          <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+            Macros will be adjusted: {Math.round(selectedMealForSub.meal.macros.calories * portionSize)} cal
+          </p>
+        </div>
+
+        {/* Ingredients List with Substitution */}
+        <div className="mb-4">
+          <p className="text-sm font-semibold text-gray-900 dark:text-white mb-2">Ingredients</p>
+          <div className="space-y-2 max-h-64 overflow-y-auto">
+            {localIngredients.map((ingredient: string, idx: number) => {
+              const ingredientLower = ingredient.toLowerCase();
+              const hasSubstitution = Object.keys(substitutions).some(key => ingredientLower.includes(key));
+              
+              return (
+                <div key={idx} className="flex items-center gap-2">
+                  <input
+                    type="text"
+                    value={ingredient}
+                    onChange={(e) => {
+                      const newIngredients = [...localIngredients];
+                      newIngredients[idx] = e.target.value;
+                      setLocalIngredients(newIngredients);
+                    }}
+                    className="flex-1 px-3 py-2 bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-white text-xs rounded-lg border-2 border-gray-300 dark:border-gray-600"
+                  />
+                  {hasSubstitution && (
+                    <button
+                      onClick={() => handleSubstituteIngredient(idx, ingredient)}
+                      className="px-2 py-2 bg-blue-500 hover:bg-blue-600 text-white text-xs rounded-lg"
+                      title="Suggest substitute"
+                    >
+                      🔁
+                    </button>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Save Button */}
+        <button
+          onClick={handleSaveCustomization}
+          className="w-full py-3 bg-gradient-to-r from-orange-500 to-red-500 hover:from-orange-600 hover:to-red-600 text-white rounded-xl font-semibold transition mb-2"
+        >
+          Save Customization
+        </button>
+
+        <button
+          onClick={onClose}
+          className="w-full py-3 bg-gray-200 dark:bg-gray-700 text-gray-900 dark:text-white hover:bg-gray-300 dark:hover:bg-gray-600 rounded-xl font-semibold transition"
+        >
+          Cancel
+        </button>
+      </div>
+    </div>
+  );
+};
+
 // 2. Diet Plan Screens
 const DietPlanScreen = ({ 
   goal, setGoal, showPlanModal, setShowPlanModal, userData, isPremium, 
@@ -2984,13 +3119,38 @@ const DietPlanScreen = ({
   const jumpToToday = async () => {
     setCurrentDay(todayDayOfWeek);
     
-    // Calculate current week from meal plan start date
-    if (userData?.mealPlanStartDate) {
-      const daysSinceStart = Math.floor((Date.now() - userData.mealPlanStartDate) / (1000 * 60 * 60 * 24));
-      const calculatedWeek = (Math.floor(daysSinceStart / 7) % 4) + 1;
-      setCurrentWeek(calculatedWeek);
-    } else {
-      setCurrentWeek(1);
+    // Calculate current week from meal plan start date - fetch from Firebase directly
+    try {
+      if (!userData?.uid) {
+        // Fallback to week 1 if no user
+        setCurrentWeek(1);
+        return;
+      }
+
+      const userDocRef = doc(db, 'users', userData.uid);
+      const userDoc = await getDoc(userDocRef);
+      
+      if (userDoc.exists()) {
+        const data = userDoc.data();
+        const mealPlanStartDate = data.mealPlanStartDate;
+        
+        if (mealPlanStartDate) {
+          const daysSinceStart = Math.floor((Date.now() - mealPlanStartDate) / (1000 * 60 * 60 * 24));
+          const calculatedWeek = (Math.floor(daysSinceStart / 7) % 4) + 1; // Rotate through weeks 1-4
+          setCurrentWeek(calculatedWeek);
+        } else {
+          // No start date set yet, initialize it
+          await updateDoc(userDocRef, {
+            mealPlanStartDate: Date.now()
+          });
+          setCurrentWeek(1);
+        }
+      } else {
+        setCurrentWeek(1);
+      }
+    } catch (error) {
+      console.error('Error calculating current week:', error);
+      setCurrentWeek(1); // Fallback to week 1
     }
   };
 
@@ -3845,7 +4005,48 @@ const DietPlanScreen = ({
                                          mealTypes;
                     
                     return selectedMeals.map((mealType, index) => {
-                      const meal = dayPlan.meals[mealType.key as keyof typeof dayPlan.meals] as Meal | null;
+                      let meal = dayPlan.meals[mealType.key as keyof typeof dayPlan.meals] as Meal | null;
+                      if (!meal) return null;
+
+                      // Check if this meal slot has been swapped
+                      const swapKey = `w${currentWeek}-d${currentDay}-${mealType.key}`;
+                      const swapInfo = swappedMeals[swapKey];
+                      
+                      // If swapped, fetch the meal from the swapped location
+                      if (swapInfo) {
+                        const swappedDayPlan = mealDatabase.find((p: any) => 
+                          p.week === swapInfo.week && p.day === swapInfo.day
+                        );
+                        if (swappedDayPlan) {
+                          meal = swappedDayPlan.meals[swapInfo.mealType as keyof typeof swappedDayPlan.meals] as Meal | null;
+                        }
+                      }
+
+                      // Apply customizations if any
+                      const customKey = `w${currentWeek}-d${currentDay}-${mealType.key}`;
+                      const customizations = customizedMeals[customKey];
+                      
+                      if (customizations && meal) {
+                        // Apply ingredient customizations
+                        if (customizations.ingredients) {
+                          meal = { ...meal, ingredients: customizations.ingredients };
+                        }
+                        
+                        // Apply portion size adjustments to macros
+                        if (customizations.portionSize) {
+                          const portionMultiplier = customizations.portionSize;
+                          meal = {
+                            ...meal,
+                            macros: {
+                              calories: Math.round(meal.macros.calories * portionMultiplier),
+                              protein: Math.round(meal.macros.protein * portionMultiplier),
+                              carbs: Math.round(meal.macros.carbs * portionMultiplier),
+                              fats: Math.round(meal.macros.fats * portionMultiplier)
+                            }
+                          };
+                        }
+                      }
+
                       if (!meal) return null;
                       
                       // Check if meal matches cooking skill preference
@@ -4242,133 +4443,11 @@ const DietPlanScreen = ({
 
       {/* Ingredient Substitution Modal */}
       {showSubstitutionModal && selectedMealForSub && (
-        <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4" onClick={() => setShowSubstitutionModal(false)}>
-          <div className="bg-white dark:bg-gray-800 rounded-2xl p-6 max-w-md w-full max-h-[85vh] overflow-y-auto shadow-2xl border border-gray-300 dark:border-orange-500/30" onClick={(e) => e.stopPropagation()}>
-            <h3 className="text-2xl font-bold text-orange-600 dark:text-orange-400 mb-4">✏️ Customize Meal</h3>
-            
-            <div className="bg-orange-50 dark:bg-orange-900/20 p-3 rounded-lg mb-4">
-              <p className="text-sm font-semibold text-orange-900 dark:text-orange-300">{selectedMealForSub.meal.name}</p>
-              <p className="text-xs text-orange-700 dark:text-orange-400">Week {selectedMealForSub.week}, Day {selectedMealForSub.day}</p>
-            </div>
-
-            {(() => {
-              const [localIngredients, setLocalIngredients] = React.useState(selectedMealForSub.meal.ingredients || []);
-              const [portionSize, setPortionSize] = React.useState(1.0);
-
-              // Common substitutions database
-              const substitutions: Record<string, string[]> = {
-                'chicken': ['turkey', 'tofu', 'tempeh', 'seitan', 'chickpeas'],
-                'beef': ['turkey', 'lamb', 'bison', 'portobello mushrooms', 'lentils'],
-                'fish': ['salmon', 'tuna', 'cod', 'tilapia', 'shrimp', 'tofu'],
-                'milk': ['almond milk', 'oat milk', 'soy milk', 'coconut milk'],
-                'butter': ['olive oil', 'coconut oil', 'ghee', 'avocado oil'],
-                'eggs': ['flax eggs', 'chia eggs', 'applesauce', 'silken tofu'],
-                'rice': ['quinoa', 'cauliflower rice', 'couscous', 'pasta'],
-                'pasta': ['zucchini noodles', 'shirataki noodles', 'whole wheat pasta', 'rice noodles'],
-              };
-
-              const handleSubstituteIngredient = (index: number, oldIngredient: string) => {
-                const ingredientLower = oldIngredient.toLowerCase();
-                const matchedKey = Object.keys(substitutions).find(key => ingredientLower.includes(key));
-                
-                if (matchedKey) {
-                  const alternatives = substitutions[matchedKey];
-                  const selected = alternatives[0]; // Use first alternative
-                  
-                  const newIngredients = [...localIngredients];
-                  newIngredients[index] = oldIngredient.replace(new RegExp(matchedKey, 'gi'), selected);
-                  setLocalIngredients(newIngredients);
-                }
-              };
-
-              const handleSaveCustomization = () => {
-                customizeMeal(selectedMealForSub.week, selectedMealForSub.day, selectedMealForSub.mealType, {
-                  ingredients: localIngredients,
-                  portionSize
-                });
-              };
-
-              return (
-                <>
-                  {/* Portion Size Adjuster */}
-                  <div className="mb-4">
-                    <p className="text-sm font-semibold text-gray-900 dark:text-white mb-2">Portion Size</p>
-                    <div className="flex items-center gap-3">
-                      <button
-                        onClick={() => setPortionSize(Math.max(0.5, portionSize - 0.25))}
-                        className="px-3 py-2 bg-orange-500 hover:bg-orange-600 text-white rounded-lg font-bold"
-                      >
-                        -
-                      </button>
-                      <span className="text-lg font-bold text-gray-900 dark:text-white min-w-[60px] text-center">
-                        {portionSize.toFixed(2)}x
-                      </span>
-                      <button
-                        onClick={() => setPortionSize(Math.min(2.0, portionSize + 0.25))}
-                        className="px-3 py-2 bg-orange-500 hover:bg-orange-600 text-white rounded-lg font-bold"
-                      >
-                        +
-                      </button>
-                    </div>
-                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                      Macros will be adjusted: {Math.round(selectedMealForSub.meal.macros.calories * portionSize)} cal
-                    </p>
-                  </div>
-
-                  {/* Ingredients List with Substitution */}
-                  <div className="mb-4">
-                    <p className="text-sm font-semibold text-gray-900 dark:text-white mb-2">Ingredients</p>
-                    <div className="space-y-2 max-h-64 overflow-y-auto">
-                      {localIngredients.map((ingredient: string, idx: number) => {
-                        const ingredientLower = ingredient.toLowerCase();
-                        const hasSubstitution = Object.keys(substitutions).some(key => ingredientLower.includes(key));
-                        
-                        return (
-                          <div key={idx} className="flex items-center gap-2">
-                            <input
-                              type="text"
-                              value={ingredient}
-                              onChange={(e) => {
-                                const newIngredients = [...localIngredients];
-                                newIngredients[idx] = e.target.value;
-                                setLocalIngredients(newIngredients);
-                              }}
-                              className="flex-1 px-3 py-2 bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-white text-xs rounded-lg border-2 border-gray-300 dark:border-gray-600"
-                            />
-                            {hasSubstitution && (
-                              <button
-                                onClick={() => handleSubstituteIngredient(idx, ingredient)}
-                                className="px-2 py-2 bg-blue-500 hover:bg-blue-600 text-white text-xs rounded-lg"
-                                title="Suggest substitute"
-                              >
-                                🔁
-                              </button>
-                            )}
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-
-                  {/* Save Button */}
-                  <button
-                    onClick={handleSaveCustomization}
-                    className="w-full py-3 bg-gradient-to-r from-orange-500 to-red-500 hover:from-orange-600 hover:to-red-600 text-white rounded-xl font-semibold transition mb-2"
-                  >
-                    Save Customization
-                  </button>
-
-                  <button
-                    onClick={() => setShowSubstitutionModal(false)}
-                    className="w-full py-3 bg-gray-200 dark:bg-gray-700 text-gray-900 dark:text-white hover:bg-gray-300 dark:hover:bg-gray-600 rounded-xl font-semibold transition"
-                  >
-                    Cancel
-                  </button>
-                </>
-              );
-            })()}
-          </div>
-        </div>
+        <IngredientSubstitutionModal
+          selectedMealForSub={selectedMealForSub}
+          onClose={() => setShowSubstitutionModal(false)}
+          onSave={customizeMeal}
+        />
       )}
 
       {/* Premium Lock Overlay */}
