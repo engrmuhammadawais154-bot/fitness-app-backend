@@ -87,15 +87,6 @@ class HealthConnectPlugin : Plugin() {
     override fun requestPermissions(call: PluginCall) {
         val client = healthConnectClient
         if (client == null) {
-            // Try to open Health Connect app on Play Store
-            try {
-                val intent = Intent(Intent.ACTION_VIEW).apply {
-                    data = Uri.parse("market://details?id=com.google.android.apps.healthdata")
-                }
-                activity.startActivity(intent)
-            } catch (e: Exception) {
-                // Ignore
-            }
             call.reject("Health Connect not initialized. Please install Health Connect from Play Store.")
             return
         }
@@ -105,33 +96,49 @@ class HealthConnectPlugin : Plugin() {
                 // Check current permissions
                 val granted = client.permissionController.getGrantedPermissions()
                 
-                val ret = JSObject()
                 if (granted.containsAll(permissions)) {
+                    val ret = JSObject()
                     ret.put("granted", true)
                     ret.put("message", "All permissions already granted")
                     call.resolve(ret)
                 } else {
-                    // Open Health Connect to grant permissions
+                    // Request permissions using the permission controller
                     try {
-                        val intent = PermissionController.createRequestPermissionResultContract()
-                            .createIntent(context, permissions)
-                        activity.startActivityForResult(intent, 1001)
+                        // Create the permission request intent
+                        val permissionContract = PermissionController.createRequestPermissionResultContract()
+                        val intent = permissionContract.createIntent(context, permissions)
+                        
+                        // Launch the Health Connect permission screen
+                        activity.startActivity(intent)
+                        
+                        val ret = JSObject()
                         ret.put("granted", false)
                         ret.put("message", "Permission request opened")
                         call.resolve(ret)
                     } catch (e: Exception) {
-                        // Fallback: Open Health Connect app directly
-                        val intent = Intent().apply {
-                            action = "androidx.health.ACTION_HEALTH_CONNECT_SETTINGS"
+                        // Fallback: Open Health Connect settings
+                        try {
+                            val packageManager = context.packageManager
+                            val intent = packageManager.getLaunchIntentForPackage("com.google.android.apps.healthdata")
+                            if (intent != null) {
+                                activity.startActivity(intent)
+                            }
+                        } catch (ex: Exception) {
+                            // Last resort: Open on Play Store
+                            val playStoreIntent = Intent(Intent.ACTION_VIEW).apply {
+                                data = Uri.parse("market://details?id=com.google.android.apps.healthdata")
+                            }
+                            activity.startActivity(playStoreIntent)
                         }
-                        activity.startActivity(intent)
+                        
+                        val ret = JSObject()
                         ret.put("granted", false)
-                        ret.put("message", "Opened Health Connect settings")
+                        ret.put("message", "Please grant permissions manually in Health Connect")
                         call.resolve(ret)
                     }
                 }
             } catch (e: Exception) {
-                call.reject("Failed to check permissions: ${e.message}")
+                call.reject("Failed to request permissions: ${e.message}")
             }
         }
     }
