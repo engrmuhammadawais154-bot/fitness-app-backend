@@ -2184,19 +2184,19 @@ const AuthScreen = ({ onLogin }: { onLogin: () => void }) => {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-50 to-indigo-50 dark:from-gray-900 dark:via-indigo-900 dark:to-gray-900 flex items-center justify-center p-4 transition-colors duration-200">
+    <div className="min-h-screen bg-gradient-to-br from-gray-50 to-indigo-50 dark:from-gray-900 dark:via-indigo-900 dark:to-gray-900 flex items-center justify-center p-4 transition-colors duration-200" style={{ paddingTop: 'max(env(safe-area-inset-top), 20px)', paddingBottom: 'max(env(safe-area-inset-bottom), 20px)' }}>
       <div className="w-full max-w-md">
         {/* Logo/Header */}
-        <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-16 h-16 bg-indigo-600 dark:bg-indigo-600 rounded-full mb-4">
-            <Dumbbell className="w-8 h-8 text-white" />
+        <div className="text-center mb-6 sm:mb-8">
+          <div className="inline-flex items-center justify-center w-14 h-14 sm:w-16 sm:h-16 bg-indigo-600 dark:bg-indigo-600 rounded-full mb-3 sm:mb-4">
+            <Dumbbell className="w-7 h-7 sm:w-8 sm:h-8 text-white" />
           </div>
-          <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">Aura Flow</h1>
-          <p className="text-gray-700 dark:text-white/70">Your journey to better health starts here</p>
+          <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-white mb-2">Aura Flow</h1>
+          <p className="text-sm sm:text-base text-gray-700 dark:text-white/70">Your journey to better health starts here</p>
         </div>
 
         {/* Auth Card */}
-        <div className="bg-white/90 dark:bg-gray-800/50 backdrop-blur-lg rounded-2xl p-8 shadow-2xl border border-gray-200 dark:border-gray-700 transition-colors duration-200">
+        <div className="bg-white/90 dark:bg-gray-800/50 backdrop-blur-lg rounded-2xl p-4 sm:p-6 md:p-8 shadow-2xl border border-gray-200 dark:border-gray-700 transition-colors duration-200">
           {error && (
             <div className="mb-4 p-3 bg-red-100 dark:bg-red-500/20 border border-red-300 dark:border-red-500/50 rounded-lg text-red-700 dark:text-red-300 text-sm">
               {error}
@@ -7630,7 +7630,7 @@ const App = () => {
 
   return (
     // Premium Mobile Container: Theme-aware Background
-    <div className="min-h-screen bg-gradient-to-br from-indigo-50 via-purple-50 to-pink-50 dark:from-gray-900 dark:via-indigo-900/20 dark:to-gray-900 flex justify-center text-gray-900 dark:text-white transition-colors duration-200" style={{ paddingTop: 'env(safe-area-inset-top)', paddingLeft: 'env(safe-area-inset-left)', paddingRight: 'env(safe-area-inset-right)' }}>
+    <div className="min-h-screen bg-gradient-to-br from-indigo-50 via-purple-50 to-pink-50 dark:from-gray-900 dark:via-indigo-900/20 dark:to-gray-900 flex justify-center text-gray-900 dark:text-white transition-colors duration-200" style={{ paddingTop: 'max(env(safe-area-inset-top), 0px)', paddingLeft: 'env(safe-area-inset-left)', paddingRight: 'env(safe-area-inset-right)' }}>
       <Toaster 
         position="top-center"
         containerStyle={{
@@ -7683,7 +7683,7 @@ const App = () => {
           style={{ overscrollBehavior: 'none', WebkitOverflowScrolling: 'touch' }}
         >
           {/* Padding bottom prevents content from being hidden behind fixed nav */}
-          <div className="min-h-full pb-[calc(72px+env(safe-area-inset-bottom)+20px)]">
+          <div className="min-h-full" style={{ paddingBottom: 'calc(clamp(64px, 15vh, 80px) + max(env(safe-area-inset-bottom), 12px))' }}>
             {renderContent()}
           </div>
         </main>
@@ -7691,8 +7691,8 @@ const App = () => {
         {/* --- SECTION B: FIXED BOTTOM NAVIGATION --- */}
         {/* Completely outside scrolling context */}
         <nav className="block w-full z-50 bg-white dark:bg-gray-800 border-t-2 border-gray-300 dark:border-indigo-400 shadow-2xl transition-colors duration-200">
-          <div className="pb-[env(safe-area-inset-bottom)]">
-            <ul className="h-[72px] flex justify-around items-center px-2">
+          <div style={{ paddingBottom: 'max(env(safe-area-inset-bottom), 8px)' }}>
+            <ul className="flex justify-around items-center px-2" style={{ height: 'clamp(64px, 15vh, 72px)' }}>
               <NavItem icon={Home} label="Home" active={activeTab === 'home'} onClick={() => { setActiveTab('home'); setActiveSettingsScreen(null); }} />
               <NavItem icon={Soup} label="Diet Plan" active={activeTab === 'diet'} onClick={() => { setActiveTab('diet'); setActiveSettingsScreen(null); }} />
               <NavItem icon={Dumbbell} label="Exercises" active={activeTab === 'exercise'} onClick={() => { setActiveTab('exercise'); setActiveSettingsScreen(null); }} />
