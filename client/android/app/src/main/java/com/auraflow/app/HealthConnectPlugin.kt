@@ -32,17 +32,29 @@ class HealthConnectPlugin : Plugin() {
     
     override fun load() {
         super.load()
-        try {
-            healthConnectClient = HealthConnectClient.getOrCreate(context)
-        } catch (e: Exception) {
-            // Health Connect not available
-        }
+        // Don't initialize here, do it on-demand
     }
     
     @PluginMethod
     fun isAvailable(call: PluginCall) {
         val ret = JSObject()
-        ret.put("available", healthConnectClient != null)
+        try {
+            // Check if Health Connect package is installed
+            val packageManager = context.packageManager
+            val healthConnectPackage = "com.google.android.apps.healthdata"
+            packageManager.getPackageInfo(healthConnectPackage, 0)
+            
+            // Package is installed, Health Connect is available
+            ret.put("available", true)
+            
+            // Initialize client if not already done
+            if (healthConnectClient == null) {
+                healthConnectClient = HealthConnectClient.getOrCreate(context)
+            }
+        } catch (e: Exception) {
+            // Health Connect not installed
+            ret.put("available", false)
+        }
         call.resolve(ret)
     }
     

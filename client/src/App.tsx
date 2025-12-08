@@ -7622,6 +7622,9 @@ const App = () => {
     <div className="min-h-screen bg-gradient-to-br from-indigo-50 via-purple-50 to-pink-50 dark:from-gray-900 dark:via-indigo-900/20 dark:to-gray-900 flex justify-center text-gray-900 dark:text-white transition-colors duration-200" style={{ paddingTop: 'env(safe-area-inset-top)', paddingLeft: 'env(safe-area-inset-left)', paddingRight: 'env(safe-area-inset-right)' }}>
       <Toaster 
         position="top-center"
+        containerStyle={{
+          top: 60,
+        }}
         toastOptions={{
           duration: 3000,
           style: {
