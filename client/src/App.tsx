@@ -1439,10 +1439,12 @@ const HomeScreen = ({
     }
   };
 
-  // Load health data from Firebase on mount
+  // Load health data from Firebase on mount AND auto-fetch from Health Connect
   useEffect(() => {
     const loadHealthData = async () => {
       if (!userData?.uid) return;
+      
+      // Load cached data from Firebase first (for instant display)
       try {
         const userDocRef = doc(db, 'users', userData.uid);
         const userDoc = await getDoc(userDocRef);
@@ -1452,80 +1454,44 @@ const HomeScreen = ({
           const todayHealth = data.healthData?.[today];
           if (todayHealth) {
             setHealthData(todayHealth);
-            setHealthConnected(true); // Show cached data immediately
-          }
-          
-          // Check if user has previously connected Health Connect
-          const hasConnectedBefore = data.healthConnectConnected === true;
-          if (hasConnectedBefore) {
-            console.log('Health Connect was previously connected, attempting auto-sync...');
-            try {
-              // First check if Health Connect is available on device
-              const availResult = await HealthConnect.isAvailable();
-              console.log('Health Connect availability:', availResult);
-              
-              if (!availResult.available) {
-                console.log('Health Connect not available on device');
-                // Keep showing cached data if available
-                return;
-              }
-              
-              // Now check if permissions are still granted
-              const permCheck = await HealthConnect.checkPermissions();
-              console.log('Permission check result:', permCheck);
-              
-              if (permCheck.granted) {
-                // Permissions still granted, auto-sync
-                console.log('✅ Permissions granted, auto-syncing...');
-                setHealthConnected(true);
-                await autoSyncHealthData();
-              } else {
-                // Permissions revoked, but keep cached data visible
-                console.log('⚠️ Permissions not fully granted, user may need to reconnect');
-                if (!todayHealth) {
-                  setHealthConnected(false);
-                }
-              }
-            } catch (error) {
-              console.error('Error during auto-sync check:', error);
-              // Keep cached data visible on error - don't disconnect
-              if (todayHealth) {
-                console.log('Keeping cached health data visible');
-              }
-            }
+            setHealthConnected(true);
           }
         }
       } catch (error) {
-        console.error('Error loading health data:', error);
+        console.error('Error loading cached health data:', error);
       }
+      
+      // Always try to fetch fresh data from Health Connect
+      await tryAutoFetchHealthData();
     };
+    
     loadHealthData();
   }, [userData?.uid]);
 
-  // Auto-sync function (silent, no toast notifications)
-  const autoSyncHealthData = async () => {
+  // Auto-fetch health data - runs every time app opens
+  const tryAutoFetchHealthData = async () => {
     try {
-      // Check if Health Connect is still available
-      const result = await HealthConnect.isAvailable();
-      if (!result.available) {
-        console.log('Health Connect no longer available');
-        // Don't set healthConnected to false - keep cached data
+      // Check if Health Connect is available
+      const availResult = await HealthConnect.isAvailable();
+      if (!availResult.available) {
+        console.log('Health Connect not available');
         return;
       }
 
-      // Try to fetch data - this will succeed if permissions are granted
+      // Try to fetch data directly - if permissions are granted, this will work
       const startOfDay = new Date();
       startOfDay.setHours(0, 0, 0, 0);
       const now = new Date();
 
+      console.log('🔄 Auto-fetching health data...');
+      
       const [steps, calories, distance, heartRate] = await Promise.all([
-        HealthConnect.getSteps({ startTime: startOfDay.getTime(), endTime: now.getTime() }).catch(e => ({ steps: 0 })),
-        HealthConnect.getCalories({ startTime: startOfDay.getTime(), endTime: now.getTime() }).catch(e => ({ calories: 0 })),
-        HealthConnect.getDistance({ startTime: startOfDay.getTime(), endTime: now.getTime() }).catch(e => ({ distance: 0 })),
-        HealthConnect.getHeartRate({ startTime: startOfDay.getTime(), endTime: now.getTime() }).catch(e => ({ heartRate: 0 }))
+        HealthConnect.getSteps({ startTime: startOfDay.getTime(), endTime: now.getTime() }),
+        HealthConnect.getCalories({ startTime: startOfDay.getTime(), endTime: now.getTime() }),
+        HealthConnect.getDistance({ startTime: startOfDay.getTime(), endTime: now.getTime() }),
+        HealthConnect.getHeartRate({ startTime: startOfDay.getTime(), endTime: now.getTime() })
       ]);
 
-      // Build health data object - 0 values are valid (user might have 0 steps early morning)
       const newHealthData = {
         steps: steps.steps || 0,
         calories: calories.calories || 0,
@@ -1533,8 +1499,7 @@ const HomeScreen = ({
         heartRate: heartRate.heartRate || 0
       };
       
-      // Always update UI with fetched data (permissions were already verified)
-      console.log('✅ Auto-sync successful:', newHealthData);
+      console.log('✅ Health data fetched:', newHealthData);
       setHealthData(newHealthData);
       setHealthConnected(true);
 
@@ -1545,12 +1510,14 @@ const HomeScreen = ({
         await setDoc(doc(db, 'users', user.uid), {
           healthData: {
             [today]: newHealthData
-          }
+          },
+          healthConnectConnected: true
         }, { merge: true });
       }
     } catch (error) {
-      console.error('Auto-sync failed (silent):', error);
-      // Silent fail - don't disconnect, keep cached data visible
+      // If fetch fails, user probably hasn't granted permissions yet
+      // That's fine - they can tap "Connect" button
+      console.log('Health data fetch failed (user may need to grant permissions):', error);
     }
   };
 
