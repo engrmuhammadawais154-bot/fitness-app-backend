@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
+import React from 'react';
 // Using lucide-react for modern, clean icons (assumed available in the environment)
 import { Home, Dumbbell, Soup, User, ArrowLeft, Heart, Target, TrendingUp, TrendingDown, Clock, Search, Mail, Lock, Eye, EyeOff, Edit, X, RefreshCw } from 'lucide-react';
 import { App as CapacitorApp } from '@capacitor/app';
@@ -2932,7 +2933,7 @@ const DietPlanScreen = ({
   logMeal, loggedMeals, removeLoggedMeal, calculateDailyTotals, showMacroSummary, setShowMacroSummary,
   swappedMeals, selectedMealForSwap, setSelectedMealForSwap, showSwapModal, setShowSwapModal, swapMeal, resetSwap,
   customizedMeals, selectedMealForSub, setSelectedMealForSub, showSubstitutionModal, setShowSubstitutionModal, 
-  customizeMeal, resetCustomization, getActualMeal, applyCustomizations
+  customizeMeal, resetCustomization
 }: {
   goal: string | null;
   setGoal: (goal: string | null) => void;
@@ -2966,8 +2967,6 @@ const DietPlanScreen = ({
   setShowSubstitutionModal: (show: boolean) => void;
   customizeMeal: (week: number, day: number, mealType: string, customizations: any) => Promise<void>;
   resetCustomization: (week: number, day: number, mealType: string) => Promise<void>;
-  getActualMeal: (week: number, day: number, mealType: string, originalMeal: any) => any;
-  applyCustomizations: (week: number, day: number, mealType: string, meal: any) => any;
 }) => {
   const [showPremiumLock, setShowPremiumLock] = useState(false);
 
@@ -6609,7 +6608,9 @@ const App = () => {
     }
   };
 
-  // Helper function to get the actual meal (considering swaps)
+  // Helper function to get the actual meal (considering swaps) - Reserved for future feature
+  // @ts-ignore - kept for future use
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const getActualMeal = (week: number, day: number, mealType: string, originalMeal: any) => {
     const swapKey = `w${week}-d${day}-${mealType}`;
     const swapInfo = swappedMeals[swapKey];
@@ -6622,7 +6623,9 @@ const App = () => {
     return { ...originalMeal, isSwapped: false };
   };
 
-  // Helper function to apply customizations to a meal
+  // Helper function to apply customizations to a meal - Reserved for future feature
+  // @ts-ignore - kept for future use
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const applyCustomizations = (week: number, day: number, mealType: string, meal: any) => {
     const customKey = `w${week}-d${day}-${mealType}`;
     const customizations = customizedMeals[customKey];
@@ -7177,8 +7180,6 @@ const App = () => {
           setShowSubstitutionModal={setShowSubstitutionModal}
           customizeMeal={customizeMeal}
           resetCustomization={resetCustomization}
-          getActualMeal={getActualMeal}
-          applyCustomizations={applyCustomizations}
         />;
       case 'exercise':
         return <ExerciseFinderScreen 
