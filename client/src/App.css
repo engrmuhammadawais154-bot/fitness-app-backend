@@ -62,12 +62,16 @@ body {
 }
 
 #root {
-  max-width: 480px;
+  width: 100%;
+  max-width: min(30rem, 95vw);
   margin: 0 auto;
   padding: 2.5rem 1rem;
+  overflow-x: hidden;
 }
 
 .fitness-app-container {
+  width: 100%;
+  max-width: 100%;
   background: rgba(24,24,24,0.98);
   border-radius: 2rem;
   box-shadow: 0 8px 40px 0 #b91c1c33;
@@ -76,6 +80,7 @@ body {
   text-align: center;
   position: relative;
   animation: fadeIn 0.7s cubic-bezier(.4,0,.2,1);
+  overflow-x: hidden;
 }
 
 @keyframes fadeIn {

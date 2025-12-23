@@ -6,7 +6,7 @@
   box-shadow: 0 8px 40px 0 #b91c1c33;
   padding: 2.7rem 2.2rem 2.2rem 2.2rem;
   margin-top: 2.5rem;
-  max-width: 520px;
+  max-width: min(520px, 90vw);
   margin-left: auto;
   margin-right: auto;
   text-align: center;

@@ -9,6 +9,11 @@ const config: CapacitorConfig = {
       smallIcon: "ic_stat_icon_config_sample",
       iconColor: "#4F46E5",
       sound: "default.wav"
+    },
+    StatusBar: {
+      overlaysWebView: true,
+      style: 'Dark',
+      backgroundColor: '#ffffffff'
     }
   }
 };

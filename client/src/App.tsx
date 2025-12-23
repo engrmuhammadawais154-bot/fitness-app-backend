@@ -1,7 +1,7 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import React from 'react';
 // Using lucide-react for modern, clean icons (assumed available in the environment)
-import { Home, Dumbbell, Soup, User, ArrowLeft, Heart, Target, TrendingUp, TrendingDown, Clock, Search, Mail, Lock, Eye, EyeOff, Edit, X, RefreshCw } from 'lucide-react';
+import { Home, Dumbbell, Soup, User, ArrowLeft, Heart, Target, TrendingUp, TrendingDown, Clock, Search, Mail, Lock, Eye, EyeOff, Edit, X, RefreshCw, Award, Trophy, ChevronRight, Play, Trash2 } from 'lucide-react';
 import { App as CapacitorApp } from '@capacitor/app';
 import { StatusBar, Style } from '@capacitor/status-bar';
 import { LocalNotifications } from '@capacitor/local-notifications';
@@ -65,6 +65,13 @@ import {
   HIGH_BUDGET_CHRISTIAN_MAINTENANCE
 } from './mealPlansChristian';
 
+// ==========================================
+// PERFORMANCE: Disable console.log in production
+// ==========================================
+const isDev = import.meta.env.DEV;
+const log = isDev ? console.log.bind(console) : () => {};
+const warn = isDev ? console.warn.bind(console) : () => {};
+
 // Simplified budget-based meal preferences
 const mealStyles = [
   { id: 'budget-friendly', name: 'Budget Friendly', desc: 'Affordable meals ($5-8/day)', icon: '💰', budget: 'low', cookingSkill: 'intermediate' },
@@ -72,17 +79,54 @@ const mealStyles = [
   { id: 'expensive', name: 'Premium', desc: 'High-end ingredients ($20-30/day)', icon: '💎', budget: 'high', cookingSkill: 'intermediate' },
 ];
 
+// Custom dismissible toast helper - shows toast with X button to close
+const showDismissibleToast = (message: string, type: 'success' | 'error' | 'info' = 'info') => {
+  return toast.custom(
+    (t) => (
+      <div
+        className={`${
+          t.visible ? 'animate-enter' : 'animate-leave'
+        } max-w-[90vw] w-full bg-gray-800 shadow-lg rounded-lg pointer-events-auto flex items-center justify-between ring-1 ring-black ring-opacity-5 p-3`}
+        style={{
+          background: type === 'success' ? '#065f46' : type === 'error' ? '#991b1b' : '#1f2937',
+          border: `1px solid ${type === 'success' ? '#10b981' : type === 'error' ? '#ef4444' : '#4f46e5'}`,
+        }}
+      >
+        <div className="flex items-center gap-2 flex-1">
+          <span className="text-lg">
+            {type === 'success' ? '✅' : type === 'error' ? '❌' : 'ℹ️'}
+          </span>
+          <p className="text-sm font-medium text-white">{message}</p>
+        </div>
+        <button
+          onClick={() => toast.dismiss(t.id)}
+          className="ml-3 flex-shrink-0 rounded-md p-1.5 inline-flex text-white hover:bg-white/20 focus:outline-none transition"
+          aria-label="Dismiss"
+        >
+          <X className="h-4 w-4" />
+        </button>
+      </div>
+    ),
+    { duration: 5000 }
+  );
+};
+
 // --- Custom Hooks ---
 
-// Helper hook for swipe detection
+// Helper hook for swipe detection with debouncing and improved scroll detection
 const useSwipe = (onSwipeRight?: () => void, onSwipeLeft?: () => void) => {
   const [touchStart, setTouchStart] = useState<{ x: number; y: number } | null>(null);
   const [touchEnd, setTouchEnd] = useState<{ x: number; y: number } | null>(null);
+  const lastSwipeTime = useRef<number>(0);
+  const isSwipingRef = useRef<boolean>(false);
   
-  const minSwipeDistance = 50;
+  const minSwipeDistance = 80; // Increased threshold to prevent accidental triggers
+  const debounceTime = 300; // Prevent rapid swipes (ms)
+  const maxVerticalDeviation = 50; // Maximum vertical movement allowed for horizontal swipe
   
   const onTouchStart = (e: React.TouchEvent) => {
     setTouchEnd(null);
+    isSwipingRef.current = false;
     setTouchStart({
       x: e.targetTouches[0].clientX,
       y: e.targetTouches[0].clientY
@@ -90,30 +134,528 @@ const useSwipe = (onSwipeRight?: () => void, onSwipeLeft?: () => void) => {
   };
   
   const onTouchMove = (e: React.TouchEvent) => {
-    setTouchEnd({
-      x: e.targetTouches[0].clientX,
-      y: e.targetTouches[0].clientY
-    });
+    if (!touchStart) return;
+    
+    const currentX = e.targetTouches[0].clientX;
+    const currentY = e.targetTouches[0].clientY;
+    
+    setTouchEnd({ x: currentX, y: currentY });
+    
+    // Detect if user is clearly trying to scroll vertically
+    const deltaX = Math.abs(currentX - touchStart.x);
+    const deltaY = Math.abs(currentY - touchStart.y);
+    
+    // If vertical movement is dominant, disable swipe
+    if (deltaY > deltaX * 1.5) {
+      isSwipingRef.current = false;
+    } else if (deltaX > 20) {
+      isSwipingRef.current = true;
+    }
   };
   
   const onTouchEnd = () => {
     if (!touchStart || !touchEnd) return;
     
-    const distanceX = touchStart.x - touchEnd.x;
-    const distanceY = touchStart.y - touchEnd.y;
-    
-    // Only trigger swipe if horizontal movement is greater than vertical movement
-    // This prevents triggering swipe during vertical scrolling
-    if (Math.abs(distanceX) > Math.abs(distanceY)) {
-      const isLeftSwipe = distanceX > minSwipeDistance;
-      const isRightSwipe = distanceX < -minSwipeDistance;
-      if (isRightSwipe && onSwipeRight) onSwipeRight();
-      if (isLeftSwipe && onSwipeLeft) onSwipeLeft();
+    // Check debounce time
+    const now = Date.now();
+    if (now - lastSwipeTime.current < debounceTime) {
+      return;
     }
+    
+    const distanceX = touchStart.x - touchEnd.x;
+    const distanceY = Math.abs(touchStart.y - touchEnd.y); // Fixed: was touchStart.y - touchEnd.y (wrong calculation)
+    
+    // Only trigger swipe if:
+    // 1. Horizontal movement exceeds threshold
+    // 2. Vertical deviation is minimal (not scrolling)
+    // 3. User was clearly swiping horizontally
+    if (Math.abs(distanceX) > minSwipeDistance && 
+        distanceY < maxVerticalDeviation && 
+        isSwipingRef.current) {
+      
+      const isLeftSwipe = distanceX > 0;
+      const isRightSwipe = distanceX < 0;
+      
+      if (isRightSwipe && onSwipeRight) {
+        lastSwipeTime.current = now;
+        onSwipeRight();
+      }
+      if (isLeftSwipe && onSwipeLeft) {
+        lastSwipeTime.current = now;
+        onSwipeLeft();
+      }
+    }
+    
+    // Reset
+    setTouchStart(null);
+    setTouchEnd(null);
+    isSwipingRef.current = false;
   };
   
   return { onTouchStart, onTouchMove, onTouchEnd };
 };
+
+// Hook for handling Escape key in modals
+const useEscapeKey = (onEscape: () => void, isActive: boolean = true) => {
+  useEffect(() => {
+    if (!isActive) return;
+    
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        onEscape();
+      }
+    };
+    
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [onEscape, isActive]);
+};
+
+// Hook for persistent active workout state - prevents data loss on refresh
+interface ActiveWorkoutState {
+  exercises: Array<{ 
+    exercise: string; 
+    sets: Array<{ 
+      reps: number; 
+      weight: number; 
+      type: 'normal' | 'warmup' | 'drop' | 'failure';
+      completed: boolean;
+    }> 
+  }>;
+  startTime: number; // Timestamp when workout started
+  lastUpdated: number;
+}
+
+const ACTIVE_WORKOUT_KEY = 'aura_active_workout';
+
+const useActiveWorkout = () => {
+  const [activeWorkout, setActiveWorkoutState] = useState<ActiveWorkoutState | null>(null);
+  const [showResumePrompt, setShowResumePrompt] = useState(false);
+  const [pendingWorkout, setPendingWorkout] = useState<ActiveWorkoutState | null>(null);
+
+  // Load from localStorage on mount
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem(ACTIVE_WORKOUT_KEY);
+      if (saved) {
+        const parsed = JSON.parse(saved) as ActiveWorkoutState;
+        // Check if workout is less than 24 hours old
+        const hoursSince = (Date.now() - parsed.lastUpdated) / (1000 * 60 * 60);
+        if (hoursSince < 24 && parsed.exercises.length > 0) {
+          setPendingWorkout(parsed);
+          setShowResumePrompt(true);
+        } else {
+          // Clear stale workout
+          localStorage.removeItem(ACTIVE_WORKOUT_KEY);
+        }
+      }
+    } catch (error) {
+      console.error('Error loading active workout:', error);
+      localStorage.removeItem(ACTIVE_WORKOUT_KEY);
+    }
+  }, []);
+
+  // Save to localStorage whenever workout changes
+  const setActiveWorkout = useCallback((workout: ActiveWorkoutState | null) => {
+    setActiveWorkoutState(workout);
+    if (workout) {
+      const toSave = { ...workout, lastUpdated: Date.now() };
+      localStorage.setItem(ACTIVE_WORKOUT_KEY, JSON.stringify(toSave));
+    } else {
+      localStorage.removeItem(ACTIVE_WORKOUT_KEY);
+    }
+  }, []);
+
+  // Start a new workout
+  const startWorkout = useCallback(() => {
+    const newWorkout: ActiveWorkoutState = {
+      exercises: [],
+      startTime: Date.now(),
+      lastUpdated: Date.now()
+    };
+    setActiveWorkout(newWorkout);
+    return newWorkout;
+  }, [setActiveWorkout]);
+
+  // Add exercise to workout
+  const addExerciseToWorkout = useCallback((exerciseName: string) => {
+    setActiveWorkoutState(prev => {
+      const updated = prev || { exercises: [], startTime: Date.now(), lastUpdated: Date.now() };
+      // Check if exercise already exists
+      if (updated.exercises.some(e => e.exercise === exerciseName)) {
+        return updated;
+      }
+      const newState = {
+        ...updated,
+        exercises: [...updated.exercises, { exercise: exerciseName, sets: [] }],
+        lastUpdated: Date.now()
+      };
+      localStorage.setItem(ACTIVE_WORKOUT_KEY, JSON.stringify(newState));
+      return newState;
+    });
+  }, []);
+
+  // Add set to exercise
+  const addSetToExercise = useCallback((exerciseName: string, set: { reps: number; weight: number; type: 'normal' | 'warmup' | 'drop' | 'failure'; completed: boolean }) => {
+    setActiveWorkoutState(prev => {
+      if (!prev) return prev;
+      const newState = {
+        ...prev,
+        exercises: prev.exercises.map(e => 
+          e.exercise === exerciseName 
+            ? { ...e, sets: [...e.sets, set] }
+            : e
+        ),
+        lastUpdated: Date.now()
+      };
+      localStorage.setItem(ACTIVE_WORKOUT_KEY, JSON.stringify(newState));
+      return newState;
+    });
+  }, []);
+
+  // Update set in exercise
+  const updateSet = useCallback((exerciseName: string, setIndex: number, updates: Partial<{ reps: number; weight: number; type: 'normal' | 'warmup' | 'drop' | 'failure'; completed: boolean }>) => {
+    setActiveWorkoutState(prev => {
+      if (!prev) return prev;
+      const newState = {
+        ...prev,
+        exercises: prev.exercises.map(e => 
+          e.exercise === exerciseName 
+            ? { 
+                ...e, 
+                sets: e.sets.map((s, i) => i === setIndex ? { ...s, ...updates } : s)
+              }
+            : e
+        ),
+        lastUpdated: Date.now()
+      };
+      localStorage.setItem(ACTIVE_WORKOUT_KEY, JSON.stringify(newState));
+      return newState;
+    });
+  }, []);
+
+  // Get elapsed time since workout started
+  const getElapsedTime = useCallback(() => {
+    if (!activeWorkout) return 0;
+    return Math.floor((Date.now() - activeWorkout.startTime) / 1000 / 60); // Returns minutes
+  }, [activeWorkout]);
+
+  // Resume pending workout
+  const resumeWorkout = useCallback(() => {
+    if (pendingWorkout) {
+      setActiveWorkoutState(pendingWorkout);
+      setShowResumePrompt(false);
+      setPendingWorkout(null);
+    }
+  }, [pendingWorkout]);
+
+  // Discard pending workout
+  const discardPendingWorkout = useCallback(() => {
+    localStorage.removeItem(ACTIVE_WORKOUT_KEY);
+    setShowResumePrompt(false);
+    setPendingWorkout(null);
+  }, []);
+
+  // Finish and clear workout
+  const finishWorkout = useCallback(() => {
+    const workout = activeWorkout;
+    setActiveWorkout(null);
+    return workout;
+  }, [activeWorkout, setActiveWorkout]);
+
+  return {
+    activeWorkout,
+    setActiveWorkout,
+    startWorkout,
+    addExerciseToWorkout,
+    addSetToExercise,
+    updateSet,
+    getElapsedTime,
+    finishWorkout,
+    showResumePrompt,
+    pendingWorkout,
+    resumeWorkout,
+    discardPendingWorkout
+  };
+};
+
+// ==========================================
+// WORKOUT STORE - Enterprise State Management
+// ==========================================
+// This hook is the SINGLE SOURCE OF TRUTH for all workout state.
+// It syncs to localStorage for persistence and prevents data loss.
+// @ts-ignore - Reserved for future state management integration
+
+interface WorkoutExercise {
+  exercise: string;
+  sets: Array<{ reps: number; weight: number; type?: 'normal' | 'warmup' | 'drop' | 'failure' }>;
+  targetSets?: number;
+  targetReps?: number;
+}
+
+interface WorkoutStoreState {
+  exercises: WorkoutExercise[];
+  currentExerciseIndex: number;
+  viewMode: 'FOCUS' | 'LOGGING';
+  isResting: boolean;
+  restTimeRemaining: number;
+  startTime: number;
+  lastUpdated: number;
+}
+
+const WORKOUT_STORE_KEY = 'AURA_WORKOUT_STORE';
+
+// @ts-ignore - Reserved for future state management integration
+const useWorkoutStore = () => {
+  // Core state
+  const [workout, setWorkoutState] = useState<WorkoutStoreState | null>(null);
+  const [showResumeModal, setShowResumeModal] = useState(false);
+  const [pendingResume, setPendingResume] = useState<WorkoutStoreState | null>(null);
+
+  // Load from localStorage on mount
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem(WORKOUT_STORE_KEY);
+      if (saved) {
+        const parsed = JSON.parse(saved) as WorkoutStoreState;
+        const hoursSince = (Date.now() - parsed.lastUpdated) / (1000 * 60 * 60);
+        if (hoursSince < 24 && parsed.exercises.length > 0) {
+          setPendingResume(parsed);
+          setShowResumeModal(true);
+        } else {
+          localStorage.removeItem(WORKOUT_STORE_KEY);
+        }
+      }
+    } catch (error) {
+      console.error('Error loading workout store:', error);
+      localStorage.removeItem(WORKOUT_STORE_KEY);
+    }
+  }, []);
+
+  // Sync to localStorage whenever workout changes
+  useEffect(() => {
+    if (workout) {
+      const toSave = { ...workout, lastUpdated: Date.now() };
+      localStorage.setItem(WORKOUT_STORE_KEY, JSON.stringify(toSave));
+    }
+  }, [workout]);
+
+  // Initialize a new workout
+  const initWorkout = useCallback((exercises: WorkoutExercise[]) => {
+    const newWorkout: WorkoutStoreState = {
+      exercises,
+      currentExerciseIndex: 0,
+      viewMode: 'FOCUS',
+      isResting: false,
+      restTimeRemaining: 90,
+      startTime: Date.now(),
+      lastUpdated: Date.now()
+    };
+    setWorkoutState(newWorkout);
+    return newWorkout;
+  }, []);
+
+  // Log a set to the current exercise
+  const logSet = useCallback((weight: number, reps: number, type: 'normal' | 'warmup' | 'drop' | 'failure' = 'normal') => {
+    setWorkoutState(prev => {
+      if (!prev) return prev;
+      const updatedExercises = prev.exercises.map((ex, idx) => {
+        if (idx === prev.currentExerciseIndex) {
+          return {
+            ...ex,
+            sets: [...ex.sets, { weight, reps, type }]
+          };
+        }
+        return ex;
+      });
+      return {
+        ...prev,
+        exercises: updatedExercises,
+        isResting: true,
+        lastUpdated: Date.now()
+      };
+    });
+  }, []);
+
+  // Remove a set from current exercise
+  const removeSet = useCallback((setIndex: number) => {
+    setWorkoutState(prev => {
+      if (!prev) return prev;
+      const updatedExercises = prev.exercises.map((ex, idx) => {
+        if (idx === prev.currentExerciseIndex) {
+          return {
+            ...ex,
+            sets: ex.sets.filter((_, i) => i !== setIndex)
+          };
+        }
+        return ex;
+      });
+      return {
+        ...prev,
+        exercises: updatedExercises,
+        lastUpdated: Date.now()
+      };
+    });
+  }, []);
+
+  // Advance to next exercise
+  const advanceExercise = useCallback(() => {
+    setWorkoutState(prev => {
+      if (!prev) return prev;
+      if (prev.currentExerciseIndex < prev.exercises.length - 1) {
+        return {
+          ...prev,
+          currentExerciseIndex: prev.currentExerciseIndex + 1,
+          viewMode: 'FOCUS',
+          isResting: true,
+          lastUpdated: Date.now()
+        };
+      }
+      return prev;
+    });
+  }, []);
+
+  // Check if on last exercise
+  const isLastExercise = useCallback(() => {
+    if (!workout) return false;
+    return workout.currentExerciseIndex >= workout.exercises.length - 1;
+  }, [workout]);
+
+  // Set view mode
+  const setViewMode = useCallback((mode: 'FOCUS' | 'LOGGING') => {
+    setWorkoutState(prev => prev ? { ...prev, viewMode: mode, lastUpdated: Date.now() } : prev);
+  }, []);
+
+  // Set resting state
+  const setIsResting = useCallback((resting: boolean) => {
+    setWorkoutState(prev => prev ? { ...prev, isResting: resting, lastUpdated: Date.now() } : prev);
+  }, []);
+
+  // Get current exercise
+  const getCurrentExercise = useCallback((): WorkoutExercise | null => {
+    if (!workout) return null;
+    return workout.exercises[workout.currentExerciseIndex] || null;
+  }, [workout]);
+
+  // Get completed count
+  const getCompletedCount = useCallback((): number => {
+    if (!workout) return 0;
+    return workout.exercises.filter(ex => ex.sets.length > 0).length;
+  }, [workout]);
+
+  // Resume pending workout
+  const resumeWorkout = useCallback(() => {
+    if (pendingResume) {
+      setWorkoutState(pendingResume);
+      setShowResumeModal(false);
+      setPendingResume(null);
+    }
+  }, [pendingResume]);
+
+  // Discard pending workout
+  const discardWorkout = useCallback(() => {
+    localStorage.removeItem(WORKOUT_STORE_KEY);
+    setShowResumeModal(false);
+    setPendingResume(null);
+  }, []);
+
+  // Finish and clear workout - returns the workout data for saving
+  const finishWorkout = useCallback((): WorkoutStoreState | null => {
+    const currentWorkout = workout;
+    localStorage.removeItem(WORKOUT_STORE_KEY);
+    setWorkoutState(null);
+    return currentWorkout;
+  }, [workout]);
+
+  // Clear workout without returning data (for quitting)
+  const clearWorkout = useCallback(() => {
+    localStorage.removeItem(WORKOUT_STORE_KEY);
+    setWorkoutState(null);
+  }, []);
+
+  return {
+    // State
+    workout,
+    isActive: workout !== null,
+    showResumeModal,
+    pendingResume,
+    
+    // Getters
+    getCurrentExercise,
+    getCompletedCount,
+    isLastExercise,
+    
+    // Actions
+    initWorkout,
+    logSet,
+    removeSet,
+    advanceExercise,
+    setViewMode,
+    setIsResting,
+    resumeWorkout,
+    discardWorkout,
+    finishWorkout,
+    clearWorkout
+  };
+};
+
+// Plate calculator utility - calculates which plates to put on each side of the bar
+const calculatePlates = (totalWeight: number, barWeight: number = 45, unit: 'lbs' | 'kg' = 'lbs'): { plates: { weight: number; count: number }[]; error?: string } => {
+  const availablePlates = unit === 'lbs' 
+    ? [45, 35, 25, 10, 5, 2.5] 
+    : [25, 20, 15, 10, 5, 2.5, 1.25];
+  
+  const weightPerSide = (totalWeight - barWeight) / 2;
+  
+  if (weightPerSide < 0) {
+    return { plates: [], error: `Weight must be at least ${barWeight}${unit} (bar weight)` };
+  }
+  
+  if (weightPerSide === 0) {
+    return { plates: [] };
+  }
+  
+  const plates: { weight: number; count: number }[] = [];
+  let remaining = weightPerSide;
+  
+  for (const plateWeight of availablePlates) {
+    const count = Math.floor(remaining / plateWeight);
+    if (count > 0) {
+      plates.push({ weight: plateWeight, count });
+      remaining -= count * plateWeight;
+    }
+  }
+  
+  if (remaining > 0.01) { // Small tolerance for floating point
+    return { plates, error: `Cannot make exact weight. ${remaining.toFixed(2)}${unit} remaining per side.` };
+  }
+  
+  return { plates };
+};
+
+// Skeleton loading component for better loading states (reserved for future use)
+// @ts-ignore - Reserved for future loading states implementation
+const _SkeletonCard = ({ className = '' }: { className?: string }) => (
+  <div className={`animate-pulse bg-gray-200 dark:bg-gray-700 rounded-xl ${className}`}>
+    <div className="h-4 bg-gray-300 dark:bg-gray-600 rounded w-3/4 mb-2"></div>
+    <div className="h-3 bg-gray-300 dark:bg-gray-600 rounded w-1/2"></div>
+  </div>
+);
+
+// @ts-ignore - Reserved for future loading states implementation
+const _SkeletonMealCard = () => (
+  <div className="animate-pulse bg-white dark:bg-gray-800 rounded-xl p-4 shadow-lg">
+    <div className="h-6 bg-gray-300 dark:bg-gray-600 rounded w-2/3 mb-3"></div>
+    <div className="h-4 bg-gray-200 dark:bg-gray-700 rounded w-full mb-2"></div>
+    <div className="h-4 bg-gray-200 dark:bg-gray-700 rounded w-4/5 mb-3"></div>
+    <div className="flex justify-between">
+      <div className="h-4 bg-gray-200 dark:bg-gray-700 rounded w-16"></div>
+      <div className="h-4 bg-gray-200 dark:bg-gray-700 rounded w-16"></div>
+      <div className="h-4 bg-gray-200 dark:bg-gray-700 rounded w-16"></div>
+    </div>
+  </div>
+);
 
 // --- Configuration Data ---
 
@@ -571,7 +1113,14 @@ const EXERCISE_IMAGES: { [key: string]: string } = {
 };
 
 // Muscle Groups for Exercise Finder
-const MUSCLE_GROUPS: { name: string; icon: string; color: string; exercises: { gym: string[]; home: string[]; }; }[] = [
+const MUSCLE_GROUPS: { 
+  name: string; 
+  icon: string; 
+  color: string; 
+  exercises: { gym: string[]; home: string[]; }; 
+  warmups: string[]; // Dynamic warmup exercises for this muscle group
+  category: 'upper' | 'lower' | 'core';
+}[] = [
   { 
     name: "Legs", 
     icon: "🦵", 
@@ -579,7 +1128,9 @@ const MUSCLE_GROUPS: { name: string; icon: string; color: string; exercises: { g
     exercises: { 
       gym: ["Barbell Back Squat", "Romanian Deadlift (RDL)", "Walking Lunges", "Lying Leg Curl", "Leg Extension", "Standing Calf Raise", "Seated Calf Raise"], 
       home: ["Bodyweight Squats", "Bulgarian Split Squats", "Lunges", "Pistol Squats (assisted)", "Glute Bridges", "Single-Leg Deadlifts", "Calf Raises on Steps"] 
-    } 
+    },
+    warmups: ["Leg Swings (front-to-back)", "Leg Swings (side-to-side)", "Bodyweight Squats", "Walking Lunges", "High Knees", "Butt Kicks", "Hip Circles"],
+    category: 'lower'
   },
   { 
     name: "Back", 
@@ -588,7 +1139,9 @@ const MUSCLE_GROUPS: { name: string; icon: string; color: string; exercises: { g
     exercises: { 
       gym: ["Barbell Bent-Over Row", "Weighted Pull-ups", "Single-Arm Dumbbell Row", "Close-Grip Lat Pulldown", "Face Pulls", "Dumbbell Shrugs", "Hyperextensions (Back Extensions)"], 
       home: ["Pull-ups/Chin-ups", "Inverted Rows", "Supermans", "Bodyweight Rows", "Reverse Snow Angels", "Door Frame Rows", "Band Pull-aparts"] 
-    } 
+    },
+    warmups: ["Band Pull-aparts", "Arm Circles", "Cat-Cow Stretch", "Scapular Push-ups", "Dead Hangs", "Thoracic Rotations"],
+    category: 'upper'
   },
   { 
     name: "Chest", 
@@ -597,7 +1150,9 @@ const MUSCLE_GROUPS: { name: string; icon: string; color: string; exercises: { g
     exercises: { 
       gym: ["Flat Barbell Bench Press", "Incline Dumbbell Press", "Dips (Chest Focus)", "Cable Crossover (High-to-Low)", "Flat Dumbbell Fly", "Pec Deck Fly", "Push-ups (Weighted or High Rep)"], 
       home: ["Push-ups (various angles)", "Decline Push-ups", "Diamond Push-ups", "Wide Push-ups", "Dips (between chairs)", "Resistance Band Flyes", "Plyometric Push-ups"] 
-    } 
+    },
+    warmups: ["Band Pull-aparts", "Arm Circles", "Push-ups (slow)", "Shoulder Dislocations", "Wall Angels", "Dynamic Chest Stretch"],
+    category: 'upper'
   },
   { 
     name: "Shoulders", 
@@ -606,7 +1161,9 @@ const MUSCLE_GROUPS: { name: string; icon: string; color: string; exercises: { g
     exercises: { 
       gym: ["Seated Dumbbell Overhead Press", "Standing Dumbbell Lateral Raise", "Bent-Over Dumbbell Reverse Fly", "Front Plate Raise", "Barbell Shrugs (Behind the Back)", "Arnold Press", "Cable External Rotation"], 
       home: ["Pike Pushups", "Handstand Push-ups (wall assisted)", "Lateral Raises (with water bottles)", "Front Raises (with resistance)", "Shoulder Taps", "Band Pull-aparts", "Pseudo Planche Leans"] 
-    } 
+    },
+    warmups: ["Arm Circles (small to large)", "Shoulder Dislocations", "Band Pull-aparts", "Wall Slides", "External Rotations", "YTWL Raises"],
+    category: 'upper'
   },
   { 
     name: "Arms", 
@@ -615,7 +1172,9 @@ const MUSCLE_GROUPS: { name: string; icon: string; color: string; exercises: { g
     exercises: { 
       gym: ["Close-Grip Bench Press", "Barbell Curl", "Skullcrushers (Lying Tricep Extension)", "Hammer Curls", "Rope Triceps Pushdown"], 
       home: ["Triceps Dips (chair/couch)", "Diamond Push-ups", "Bicep Curls (backpack/water jugs)", "Overhead Tricep Extension", "Concentration Curls"] 
-    } 
+    },
+    warmups: ["Wrist Circles", "Arm Circles", "Light Band Curls", "Tricep Extensions (no weight)", "Forearm Stretches", "Finger Spreads"],
+    category: 'upper'
   },
   { 
     name: "Core", 
@@ -624,8 +1183,170 @@ const MUSCLE_GROUPS: { name: string; icon: string; color: string; exercises: { g
     exercises: { 
       gym: ["Hanging Leg Raises", "Ab Wheel Rollout", "Cable Crunch", "Decline Sit-ups", "Russian Twists (weighted)", "Pallof Press"], 
       home: ["Plank Variations", "Mountain Climbers", "Bicycle Crunches", "Flutter Kicks", "Leg Raises", "V-ups", "Dead Bug"] 
-    } 
+    },
+    warmups: ["Cat-Cow Stretch", "Dead Bug", "Bird Dog", "Plank (30 sec)", "Hip Circles", "Torso Rotations"],
+    category: 'core'
   },
+];
+
+// Workout Programs Data - Pre-built training programs
+const WORKOUT_PROGRAMS = [
+  {
+    id: 'ppl',
+    name: 'Push/Pull/Legs',
+    description: '6-day split focusing on push muscles, pull muscles, and legs separately',
+    duration: '6 weeks',
+    daysPerWeek: 6,
+    level: 'intermediate',
+    icon: '🔁',
+    color: 'from-blue-400 to-indigo-500',
+    schedule: [
+      {
+        day: 1,
+        name: 'Push Day',
+        focus: ['Chest', 'Shoulders', 'Arms'],
+        exercises: ['Flat Barbell Bench Press', 'Incline Dumbbell Press', 'Seated Dumbbell Overhead Press', 'Standing Dumbbell Lateral Raise', 'Rope Triceps Pushdown']
+      },
+      {
+        day: 2,
+        name: 'Pull Day',
+        focus: ['Back', 'Arms'],
+        exercises: ['Weighted Pull-ups', 'Barbell Bent-Over Row', 'Single-Arm Dumbbell Row', 'Face Pulls', 'Barbell Curl']
+      },
+      {
+        day: 3,
+        name: 'Leg Day',
+        focus: ['Legs', 'Core'],
+        exercises: ['Barbell Back Squat', 'Romanian Deadlift (RDL)', 'Walking Lunges', 'Lying Leg Curl', 'Standing Calf Raise', 'Hanging Leg Raises']
+      },
+      {
+        day: 4,
+        name: 'Push Day',
+        focus: ['Chest', 'Shoulders', 'Arms'],
+        exercises: ['Incline Barbell Press', 'Flat Dumbbell Press', 'Arnold Press', 'Cable Crossover (High-to-Low)', 'Close-Grip Bench Press']
+      },
+      {
+        day: 5,
+        name: 'Pull Day',
+        focus: ['Back', 'Arms'],
+        exercises: ['Barbell Deadlift', 'Close-Grip Lat Pulldown', 'Barbell Bent-Over Row', 'Dumbbell Shrugs', 'Hammer Curls']
+      },
+      {
+        day: 6,
+        name: 'Leg Day',
+        focus: ['Legs', 'Core'],
+        exercises: ['Front Squat', 'Bulgarian Split Squats', 'Leg Extension', 'Lying Leg Curl', 'Seated Calf Raise', 'Cable Crunch']
+      }
+    ]
+  },
+  {
+    id: 'upper-lower',
+    name: 'Upper/Lower Split',
+    description: '4-day split alternating between upper and lower body',
+    duration: '8 weeks',
+    daysPerWeek: 4,
+    level: 'beginner',
+    icon: '⬆️',
+    color: 'from-green-400 to-emerald-500',
+    schedule: [
+      {
+        day: 1,
+        name: 'Upper Body A',
+        focus: ['Chest', 'Back', 'Shoulders', 'Arms'],
+        exercises: ['Flat Barbell Bench Press', 'Barbell Bent-Over Row', 'Seated Dumbbell Overhead Press', 'Close-Grip Lat Pulldown', 'Barbell Curl', 'Rope Triceps Pushdown']
+      },
+      {
+        day: 2,
+        name: 'Lower Body A',
+        focus: ['Legs', 'Core'],
+        exercises: ['Barbell Back Squat', 'Romanian Deadlift (RDL)', 'Walking Lunges', 'Leg Extension', 'Standing Calf Raise', 'Plank Variations']
+      },
+      {
+        day: 3,
+        name: 'Upper Body B',
+        focus: ['Chest', 'Back', 'Shoulders', 'Arms'],
+        exercises: ['Incline Dumbbell Press', 'Weighted Pull-ups', 'Standing Dumbbell Lateral Raise', 'Single-Arm Dumbbell Row', 'Hammer Curls', 'Skullcrushers (Lying Tricep Extension)']
+      },
+      {
+        day: 4,
+        name: 'Lower Body B',
+        focus: ['Legs', 'Core'],
+        exercises: ['Front Squat', 'Bulgarian Split Squats', 'Lying Leg Curl', 'Leg Extension', 'Seated Calf Raise', 'Hanging Leg Raises']
+      }
+    ]
+  },
+  {
+    id: 'full-body',
+    name: 'Full Body',
+    description: '3-day full body workout hitting all major muscle groups',
+    duration: '6 weeks',
+    daysPerWeek: 3,
+    level: 'beginner',
+    icon: '💪',
+    color: 'from-purple-400 to-fuchsia-500',
+    schedule: [
+      {
+        day: 1,
+        name: 'Full Body A',
+        focus: ['Chest', 'Back', 'Legs', 'Core'],
+        exercises: ['Barbell Back Squat', 'Flat Barbell Bench Press', 'Barbell Bent-Over Row', 'Seated Dumbbell Overhead Press', 'Romanian Deadlift (RDL)', 'Plank Variations']
+      },
+      {
+        day: 2,
+        name: 'Full Body B',
+        focus: ['Legs', 'Chest', 'Back', 'Arms'],
+        exercises: ['Barbell Deadlift', 'Incline Dumbbell Press', 'Weighted Pull-ups', 'Walking Lunges', 'Barbell Curl', 'Rope Triceps Pushdown']
+      },
+      {
+        day: 3,
+        name: 'Full Body C',
+        focus: ['Chest', 'Back', 'Legs', 'Shoulders'],
+        exercises: ['Front Squat', 'Dips (Chest Focus)', 'Close-Grip Lat Pulldown', 'Bulgarian Split Squats', 'Standing Dumbbell Lateral Raise', 'Hanging Leg Raises']
+      }
+    ]
+  },
+  {
+    id: 'bro-split',
+    name: 'Bro Split',
+    description: '5-day split with one muscle group per day',
+    duration: '8 weeks',
+    daysPerWeek: 5,
+    level: 'intermediate',
+    icon: '🎯',
+    color: 'from-red-400 to-pink-500',
+    schedule: [
+      {
+        day: 1,
+        name: 'Chest Day',
+        focus: ['Chest'],
+        exercises: ['Flat Barbell Bench Press', 'Incline Dumbbell Press', 'Dips (Chest Focus)', 'Cable Crossover (High-to-Low)', 'Flat Dumbbell Fly', 'Push-ups (Weighted or High Rep)']
+      },
+      {
+        day: 2,
+        name: 'Back Day',
+        focus: ['Back'],
+        exercises: ['Barbell Deadlift', 'Weighted Pull-ups', 'Barbell Bent-Over Row', 'Single-Arm Dumbbell Row', 'Close-Grip Lat Pulldown', 'Face Pulls']
+      },
+      {
+        day: 3,
+        name: 'Shoulder Day',
+        focus: ['Shoulders'],
+        exercises: ['Seated Dumbbell Overhead Press', 'Standing Dumbbell Lateral Raise', 'Bent-Over Dumbbell Reverse Fly', 'Arnold Press', 'Front Plate Raise', 'Cable External Rotation']
+      },
+      {
+        day: 4,
+        name: 'Leg Day',
+        focus: ['Legs'],
+        exercises: ['Barbell Back Squat', 'Romanian Deadlift (RDL)', 'Walking Lunges', 'Leg Extension', 'Lying Leg Curl', 'Standing Calf Raise', 'Seated Calf Raise']
+      },
+      {
+        day: 5,
+        name: 'Arm + Core Day',
+        focus: ['Arms', 'Core'],
+        exercises: ['Close-Grip Bench Press', 'Barbell Curl', 'Skullcrushers (Lying Tricep Extension)', 'Hammer Curls', 'Rope Triceps Pushdown', 'Hanging Leg Raises', 'Cable Crunch']
+      }
+    ]
+  }
 ];
 
 // --- Utility Functions ---
@@ -688,6 +1409,37 @@ const formatWeight = (kg: number | undefined | null, units: 'metric' | 'imperial
     return `${kgToLbs(kg)} lb`;
   }
   return `${kg.toFixed(1)} kg`;
+};
+
+// Normalize exercise name for matching - strips all non-alphanumeric, lowercases
+// Fixes fuzzy matching bug: "Pull-ups" -> "pullups" matches "Pull Ups"
+const normalizeExerciseName = (name: string): string => {
+  return name.toLowerCase().replace(/[^a-z0-9]/g, '');
+};
+
+// Find exercise data from MUSCLE_GROUPS by normalized name matching
+const findExerciseInMuscleGroups = (exerciseName: string): { exercise: string; muscle: string; location: string } | null => {
+  const normalizedSearch = normalizeExerciseName(exerciseName);
+  
+  for (const muscleGroup of MUSCLE_GROUPS) {
+    // Check gym exercises - exercises.gym is string[]
+    for (const exerciseName of muscleGroup.exercises.gym) {
+      if (normalizeExerciseName(exerciseName) === normalizedSearch ||
+          normalizedSearch.includes(normalizeExerciseName(exerciseName)) ||
+          normalizeExerciseName(exerciseName).includes(normalizedSearch)) {
+        return { exercise: exerciseName, muscle: muscleGroup.name, location: 'gym' };
+      }
+    }
+    // Check home exercises - exercises.home is string[]
+    for (const exerciseName of muscleGroup.exercises.home) {
+      if (normalizeExerciseName(exerciseName) === normalizedSearch ||
+          normalizedSearch.includes(normalizeExerciseName(exerciseName)) ||
+          normalizeExerciseName(exerciseName).includes(normalizedSearch)) {
+        return { exercise: exerciseName, muscle: muscleGroup.name, location: 'home' };
+      }
+    }
+  }
+  return null;
 };
 
 // --- Sub-Components ---
@@ -1091,36 +1843,115 @@ const HomeScreen = ({
   const [healthConnected, setHealthConnected] = useState(false);
   const units = userData?.appPreferences?.units || 'metric';
 
-  // Load today's water intake from Firebase
+  // Smart water intake loading with automatic day change detection and cleanup
   useEffect(() => {
-    const loadWaterIntake = async () => {
-      if (!userData?.uid) return;
-      try {
-        const userDocRef = doc(db, 'users', userData.uid);
-        const userDoc = await getDoc(userDocRef);
-        if (userDoc.exists()) {
-          const data = userDoc.data();
-          const today = new Date().toISOString().split('T')[0];
-          const todayWater = data.waterIntake?.[today] || 0;
-          setWaterIntake(todayWater);
+    if (!userData) return;
+
+    const today = new Date().toISOString().split('T')[0];
+    const lastWaterDate = localStorage.getItem('lastWaterDate');
+    
+    // Check if it's a new day
+    if (lastWaterDate !== today) {
+      // New day detected - reset water intake
+      console.log('New day detected! Resetting water intake. Last date:', lastWaterDate, 'Today:', today);
+      localStorage.setItem('lastWaterDate', today);
+      
+      // Clean up old water intake data (older than 90 days)
+      const cleanupOldWaterData = async () => {
+        const user = auth.currentUser;
+        if (!user || !userData.waterIntake) return;
+        
+        const ninetyDaysAgo = new Date();
+        ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90);
+        const cutoffDate = ninetyDaysAgo.toISOString().split('T')[0];
+        
+        const cleanedWaterIntake: Record<string, number> = {};
+        let needsCleanup = false;
+        
+        Object.keys(userData.waterIntake).forEach(date => {
+          if (date >= cutoffDate) {
+            cleanedWaterIntake[date] = userData.waterIntake[date];
+          } else {
+            needsCleanup = true;
+            console.log('Removing old water data for date:', date);
+          }
+        });
+        
+        if (needsCleanup) {
+          try {
+            await updateDoc(doc(db, 'users', user.uid), {
+              waterIntake: cleanedWaterIntake
+            });
+            console.log('Cleaned up old water intake data from database');
+          } catch (error) {
+            console.error('Failed to cleanup old water data:', error);
+          }
         }
-      } catch (error) {
-        console.error('Error loading water intake:', error);
+      };
+      
+      cleanupOldWaterData();
+      
+      // Load today's water intake (will be 0 if not set)
+      const todayWater = userData.waterIntake?.[today] || 0;
+      setWaterIntake(todayWater);
+    } else {
+      // Same day - load existing data
+      const todayWater = userData.waterIntake?.[today] || 0;
+      setWaterIntake(todayWater);
+    }
+  }, [userData]);
+
+  // Auto-reset water intake at midnight
+  useEffect(() => {
+    const checkMidnight = () => {
+      const now = new Date();
+      const today = now.toISOString().split('T')[0];
+      const lastWaterDate = localStorage.getItem('lastWaterDate');
+      
+      if (lastWaterDate !== today) {
+        console.log('Midnight passed! Auto-resetting water intake.');
+        localStorage.setItem('lastWaterDate', today);
+        
+        // Reset to 0 for new day
+        setWaterIntake(0);
+        
+        // Optionally save 0 to database for the new day
+        const user = auth.currentUser;
+        if (user) {
+          updateDoc(doc(db, 'users', user.uid), {
+            [`waterIntake.${today}`]: 0
+          }).catch(err => console.error('Failed to initialize new day water intake:', err));
+        }
       }
     };
-    loadWaterIntake();
-  }, [userData?.uid]);
+
+    // Check every minute if day has changed
+    const interval = setInterval(checkMidnight, 60000); // Check every 60 seconds
+    
+    // Also check immediately
+    checkMidnight();
+    
+    return () => clearInterval(interval);
+  }, []);
 
   // Schedule water reminder notifications
   useEffect(() => {
     const initializeNotifications = async () => {
       try {
+        // Check if we've already asked for permissions today to prevent spam
+        const lastPermissionCheck = localStorage.getItem('lastNotificationPermissionCheck');
+        const today = new Date().toISOString().split('T')[0];
+        
         // Request notification permissions first
         const permission = await LocalNotifications.requestPermissions();
         
         if (permission.display !== 'granted') {
           console.log('Notification permission denied');
-          toast.error('Please enable notifications in settings for water reminders');
+          // Only show toast once per day to prevent spam
+          if (lastPermissionCheck !== today) {
+            localStorage.setItem('lastNotificationPermissionCheck', today);
+            showDismissibleToast('Please enable notifications in settings for water reminders', 'error');
+          }
           return;
         }
 
@@ -1310,6 +2141,12 @@ const HomeScreen = ({
 
   // Add water glass
   const addWaterGlass = async () => {
+    // Prevent adding water beyond reasonable limit (50 glasses)
+    if (waterIntake >= 50) {
+      toast.error('Maximum water intake limit reached!');
+      return;
+    }
+    
     const newIntake = waterIntake + 1;
     setWaterIntake(newIntake);
     
@@ -1317,17 +2154,24 @@ const HomeScreen = ({
     if (user) {
       try {
         const today = new Date().toISOString().split('T')[0];
-        await setDoc(doc(db, 'users', user.uid), {
-          waterIntake: {
-            [today]: newIntake
-          }
-        }, { merge: true });
+        
+        // Ensure lastWaterDate is updated
+        localStorage.setItem('lastWaterDate', today);
+        
+        await updateDoc(doc(db, 'users', user.uid), {
+          [`waterIntake.${today}`]: newIntake
+        });
         
         if (newIntake >= waterGoal) {
           toast.success('🎉 Daily water goal reached!');
+        } else if (newIntake === Math.floor(waterGoal / 2)) {
+          toast.success('💧 Halfway there! Keep hydrating!');
         }
       } catch (error) {
         console.error('Failed to update water intake:', error);
+        // Revert on error
+        setWaterIntake(waterIntake);
+        toast.error('Failed to save water intake');
       }
     }
   };
@@ -1342,13 +2186,18 @@ const HomeScreen = ({
     if (user) {
       try {
         const today = new Date().toISOString().split('T')[0];
-        await setDoc(doc(db, 'users', user.uid), {
-          waterIntake: {
-            [today]: newIntake
-          }
-        }, { merge: true });
+        
+        // Ensure lastWaterDate is updated
+        localStorage.setItem('lastWaterDate', today);
+        
+        await updateDoc(doc(db, 'users', user.uid), {
+          [`waterIntake.${today}`]: newIntake
+        });
       } catch (error) {
         console.error('Failed to update water intake:', error);
+        // Revert on error
+        setWaterIntake(waterIntake);
+        toast.error('Failed to save water intake');
       }
     }
   };
@@ -1396,7 +2245,6 @@ const HomeScreen = ({
     }
   };
 
-  // Sync health data from Health Connect
   // Sync health data from Health Connect (manual refresh)
   const syncHealthData = async () => {
     try {
@@ -1413,16 +2261,15 @@ const HomeScreen = ({
         setHealthData(newHealthData);
         setHealthConnected(true);
 
-        // Save to Firebase
+        // Save to Firebase using dot notation to preserve history
         const user = auth.currentUser;
         if (user) {
           const today = new Date().toISOString().split('T')[0];
-          await setDoc(doc(db, 'users', user.uid), {
-            healthData: {
-              [today]: newHealthData
-            },
+          const userDocRef = doc(db, 'users', user.uid);
+          await updateDoc(userDocRef, {
+            [`healthData.${today}`]: newHealthData,
             healthConnectConnected: true
-          }, { merge: true });
+          });
         }
 
         toast.success('🔄 Health data synced!');
@@ -1437,74 +2284,62 @@ const HomeScreen = ({
 
   // Load health data from Firebase on mount AND auto-fetch from Health Connect
   useEffect(() => {
-    const loadHealthData = async () => {
-      if (!userData?.uid) return;
-      
-      // Load cached data from Firebase first (for instant display)
+    // Only run if we have a logged-in user
+    if (!userData?.uid) return;
+    
+    const checkAndSyncHealth = async () => {
+      // 1. First, check if we already have data saved for TODAY in our database
+      const today = new Date().toISOString().split('T')[0];
+      const savedTodayData = userData.healthData?.[today];
+
+      if (savedTodayData) {
+        // If we have data, show it immediately!
+        setHealthData(savedTodayData);
+        setHealthConnected(true);
+      }
+
+      // 2. Then, try to fetch fresh data from the phone silently
       try {
-        const userDocRef = doc(db, 'users', userData.uid);
-        const userDoc = await getDoc(userDocRef);
-        if (userDoc.exists()) {
-          const data = userDoc.data();
-          const today = new Date().toISOString().split('T')[0];
-          const todayHealth = data.healthData?.[today];
-          if (todayHealth) {
-            setHealthData(todayHealth);
-            // Don't set healthConnected yet - wait for fresh fetch
+        console.log('🔄 Auto-fetching health data...');
+        const result = await HealthConnect.fetchHealthData();
+        
+        if (result.success) {
+          console.log('✅ Health data fetched:', result);
+          const newHealthData = {
+            steps: result.steps || 0,
+            calories: result.calories || 0,
+            distance: result.distance || 0,
+            heartRate: result.heartRate || 0
+          };
+          
+          setHealthConnected(true);
+          setHealthData(newHealthData);
+          
+          // 3. Save it properly using "dot notation" so we don't overwrite history
+          const userDocRef = doc(db, 'users', userData.uid);
+          await updateDoc(userDocRef, {
+            [`healthData.${today}`]: newHealthData,
+            healthConnectConnected: true
+          });
+        } else {
+          console.log('⚠️ Auto-sync failed (silent):', result.error);
+          // If we don't have cached data, show the connect button
+          if (!savedTodayData) {
+            setHealthConnected(false);
           }
         }
       } catch (error) {
-        console.error('Error loading cached health data:', error);
-      }
-      
-      // Always try to fetch fresh data from Health Connect
-      await tryAutoFetchHealthData();
-    };
-    
-    loadHealthData();
-  }, [userData?.uid]);
-
-  // Auto-fetch health data - runs every time app opens
-  const tryAutoFetchHealthData = async () => {
-    try {
-      console.log('🔄 Auto-fetching health data...');
-      const result = await HealthConnect.fetchHealthData();
-      
-      // Only update state if the fetch was actually successful
-      if (result.success) {
-        console.log('✅ Health data fetched:', result);
-        const newHealthData = {
-          steps: result.steps || 0,
-          calories: result.calories || 0,
-          distance: result.distance || 0,
-          heartRate: result.heartRate || 0
-        };
-        
-        setHealthData(newHealthData);
-        setHealthConnected(true); // Hides the "Connect" button
-
-        // Save to Firebase
-        const user = auth.currentUser;
-        if (user) {
-          const today = new Date().toISOString().split('T')[0];
-          await setDoc(doc(db, 'users', user.uid), {
-            healthData: {
-              [today]: newHealthData
-            },
-            healthConnectConnected: true
-          }, { merge: true });
+        // If it fails silently, that's okay, the user can still tap the button manually
+        console.log('Auto-sync failed, user may need to tap connect');
+        // Keep showing cached data if available
+        if (!savedTodayData) {
+          setHealthConnected(false);
         }
-      } else {
-        console.log('⚠️ Permissions not granted or fetch failed:', result.error);
-        // Intentionally leave healthConnected as false to show the "Connect" button
-        setHealthConnected(false);
       }
-    } catch (error) {
-      console.error('Health data fetch error:', error);
-      // Keep healthConnected false - show Connect button
-      setHealthConnected(false);
-    }
-  };
+    };
+
+    checkAndSyncHealth();
+  }, [userData?.uid]); // Run whenever the user ID is confirmed
 
   const updateStartingWeight = async (newStarting: number) => {
     setStartingWeight(newStarting);
@@ -1532,13 +2367,13 @@ const HomeScreen = ({
 
   return (
     <>
-      {/* Sticky Header */}
-      <div className="sticky top-0 z-40 w-full bg-gradient-to-br from-indigo-50 via-purple-50 to-pink-50 dark:from-gray-900 dark:via-indigo-900/20 dark:to-gray-900 backdrop-blur-md border-b border-indigo-200 dark:border-indigo-500/30 px-4 py-4 shadow-sm">
+      {/* Sticky Header with Safe Area */}
+      <div style={{ paddingTop: 'var(--safe-area-top)' }} className="sticky top-0 z-40 w-full bg-gradient-to-br from-indigo-50 via-purple-50 to-pink-50 dark:from-gray-900 dark:via-indigo-900/20 dark:to-gray-900 backdrop-blur-md border-b border-indigo-200 dark:border-indigo-500/30 px-4 py-4 shadow-sm">
         <h1 className="text-3xl font-extrabold text-gray-900 dark:text-white">Welcome Back!</h1>
         <p className="text-gray-700 dark:text-white/70">Your fitness journey starts now.</p>
       </div>
       
-      <div className="p-4 space-y-6">
+      <div className="p-4 space-y-6 pb-24">
       
       {/* Dynamic Status Card */}
       <DynamicStatusCard 
@@ -1547,45 +2382,65 @@ const HomeScreen = ({
         onViewDiet={onViewDiet}
       />
       
-      {/* Workout of the Day */}
-      <WorkoutOfTheDay 
-        onSelectWorkout={onSelectMuscleGroup}
-      />
-      
-      <QuoteCarousel quotes={QUOTES} />
-      
-      {/* Daily Metrics */}
-      <div className="grid grid-cols-2 gap-4">
-        <MetricCard 
-          title="Starting Weight" 
-          value={formatWeight(startingWeight, units)} 
-          icon={TrendingUp} 
-          color="bg-gradient-to-br from-emerald-400 via-green-500 to-teal-500 text-white shadow-lg shadow-emerald-500/50"
-          editable
-          onEdit={(val) => updateStartingWeight(parseFloat(val))}
-        />
-        <MetricCard 
-          title="Target Weight" 
-          value={formatWeight(targetWeight, units)} 
-          icon={Target} 
-          color="bg-gradient-to-br from-amber-400 via-orange-500 to-red-500 text-white shadow-lg shadow-orange-500/50"
-          editable
-          onEdit={(val) => updateTargetWeight(parseFloat(val))}
-        />
-        <MetricCard 
-          title="Current Weight" 
-          value={formatWeight(currentWeight, units)} 
-          icon={Dumbbell} 
-          color="bg-gradient-to-br from-blue-400 via-indigo-500 to-purple-600 text-white shadow-lg shadow-indigo-500/50"
-          editable
-          onEdit={(val) => updateWeight(parseFloat(val))}
-        />
-        <MetricCard 
-          title="Goal Progress" 
-          value={`${goalProgress}%`} 
-          icon={Heart} 
-          color="bg-gradient-to-br from-pink-400 via-rose-500 to-fuchsia-600 text-white shadow-lg shadow-pink-500/50"
-        />
+      {/* Water Intake Tracker */}
+      <div className="bg-gradient-to-br from-cyan-400 via-blue-500 to-indigo-600 rounded-2xl p-6 shadow-xl shadow-blue-500/50">
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-2">
+            <div className="text-3xl">💧</div>
+            <div>
+              <h3 className="text-xl font-bold text-white">Water Intake</h3>
+              <p className="text-sm text-blue-100">Stay hydrated!</p>
+            </div>
+          </div>
+          <div className="text-right">
+            <p className="text-3xl font-bold text-white">{waterIntake}/{waterGoal}</p>
+            <p className="text-xs text-blue-100">glasses</p>
+          </div>
+        </div>
+        
+        {/* Progress Bar */}
+        <div className="w-full bg-blue-900/30 rounded-full h-3 mb-4 overflow-hidden">
+          <div 
+            className="bg-gradient-to-r from-cyan-300 to-blue-200 h-3 rounded-full transition-all duration-500"
+            style={{ width: `${Math.min((waterIntake / waterGoal) * 100, 100)}%` }}
+          />
+        </div>
+
+        {/* Water Glasses Visualization */}
+        <div className="flex gap-2 mb-4 flex-wrap">
+          {[...Array(waterGoal)].map((_, i) => (
+            <div 
+              key={i} 
+              className={`text-2xl transition-all ${i < waterIntake ? 'opacity-100 scale-110' : 'opacity-30'}`}
+            >
+              {i < waterIntake ? '💧' : '🫗'}
+            </div>
+          ))}
+        </div>
+
+        {/* Action Buttons */}
+        <div className="flex gap-2">
+          <button
+            onClick={addWaterGlass}
+            className="flex-1 bg-white/20 hover:bg-white/30 backdrop-blur-sm text-white font-semibold py-3 px-4 rounded-xl transition flex items-center justify-center gap-2"
+          >
+            <span className="text-xl">+</span>
+            <span>Add Glass</span>
+          </button>
+          <button
+            onClick={removeWaterGlass}
+            disabled={waterIntake === 0}
+            className="flex-1 bg-white/20 hover:bg-white/30 backdrop-blur-sm text-white font-semibold py-3 px-4 rounded-xl transition flex items-center justify-center gap-2 disabled:opacity-30 disabled:cursor-not-allowed"
+          >
+            <span className="text-xl">-</span>
+            <span>Remove</span>
+          </button>
+        </div>
+
+        {/* Daily Recommendation */}
+        <p className="text-xs text-blue-100 text-center mt-3">
+          💡 Recommended: 8 glasses (2 liters) per day
+        </p>
       </div>
 
       {/* Health Connect Integration */}
@@ -1674,65 +2529,45 @@ const HomeScreen = ({
         </div>
       )}
 
-      {/* Water Intake Tracker */}
-      <div className="bg-gradient-to-br from-cyan-400 via-blue-500 to-indigo-600 rounded-2xl p-6 shadow-xl shadow-blue-500/50">
-        <div className="flex items-center justify-between mb-4">
-          <div className="flex items-center gap-2">
-            <div className="text-3xl">💧</div>
-            <div>
-              <h3 className="text-xl font-bold text-white">Water Intake</h3>
-              <p className="text-sm text-blue-100">Stay hydrated!</p>
-            </div>
-          </div>
-          <div className="text-right">
-            <p className="text-3xl font-bold text-white">{waterIntake}/{waterGoal}</p>
-            <p className="text-xs text-blue-100">glasses</p>
-          </div>
-        </div>
-        
-        {/* Progress Bar */}
-        <div className="w-full bg-blue-900/30 rounded-full h-3 mb-4 overflow-hidden">
-          <div 
-            className="bg-gradient-to-r from-cyan-300 to-blue-200 h-3 rounded-full transition-all duration-500"
-            style={{ width: `${Math.min((waterIntake / waterGoal) * 100, 100)}%` }}
-          />
-        </div>
-
-        {/* Water Glasses Visualization */}
-        <div className="flex gap-2 mb-4 flex-wrap">
-          {[...Array(waterGoal)].map((_, i) => (
-            <div 
-              key={i} 
-              className={`text-2xl transition-all ${i < waterIntake ? 'opacity-100 scale-110' : 'opacity-30'}`}
-            >
-              {i < waterIntake ? '💧' : '🫗'}
-            </div>
-          ))}
-        </div>
-
-        {/* Action Buttons */}
-        <div className="flex gap-2">
-          <button
-            onClick={addWaterGlass}
-            className="flex-1 bg-white/20 hover:bg-white/30 backdrop-blur-sm text-white font-semibold py-3 px-4 rounded-xl transition flex items-center justify-center gap-2"
-          >
-            <span className="text-xl">+</span>
-            <span>Add Glass</span>
-          </button>
-          <button
-            onClick={removeWaterGlass}
-            disabled={waterIntake === 0}
-            className="flex-1 bg-white/20 hover:bg-white/30 backdrop-blur-sm text-white font-semibold py-3 px-4 rounded-xl transition flex items-center justify-center gap-2 disabled:opacity-30 disabled:cursor-not-allowed"
-          >
-            <span className="text-xl">-</span>
-            <span>Remove</span>
-          </button>
-        </div>
-
-        {/* Daily Recommendation */}
-        <p className="text-xs text-blue-100 text-center mt-3">
-          💡 Recommended: 8 glasses (2 liters) per day
-        </p>
+      {/* Workout of the Day */}
+      <WorkoutOfTheDay 
+        onSelectWorkout={onSelectMuscleGroup}
+      />
+      
+      <QuoteCarousel quotes={QUOTES} />
+      
+      {/* Daily Metrics */}
+      <div className="grid grid-cols-2 gap-4">
+        <MetricCard 
+          title="Starting Weight" 
+          value={formatWeight(startingWeight, units)} 
+          icon={TrendingUp} 
+          color="bg-gradient-to-br from-emerald-400 via-green-500 to-teal-500 text-white shadow-lg shadow-emerald-500/50"
+          editable
+          onEdit={(val) => updateStartingWeight(parseFloat(val))}
+        />
+        <MetricCard 
+          title="Target Weight" 
+          value={formatWeight(targetWeight, units)} 
+          icon={Target} 
+          color="bg-gradient-to-br from-amber-400 via-orange-500 to-red-500 text-white shadow-lg shadow-orange-500/50"
+          editable
+          onEdit={(val) => updateTargetWeight(parseFloat(val))}
+        />
+        <MetricCard 
+          title="Current Weight" 
+          value={formatWeight(currentWeight, units)} 
+          icon={Dumbbell} 
+          color="bg-gradient-to-br from-blue-400 via-indigo-500 to-purple-600 text-white shadow-lg shadow-indigo-500/50"
+          editable
+          onEdit={(val) => updateWeight(parseFloat(val))}
+        />
+        <MetricCard 
+          title="Goal Progress" 
+          value={`${goalProgress}%`} 
+          icon={Heart} 
+          color="bg-gradient-to-br from-pink-400 via-rose-500 to-fuchsia-600 text-white shadow-lg shadow-pink-500/50"
+        />
       </div>
     </div>
     </>
@@ -1798,8 +2633,8 @@ const VerificationPendingScreen = ({
 
           {/* Email icon */}
           <div className="flex justify-center mb-6">
-            <div className="w-20 h-20 bg-indigo-100 dark:bg-indigo-900/30 rounded-full flex items-center justify-center">
-              <Mail className="w-10 h-10 text-indigo-600 dark:text-indigo-400" />
+            <div className="w-20 h-20 flex-shrink-0 bg-indigo-100 dark:bg-indigo-900/30 rounded-full flex items-center justify-center">
+              <Mail className="w-10 h-10 flex-shrink-0 text-indigo-600 dark:text-indigo-400" />
             </div>
           </div>
 
@@ -2278,7 +3113,7 @@ const AuthScreen = ({ onLogin }: { onLogin: () => void }) => {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-50 to-indigo-50 dark:from-gray-900 dark:via-indigo-900 dark:to-gray-900 flex items-center justify-center p-4 transition-colors duration-200" style={{ paddingTop: 'max(env(safe-area-inset-top), 20px)', paddingBottom: 'max(env(safe-area-inset-bottom), 20px)' }}>
+    <div className="min-h-screen bg-gradient-to-br from-gray-50 to-indigo-50 dark:from-gray-900 dark:via-indigo-900 dark:to-gray-900 flex items-center justify-center p-4 transition-colors duration-200" style={{ paddingTop: 'var(--safe-area-top)', paddingBottom: 'calc(1.25rem + var(--safe-area-bottom))' }}>
       <div className="w-full max-w-md">
         {/* Logo/Header */}
         <div className="text-center mb-6 sm:mb-8">
@@ -2359,7 +3194,7 @@ const AuthScreen = ({ onLogin }: { onLogin: () => void }) => {
               <div>
                 <label className="block text-sm font-medium text-gray-300 mb-2">Full Name</label>
                 <div className="relative">
-                  <User className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
+                  <User className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 flex-shrink-0 text-gray-400" />
                   <input
                     type="text"
                     value={name}
@@ -2375,7 +3210,7 @@ const AuthScreen = ({ onLogin }: { onLogin: () => void }) => {
             <div>
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Email</label>
               <div className="relative">
-                <Mail className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
+                <Mail className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 flex-shrink-0 text-gray-400" />
                 <input
                   type="email"
                   value={email}
@@ -2390,7 +3225,7 @@ const AuthScreen = ({ onLogin }: { onLogin: () => void }) => {
             <div>
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Password</label>
               <div className="relative">
-                <Lock className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
+                <Lock className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 flex-shrink-0 text-gray-400" />
                 <input
                   type={showPassword ? 'text' : 'password'}
                   value={password}
@@ -2402,9 +3237,9 @@ const AuthScreen = ({ onLogin }: { onLogin: () => void }) => {
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-white transition duration-200"
+                  className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-white transition duration-200 w-10 h-10 flex items-center justify-center flex-shrink-0"
                 >
-                  {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+                  {showPassword ? <EyeOff className="w-5 h-5 flex-shrink-0" /> : <Eye className="w-5 h-5 flex-shrink-0" />}
                 </button>
               </div>
             </div>
@@ -2450,51 +3285,1356 @@ const AuthScreen = ({ onLogin }: { onLogin: () => void }) => {
 
       {/* Forgot Password Modal */}
       {showForgotPassword && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50" onClick={() => setShowForgotPassword(false)}>
-          <div className="bg-white dark:bg-gray-800 rounded-2xl p-8 max-w-md w-full shadow-2xl" onClick={(e) => e.stopPropagation()}>
-            <div className="flex items-center justify-between mb-6">
-              <h2 className="text-2xl font-bold text-gray-900 dark:text-white">Reset Password</h2>
-              <button 
-                onClick={() => setShowForgotPassword(false)}
-                className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"
-              >
-                <X className="w-6 h-6" />
-              </button>
-            </div>
-            
-            <p className="text-gray-600 dark:text-gray-300 mb-6">
-              Enter your email address and we'll send you a link to reset your password.
-            </p>
-            
-            {error && (
-              <div className="mb-4 p-3 bg-red-100 dark:bg-red-500/20 border border-red-300 dark:border-red-500/50 rounded-lg text-red-700 dark:text-red-300 text-sm">
-                {error}
-              </div>
-            )}
-            
-            <div className="mb-6">
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                Email Address
-              </label>
-              <input
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                className="w-full px-4 py-3 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-xl focus:ring-2 focus:ring-indigo-500 dark:focus:ring-indigo-400 focus:border-transparent outline-none transition duration-200 text-gray-900 dark:text-white"
-                placeholder="your@email.com"
-              />
-            </div>
-            
-            <button
-              onClick={handleForgotPassword}
-              disabled={isLoading}
-              className="w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl transition duration-200 shadow-lg shadow-indigo-500/50 disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {isLoading ? 'Sending...' : 'Send Reset Link'}
-            </button>
+        <ForgotPasswordModal 
+          onClose={() => setShowForgotPassword(false)}
+          email={email}
+          setEmail={setEmail}
+          error={error}
+          isLoading={isLoading}
+          onSubmit={handleForgotPassword}
+        />
+      )}
+    </div>
+  );
+};
+
+// Forgot Password Modal Component
+const ForgotPasswordModal = ({
+  onClose,
+  email,
+  setEmail,
+  error,
+  isLoading,
+  onSubmit
+}: {
+  onClose: () => void;
+  email: string;
+  setEmail: (value: string) => void;
+  error: string;
+  isLoading: boolean;
+  onSubmit: () => void;
+}) => {
+  useEscapeKey(onClose);
+  
+  return (
+    <div 
+      className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50" 
+      onClick={onClose}
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="forgot-password-title"
+    >
+      <div className="bg-white dark:bg-gray-800 rounded-2xl p-8 max-w-md w-full shadow-2xl" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between mb-6">
+          <h2 id="forgot-password-title" className="text-2xl font-bold text-gray-900 dark:text-white">Reset Password</h2>
+          <button 
+            onClick={onClose}
+            className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"
+            aria-label="Close reset password dialog"
+          >
+            <X className="w-6 h-6" />
+          </button>
+        </div>
+        
+        <p className="text-gray-600 dark:text-gray-300 mb-6">
+          Enter your email address and we'll send you a link to reset your password.
+        </p>
+        
+        {error && (
+          <div className="mb-4 p-3 bg-red-100 dark:bg-red-500/20 border border-red-300 dark:border-red-500/50 rounded-lg text-red-700 dark:text-red-300 text-sm" role="alert">
+            {error}
+          </div>
+        )}
+        
+        <div className="mb-6">
+          <label htmlFor="reset-email" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+            Email Address
+          </label>
+          <input
+            id="reset-email"
+            type="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            className="w-full px-4 py-3 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-xl focus:ring-2 focus:ring-indigo-500 dark:focus:ring-indigo-400 focus:border-transparent outline-none transition duration-200 text-gray-900 dark:text-white"
+            placeholder="your@email.com"
+          />
+        </div>
+        
+        <button
+          onClick={onSubmit}
+          disabled={isLoading}
+          className="w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl transition duration-200 shadow-lg shadow-indigo-500/50 disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          {isLoading ? 'Sending...' : 'Send Reset Link'}
+        </button>
+      </div>
+    </div>
+  );
+};
+
+// Helper function to calculate estimated 1RM using Epley formula
+const calculate1RM = (weight: number, reps: number): number => {
+  if (reps === 1) return weight;
+  return weight * (1 + reps / 30);
+};
+
+// Helper function to get best set from a workout
+const getBestSet = (sets: Array<{ reps: number; weight: number }>) => {
+  return sets.reduce((best, current) => {
+    const currentMax = calculate1RM(current.weight, current.reps);
+    const bestMax = calculate1RM(best.weight, best.reps);
+    return currentMax > bestMax ? current : best;
+  });
+};
+
+// ==========================================
+// CUSTOM HOOK: Persistent Workout Timer
+// ==========================================
+const useWorkoutTimer = (startTime: number | null) => {
+  const [elapsedTime, setElapsedTime] = useState(0);
+  
+  useEffect(() => {
+    if (!startTime) return;
+    
+    const interval = setInterval(() => {
+      setElapsedTime(Math.floor((Date.now() - startTime) / 1000));
+    }, 1000);
+    
+    return () => clearInterval(interval);
+  }, [startTime]);
+  
+  const formatTime = (seconds: number) => {
+    const hrs = Math.floor(seconds / 3600);
+    const mins = Math.floor((seconds % 3600) / 60);
+    const secs = seconds % 60;
+    
+    if (hrs > 0) {
+      return `${hrs}:${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+    }
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
+  };
+  
+  return { elapsedTime, formatTime };
+};
+
+// ==========================================
+// EXERCISE FORM TIPS - Curated coaching cues
+// ==========================================
+const EXERCISE_TIPS: { [key: string]: { tips: string[]; muscles: string[] } } = {
+  // Legs - Gym
+  "Barbell Back Squat": { tips: ["Keep chest up, core braced", "Drive through heels", "Knees track over toes"], muscles: ["Quads", "Glutes", "Hamstrings"] },
+  "Romanian Deadlift (RDL)": { tips: ["Hinge at hips, not waist", "Keep bar close to legs", "Feel the hamstring stretch"], muscles: ["Hamstrings", "Glutes", "Lower Back"] },
+  "Walking Lunges": { tips: ["Take big steps", "Keep torso upright", "Push through front heel"], muscles: ["Quads", "Glutes"] },
+  "Lying Leg Curl": { tips: ["Control the negative", "Don't arch your back", "Squeeze at the top"], muscles: ["Hamstrings"] },
+  "Leg Extension": { tips: ["Don't lock out knees", "Control the movement", "Squeeze quads at top"], muscles: ["Quads"] },
+  "Standing Calf Raise": { tips: ["Full range of motion", "Pause at the top", "Slow eccentric"], muscles: ["Calves"] },
+  "Seated Calf Raise": { tips: ["Full stretch at bottom", "Pause at peak contraction", "Target the soleus"], muscles: ["Calves"] },
+  "Front Squat": { tips: ["Keep elbows high", "Stay upright", "Core tight throughout"], muscles: ["Quads", "Core"] },
+  "Bulgarian Split Squats": { tips: ["Rear foot elevated", "Control the descent", "Drive through front heel"], muscles: ["Quads", "Glutes"] },
+  "Barbell Deadlift": { tips: ["Keep back flat", "Drive through legs first", "Lock out with glutes"], muscles: ["Hamstrings", "Glutes", "Back"] },
+  
+  // Legs - Home
+  "Bodyweight Squats": { tips: ["Sit back into the squat", "Keep knees over toes", "Full depth if mobile"], muscles: ["Quads", "Glutes"] },
+  "Lunges": { tips: ["Big steps forward", "Keep torso upright", "Push through front heel"], muscles: ["Quads", "Glutes"] },
+  "Glute Bridges": { tips: ["Squeeze glutes at top", "Keep core engaged", "Pause at the top"], muscles: ["Glutes", "Hamstrings"] },
+  
+  // Back - Gym
+  "Barbell Bent-Over Row": { tips: ["Keep back flat", "Pull to lower chest", "Squeeze shoulder blades"], muscles: ["Lats", "Rhomboids", "Rear Delts"] },
+  "Weighted Pull-ups": { tips: ["Full dead hang at bottom", "Chin over bar", "Control the descent"], muscles: ["Lats", "Biceps", "Rear Delts"] },
+  "Single-Arm Dumbbell Row": { tips: ["Keep elbow close to body", "Pull to hip", "Avoid rotation"], muscles: ["Lats", "Rhomboids"] },
+  "Close-Grip Lat Pulldown": { tips: ["Lean back slightly", "Pull to upper chest", "Squeeze lats"], muscles: ["Lats", "Biceps"] },
+  "Face Pulls": { tips: ["Pull to face level", "External rotate at end", "Light weight, high reps"], muscles: ["Rear Delts", "Rotator Cuff"] },
+  "Dumbbell Shrugs": { tips: ["Shrug straight up", "Hold at top", "Control the weight"], muscles: ["Traps"] },
+  "Hyperextensions (Back Extensions)": { tips: ["Don't hyperextend", "Squeeze glutes at top", "Slow and controlled"], muscles: ["Lower Back", "Glutes"] },
+  
+  // Back - Home
+  "Pull-ups/Chin-ups": { tips: ["Full hang at bottom", "Pull chest to bar", "Control descent"], muscles: ["Lats", "Biceps"] },
+  "Inverted Rows": { tips: ["Keep body straight", "Pull chest to bar", "Squeeze shoulder blades"], muscles: ["Upper Back", "Biceps"] },
+  "Supermans": { tips: ["Lift arms and legs together", "Hold at top", "Control the movement"], muscles: ["Lower Back", "Glutes"] },
+  
+  // Chest - Gym
+  "Flat Barbell Bench Press": { tips: ["Arch upper back, not lower", "Touch chest lightly", "Drive feet into floor"], muscles: ["Chest", "Triceps", "Front Delts"] },
+  "Incline Dumbbell Press": { tips: ["30-45° incline", "Don't flare elbows 90°", "Feel upper chest stretch"], muscles: ["Upper Chest", "Front Delts"] },
+  "Dips (Chest Focus)": { tips: ["Lean forward slightly", "Go deep for chest stretch", "Control the movement"], muscles: ["Lower Chest", "Triceps"] },
+  "Cable Crossover (High-to-Low)": { tips: ["Slight bend in elbows", "Squeeze at center", "Control the negative"], muscles: ["Chest", "Front Delts"] },
+  "Flat Dumbbell Fly": { tips: ["Slight bend in elbows", "Feel the stretch", "Squeeze at top"], muscles: ["Chest"] },
+  "Pec Deck Fly": { tips: ["Keep slight bend in arms", "Squeeze at center", "Control the negative"], muscles: ["Chest"] },
+  "Incline Barbell Press": { tips: ["30-45° angle", "Control the bar path", "Drive through chest"], muscles: ["Upper Chest", "Triceps"] },
+  "Flat Dumbbell Press": { tips: ["Neutral or slight angle grip", "Full range of motion", "Press up and in"], muscles: ["Chest", "Triceps"] },
+  
+  // Chest - Home  
+  "Push-ups (various angles)": { tips: ["Keep body straight", "Elbows at 45°", "Full range of motion"], muscles: ["Chest", "Triceps"] },
+  "Decline Push-ups": { tips: ["Feet elevated", "Targets upper chest", "Keep core tight"], muscles: ["Upper Chest", "Shoulders"] },
+  "Diamond Push-ups": { tips: ["Hands together", "Elbows close to body", "Targets triceps"], muscles: ["Triceps", "Inner Chest"] },
+  
+  // Shoulders
+  "Seated Dumbbell Overhead Press": { tips: ["Don't arch back", "Press in slight arc", "Full lockout overhead"], muscles: ["Shoulders", "Triceps"] },
+  "Standing Dumbbell Lateral Raise": { tips: ["Slight bend in elbows", "Lead with elbows", "Don't go above shoulder height"], muscles: ["Side Delts"] },
+  "Arnold Press": { tips: ["Rotate as you press", "Full range of motion", "Control the rotation"], muscles: ["Front Delts", "Side Delts"] },
+  "Bent-Over Dumbbell Reverse Fly": { tips: ["Keep back flat", "Squeeze rear delts", "Light weight, control"], muscles: ["Rear Delts", "Upper Back"] },
+  "Front Plate Raise": { tips: ["Don't swing", "Stop at shoulder height", "Control the descent"], muscles: ["Front Delts"] },
+  
+  // Arms
+  "Close-Grip Bench Press": { tips: ["Hands shoulder-width apart", "Keep elbows tucked", "Focus on triceps"], muscles: ["Triceps", "Chest"] },
+  "Barbell Curl": { tips: ["No swinging", "Keep elbows pinned", "Squeeze at the top"], muscles: ["Biceps"] },
+  "Hammer Curls": { tips: ["Neutral grip throughout", "Alternate or together", "Control the weight"], muscles: ["Biceps", "Brachialis"] },
+  "Rope Triceps Pushdown": { tips: ["Keep elbows at sides", "Split rope at bottom", "Squeeze triceps"], muscles: ["Triceps"] },
+  "Skullcrushers (Lying Tricep Extension)": { tips: ["Keep elbows stable", "Lower to forehead", "Full extension at top"], muscles: ["Triceps"] },
+  
+  // Core
+  "Hanging Leg Raises": { tips: ["Don't swing", "Curl pelvis up", "Control the descent"], muscles: ["Lower Abs", "Hip Flexors"] },
+  "Cable Crunch": { tips: ["Round the spine", "Pull with abs not arms", "Hold the contraction"], muscles: ["Abs"] },
+  "Ab Wheel Rollout": { tips: ["Keep core tight", "Don't arch back", "Full extension if able"], muscles: ["Abs", "Core"] },
+  "Plank Variations": { tips: ["Keep body straight", "Engage core", "Breathe steadily"], muscles: ["Core", "Shoulders"] },
+  "Russian Twists (weighted)": { tips: ["Rotate from core", "Keep feet elevated", "Control the twist"], muscles: ["Obliques", "Abs"] },
+  "Decline Sit-ups": { tips: ["Control the descent", "Don't use momentum", "Exhale on the way up"], muscles: ["Upper Abs"] },
+};
+
+// Helper to find muscle group for an exercise
+const findMuscleGroupForExercise = (exerciseName: string): { name: string; icon: string } | null => {
+  for (const group of MUSCLE_GROUPS) {
+    if (group.exercises.gym.includes(exerciseName) || group.exercises.home.includes(exerciseName)) {
+      return { name: group.name, icon: group.icon };
+    }
+  }
+  return null;
+};
+
+// ==========================================
+// ACTIVE WORKOUT SESSION - Focus Mode Architecture
+// Two internal views: FOCUS (immersive) and LOGGING (data entry)
+// ==========================================
+const ActiveWorkoutSession = ({
+  workoutExercises,
+  currentExerciseIndex: _parentExerciseIndex,
+  onExerciseComplete,
+  onFinishWorkout,
+  onQuit,
+  userData,
+  workoutStartTime
+}: {
+  workoutExercises: Array<{ exercise?: string; name?: string; sets: Array<{ reps: number; weight: number }> }>;
+  currentExerciseIndex: number;
+  onExerciseComplete: (exerciseIndex: number, sets: Array<{ reps: number; weight: number }>) => void;
+  onFinishWorkout: (workoutData?: Array<{ name?: string; exercise?: string; sets: Array<{ reps: number; weight: number }> }>) => void;
+  onQuit: () => void;
+  userData: any;
+  workoutStartTime: number | null;
+}) => {
+  // ==========================================
+  // CENTRALIZED STATE MANAGEMENT
+  // ==========================================
+  // All state is managed here for reliability
+  
+  // Deep clone exercises to manage internally
+  const [exercises, setExercises] = useState(() => 
+    workoutExercises.map(ex => ({ ...ex, sets: [...ex.sets] }))
+  );
+  const [currentIndex, setCurrentIndex] = useState(0);
+  const [viewMode, setViewMode] = useState<'FOCUS' | 'LOGGING'>('FOCUS');
+  const [isResting, setIsResting] = useState(false);
+  const [showQuitConfirm, setShowQuitConfirm] = useState(false);
+  
+  // Refs for scroll management
+  const focusContainerRef = useRef<HTMLDivElement>(null);
+  
+  // Persistent timer hook
+  const { elapsedTime, formatTime } = useWorkoutTimer(workoutStartTime);
+  
+  // User preferences
+  const restDuration = userData?.restTimerDefault || 90;
+  
+  // Current exercise data (derived)
+  const currentExercise = exercises[currentIndex];
+  const currentExerciseName = currentExercise?.exercise || currentExercise?.name || 'Exercise';
+  const totalExercises = exercises.length;
+  const completedCount = exercises.filter(ex => ex.sets && ex.sets.length > 0).length;
+  const isLastExercise = currentIndex >= totalExercises - 1;
+  
+  // Get exercise metadata
+  const muscleGroup = findMuscleGroupForExercise(currentExerciseName);
+  const exerciseTips = EXERCISE_TIPS[currentExerciseName];
+  const [currentTipIndex, setCurrentTipIndex] = useState(0);
+  const [lastWorkoutForExercise, setLastWorkoutForExercise] = useState<any>(null);
+  const [gifLoading, setGifLoading] = useState(true);
+  
+  // Cycle through tips every 4 seconds
+  useEffect(() => {
+    if (!exerciseTips?.tips?.length) return;
+    const interval = setInterval(() => {
+      setCurrentTipIndex(prev => (prev + 1) % exerciseTips.tips.length);
+    }, 4000);
+    return () => clearInterval(interval);
+  }, [exerciseTips?.tips?.length, currentIndex]);
+  
+  // Reset tip index when exercise changes
+  useEffect(() => {
+    setCurrentTipIndex(0);
+    setGifLoading(true);
+  }, [currentIndex]);
+  
+  // Load last workout data for current exercise
+  useEffect(() => {
+    const loadLastWorkout = async () => {
+      const user = auth.currentUser;
+      if (!user) return;
+      
+      try {
+        const workoutQuery = query(
+          collection(db, 'workoutHistory'),
+          where('userId', '==', user.uid),
+          where('exercise', '==', currentExerciseName),
+          orderBy('timestamp', 'desc'),
+          limit(1)
+        );
+        const snapshot = await getDocs(workoutQuery);
+        if (!snapshot.empty) {
+          setLastWorkoutForExercise(snapshot.docs[0].data());
+        } else {
+          setLastWorkoutForExercise(null);
+        }
+      } catch (error) {
+        console.error('Error loading last workout:', error);
+        setLastWorkoutForExercise(null);
+      }
+    };
+    
+    loadLastWorkout();
+  }, [currentExerciseName]);
+  
+  // Smart set recommendation based on history
+  const getRecommendation = () => {
+    if (lastWorkoutForExercise?.sets?.length > 0) {
+      const lastSets = lastWorkoutForExercise.sets;
+      const avgWeight = Math.round(lastSets.reduce((sum: number, s: any) => sum + s.weight, 0) / lastSets.length);
+      const avgReps = Math.round(lastSets.reduce((sum: number, s: any) => sum + s.reps, 0) / lastSets.length);
+      return { sets: lastSets.length, reps: avgReps, weight: avgWeight };
+    }
+    return { sets: 3, reps: 10, weight: null }; // Default
+  };
+  const recommendation = getRecommendation();
+  
+  // ==========================================
+  // SYNC TO localStorage FOR PERSISTENCE
+  // ==========================================
+  useEffect(() => {
+    const storeData = {
+      exercises,
+      currentIndex,
+      viewMode,
+      startTime: workoutStartTime,
+      lastUpdated: Date.now()
+    };
+    localStorage.setItem('AURA_FOCUS_MODE', JSON.stringify(storeData));
+  }, [exercises, currentIndex, viewMode, workoutStartTime]);
+  
+  // Scroll to top when exercise changes
+  useEffect(() => {
+    if (focusContainerRef.current) {
+      focusContainerRef.current.scrollTop = 0;
+    }
+  }, [currentIndex]);
+
+  // ==========================================
+  // CORE ACTIONS
+  // ==========================================
+  
+  // Log a set to current exercise
+  const logSet = useCallback((weight: number, reps: number, _type: 'normal' | 'warmup' | 'drop' | 'failure' = 'normal') => {
+    setExercises(prev => {
+      const updated = [...prev];
+      if (updated[currentIndex]) {
+        updated[currentIndex] = {
+          ...updated[currentIndex],
+          sets: [...updated[currentIndex].sets, { reps, weight }]
+        };
+      }
+      return updated;
+    });
+    
+    // Also sync to parent
+    const currentSets = exercises[currentIndex]?.sets || [];
+    onExerciseComplete(currentIndex, [...currentSets, { reps, weight }]);
+    
+    // Start rest timer
+    if (userData?.restTimerEnabled !== false) {
+      setIsResting(true);
+    }
+    
+    toast.success(`Set logged: ${weight}${userData?.measurementUnit === 'imperial' ? 'lbs' : 'kg'} × ${reps} 💪`);
+  }, [currentIndex, exercises, onExerciseComplete, userData]);
+  
+  // Remove a set from current exercise
+  const removeSet = useCallback((setIndex: number) => {
+    setExercises(prev => {
+      const updated = [...prev];
+      if (updated[currentIndex]) {
+        updated[currentIndex] = {
+          ...updated[currentIndex],
+          sets: updated[currentIndex].sets.filter((_, i) => i !== setIndex)
+        };
+      }
+      return updated;
+    });
+  }, [currentIndex]);
+  
+  // Advance to next exercise
+  const advanceExercise = useCallback(() => {
+    if (currentIndex < totalExercises - 1) {
+      // Sync current exercise data to parent before advancing
+      onExerciseComplete(currentIndex, exercises[currentIndex]?.sets || []);
+      
+      setCurrentIndex(prev => prev + 1);
+      setViewMode('FOCUS');
+      
+      // Start rest timer
+      if (userData?.restTimerEnabled !== false) {
+        setIsResting(true);
+      }
+    } else {
+      // Last exercise - finish workout
+      handleFinishWorkout();
+    }
+  }, [currentIndex, totalExercises, exercises, onExerciseComplete, userData]);
+  
+  // Skip to next exercise (no logging)
+  const skipExercise = useCallback(() => {
+    if (currentIndex < totalExercises - 1) {
+      setCurrentIndex(prev => prev + 1);
+      setViewMode('FOCUS');
+    } else {
+      handleFinishWorkout();
+    }
+  }, [currentIndex, totalExercises]);
+  
+  // Finish entire workout - Reliable transaction workflow
+  const handleFinishWorkout = useCallback(async () => {
+    try {
+      // Build final workout data directly from internal state
+      const finalWorkoutData = exercises.map(ex => ({
+        name: ex.name || ex.exercise,
+        exercise: ex.exercise || ex.name,
+        sets: ex.sets || []
+      }));
+      
+      // Filter out exercises with no sets
+      const validWorkoutData = finalWorkoutData.filter(ex => ex.sets && ex.sets.length > 0);
+      
+      if (validWorkoutData.length === 0) {
+        toast.error('No exercises with sets to save. Log at least one set!');
+        return;
+      }
+      
+      console.log('Focus Mode finishing workout with data:', validWorkoutData);
+      
+      // Clear localStorage BEFORE calling parent (parent will also clear, but this is a safety)
+      localStorage.removeItem('AURA_FOCUS_MODE');
+      
+      // Pass workout data directly to parent's finishWorkout function
+      // The parent function handles all Firebase saves, state cleanup, and UI transitions
+      await onFinishWorkout(validWorkoutData);
+      
+      // Note: We do NOT call onQuit() here anymore!
+      // The parent's finishWorkout function now handles:
+      // - setGuidedWorkoutMode(false)
+      // - setExerciseSubView('list')
+      // - All localStorage cleanup
+      // - Showing the workout summary
+      
+      console.log('Focus Mode: Workout finish transaction completed');
+    } catch (error) {
+      console.error('Focus Mode: Error finishing workout:', error);
+      toast.error('Failed to save workout. Please try again.');
+    }
+  }, [exercises, onFinishWorkout]);
+  
+  // ==========================================
+  // MULTI-LEVEL BACK BUTTON HANDLER
+  // ==========================================
+  const handleBack = useCallback(() => {
+    // Level 1: If in LOGGING view, go back to FOCUS
+    if (viewMode === 'LOGGING') {
+      setViewMode('FOCUS');
+      return;
+    }
+    
+    // Level 2: If rest timer is active, cancel it
+    if (isResting) {
+      setIsResting(false);
+      return;
+    }
+    
+    // Level 3: If in FOCUS view, show quit confirmation
+    setShowQuitConfirm(true);
+  }, [viewMode, isResting]);
+  
+  // Handle quit confirmation
+  const handleQuit = useCallback(() => {
+    // Clear all localStorage entries related to workout
+    localStorage.removeItem('AURA_FOCUS_MODE');
+    localStorage.removeItem('aura_active_workout');
+    localStorage.removeItem('AURA_WORKOUT_STORE');
+    onQuit();
+  }, [onQuit]);
+  
+  if (!currentExercise) return null;
+  
+  // ==========================================
+  // VIEW A: FOCUS SCREEN (Default, Immersive)
+  // ==========================================
+  if (viewMode === 'FOCUS') {
+    const weightUnit = userData?.measurementUnit === 'imperial' ? 'lbs' : 'kg';
+    
+    return (
+      <div ref={focusContainerRef} className="fixed inset-0 z-50 bg-gradient-to-br from-slate-900 via-indigo-900 to-purple-900 flex flex-col overflow-y-auto" style={{ paddingTop: 'env(safe-area-inset-top, 48px)' }}>
+        {/* TOP: Header with Timer */}
+        <div className="flex flex-col items-center justify-center pt-4 pb-4 px-4 bg-black/20">
+          {/* Workout Timer - BIG & BOLD */}
+          <div className="text-6xl font-bold text-white font-mono mb-2">
+            {formatTime(elapsedTime)}
+          </div>
+          
+          {/* Exercise Navigation Dots */}
+          <div className="flex items-center gap-1.5 mb-2">
+            {exercises.map((ex, idx) => {
+              const hasLogs = ex.sets && ex.sets.length > 0;
+              const isCurrent = idx === currentIndex;
+              return (
+                <button
+                  key={idx}
+                  onClick={() => setCurrentIndex(idx)}
+                  className={`w-3 h-3 rounded-full transition-all ${
+                    isCurrent 
+                      ? 'w-6 bg-white' 
+                      : hasLogs 
+                        ? 'bg-green-500' 
+                        : 'bg-white/30'
+                  }`}
+                  aria-label={`Go to exercise ${idx + 1}`}
+                />
+              );
+            })}
+          </div>
+          
+          {/* Progress Text */}
+          <div className="flex items-center gap-2 text-white/60 text-sm">
+            <span>Exercise {currentIndex + 1} of {totalExercises}</span>
+            <span>•</span>
+            <span>{completedCount} completed</span>
           </div>
         </div>
+        
+        {/* MIDDLE: Hero Section */}
+        <div className="flex-1 flex flex-col items-center px-6 py-4 overflow-y-auto">
+          {/* Muscle Group Badge */}
+          {muscleGroup && (
+            <div className="flex items-center gap-2 mb-3 bg-white/10 px-4 py-1.5 rounded-full">
+              <span className="text-lg">{muscleGroup.icon}</span>
+              <span className="text-white/80 text-sm font-medium">{muscleGroup.name}</span>
+              {exerciseTips?.muscles && (
+                <span className="text-white/50 text-xs">• {exerciseTips.muscles.slice(0, 2).join(', ')}</span>
+              )}
+            </div>
+          )}
+          
+          {/* Exercise GIF/Visual with Loading State */}
+          <div className="relative w-64 h-64 bg-white/5 rounded-3xl overflow-hidden mb-4 shadow-2xl border-2 border-white/10">
+            {gifLoading && EXERCISE_IMAGES[currentExerciseName] && (
+              <div className="absolute inset-0 flex items-center justify-center bg-white/5">
+                <div className="w-12 h-12 border-4 border-white/20 border-t-white rounded-full animate-spin" />
+              </div>
+            )}
+            {EXERCISE_IMAGES[currentExerciseName] ? (
+              <img 
+                src={EXERCISE_IMAGES[currentExerciseName]} 
+                alt={currentExerciseName}
+                className={`w-full h-full object-cover transition-opacity duration-300 ${gifLoading ? 'opacity-0' : 'opacity-100'}`}
+                onLoad={() => setGifLoading(false)}
+                onError={(e) => {
+                  setGifLoading(false);
+                  const target = e.target as HTMLImageElement;
+                  target.style.display = 'none';
+                }}
+              />
+            ) : (
+              <div className="w-full h-full flex items-center justify-center">
+                <Dumbbell className="w-24 h-24 text-white/40" />
+              </div>
+            )}
+          </div>
+          
+          {/* Exercise Name */}
+          <h1 className="text-2xl md:text-3xl font-bold text-white text-center mb-3 leading-tight">
+            {currentExerciseName}
+          </h1>
+          
+          {/* Form Tips Carousel */}
+          {exerciseTips?.tips && exerciseTips.tips.length > 0 && (
+            <div className="w-full max-w-sm mb-4 bg-amber-500/10 border border-amber-500/30 rounded-xl px-4 py-3">
+              <div className="flex items-start gap-2">
+                <span className="text-lg">💡</span>
+                <div className="flex-1">
+                  <p className="text-amber-300 text-sm font-medium transition-all duration-300">
+                    {exerciseTips.tips[currentTipIndex]}
+                  </p>
+                  <div className="flex gap-1 mt-2">
+                    {exerciseTips.tips.map((_, idx) => (
+                      <div key={idx} className={`w-1.5 h-1.5 rounded-full transition-all ${idx === currentTipIndex ? 'bg-amber-400 w-4' : 'bg-amber-400/30'}`} />
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+          
+          {/* Smart Goal Recommendation */}
+          <div className="w-full max-w-sm bg-white/10 backdrop-blur-sm rounded-2xl px-5 py-4 border border-white/20 mb-4">
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-white/60 text-sm">
+                {lastWorkoutForExercise ? '📊 Based on last session' : '🎯 Suggested Goal'}
+              </p>
+              {lastWorkoutForExercise && (
+                <span className="text-white/40 text-xs">
+                  {new Date(lastWorkoutForExercise.timestamp).toLocaleDateString()}
+                </span>
+              )}
+            </div>
+            <p className="text-white text-xl font-bold text-center">
+              {recommendation.sets} Sets × {recommendation.reps} Reps
+              {recommendation.weight && (
+                <span className="text-indigo-300"> @ {recommendation.weight}{weightUnit}</span>
+              )}
+            </p>
+          </div>
+          
+          {/* Current Progress */}
+          {currentExercise.sets && currentExercise.sets.length > 0 && (
+            <div className="w-full max-w-sm bg-green-500/20 border border-green-500/30 rounded-xl px-4 py-3">
+              <div className="flex items-center justify-between mb-2">
+                <p className="text-green-400 text-sm font-semibold">
+                  ✓ {currentExercise.sets.length}/{recommendation.sets} Sets Logged
+                </p>
+                <span className="text-green-300 text-xs">
+                  {currentExercise.sets.reduce((sum, s) => sum + s.weight * s.reps, 0).toLocaleString()} {weightUnit} volume
+                </span>
+              </div>
+              <div className="flex gap-2 flex-wrap">
+                {currentExercise.sets.map((set, idx) => (
+                  <span key={idx} className="px-2 py-1 bg-green-500/30 rounded text-green-300 text-xs font-medium">
+                    {set.weight}{weightUnit} × {set.reps}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+        
+        {/* BOTTOM: Action Area */}
+        <div className="px-6 pb-8 space-y-3" style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 100px)' }}>
+          {/* If exercise has logged sets, show Next Exercise button */}
+          {currentExercise.sets && currentExercise.sets.length > 0 ? (
+            <>
+              <button
+                onClick={advanceExercise}
+                className="w-full py-5 bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700 rounded-2xl text-white text-lg font-bold shadow-2xl transition-all transform hover:scale-[1.02]"
+              >
+                {isLastExercise ? '✓ Finish Workout' : 'Next Exercise →'}
+              </button>
+              
+              {/* Secondary: Log More Sets */}
+              <button
+                onClick={() => setViewMode('LOGGING')}
+                className="w-full py-3 bg-white/5 hover:bg-white/10 border border-white/20 rounded-2xl text-white/60 font-medium transition-all"
+              >
+                Log More Sets
+              </button>
+            </>
+          ) : (
+            <>
+              {/* Secondary Action: Skip Exercise */}
+              <button
+                onClick={skipExercise}
+                className="w-full py-3 bg-white/5 hover:bg-white/10 border border-white/20 rounded-2xl text-white/60 font-medium transition-all"
+              >
+                Skip Exercise →
+              </button>
+              
+              {/* Primary Action: Log Sets */}
+              <button
+                onClick={() => setViewMode('LOGGING')}
+                className="w-full py-5 bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500 hover:from-indigo-600 hover:via-purple-600 hover:to-pink-600 rounded-2xl text-white text-lg font-bold shadow-2xl transition-all transform hover:scale-[1.02]"
+              >
+                Log Sets
+              </button>
+            </>
+          )}
+          
+          {/* Exit Button */}
+          <button
+            onClick={handleBack}
+            className="w-full py-3 text-white/40 hover:text-white/60 text-sm font-medium transition-colors"
+          >
+            Exit Workout
+          </button>
+        </div>
+        
+        {/* REST TIMER OVERLAY - Full Screen Modal */}
+        {isResting && (
+          <RestTimerOverlay
+            key={`rest-focus-${currentIndex}-${Date.now()}`}
+            duration={restDuration}
+            onComplete={() => setIsResting(false)}
+            onSkip={() => setIsResting(false)}
+            onExtend={() => {}}
+            nextExercise={
+              currentIndex < exercises.length - 1 
+                ? (exercises[currentIndex + 1]?.exercise || exercises[currentIndex + 1]?.name)
+                : 'Workout Complete!'
+            }
+            timerKey={`focus-${currentIndex}-${exercises[currentIndex]?.sets?.length || 0}`}
+          />
+        )}
+        
+        {/* Quit Confirmation Modal */}
+        {showQuitConfirm && (
+          <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center p-6 z-[60]" style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}>
+            <div className="bg-gray-800 rounded-3xl p-6 max-w-sm w-full shadow-2xl">
+              <h3 className="text-2xl font-bold text-white mb-2">Quit Workout?</h3>
+              <p className="text-white/60 mb-6">
+                Your current session will be saved to History as incomplete.
+              </p>
+              <div className="flex gap-3">
+                <button
+                  onClick={() => setShowQuitConfirm(false)}
+                  className="flex-1 py-3 bg-white/10 hover:bg-white/20 rounded-xl text-white font-medium transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleQuit}
+                  className="flex-1 py-3 bg-red-500 hover:bg-red-600 rounded-xl text-white font-bold transition-colors"
+                >
+                  Quit
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  }
+  
+  // ==========================================
+  // VIEW B: LOGGING SCREEN (Data Entry)
+  // ==========================================
+  return (
+    <>
+      <LoggingScreenIntegrated
+        exercise={currentExercise}
+        exerciseIndex={currentIndex}
+        totalExercises={totalExercises}
+        isLastExercise={isLastExercise}
+        onBack={() => setViewMode('FOCUS')}
+        onLogSet={logSet}
+        onRemoveSet={removeSet}
+        onAdvance={advanceExercise}
+        onFinishWorkout={handleFinishWorkout}
+        userData={userData}
+        workoutStartTime={workoutStartTime}
+        existingSets={currentExercise.sets || []}
+      />
+      
+      {/* REST TIMER OVERLAY - Rendered on top of LOGGING view */}
+      {isResting && (
+        <RestTimerOverlay
+          key={`rest-logging-${currentIndex}-${Date.now()}`}
+          duration={restDuration}
+          onComplete={() => setIsResting(false)}
+          onSkip={() => setIsResting(false)}
+          onExtend={() => {}}
+          nextExercise={
+            currentIndex < exercises.length - 1 
+              ? (exercises[currentIndex + 1]?.exercise || exercises[currentIndex + 1]?.name)
+              : (currentExercise?.exercise || currentExercise?.name || 'Continue')
+          }
+          timerKey={`logging-${currentIndex}-${currentExercise?.sets?.length || 0}`}
+        />
       )}
+    </>
+  );
+};
+
+// ==========================================
+// INTEGRATED LOGGING SCREEN - Data Entry Component
+// ==========================================
+const LoggingScreenIntegrated = ({
+  exercise,
+  exerciseIndex,
+  totalExercises,
+  isLastExercise,
+  onBack,
+  onLogSet,
+  onRemoveSet,
+  onAdvance,
+  onFinishWorkout,
+  userData,
+  workoutStartTime,
+  existingSets
+}: {
+  exercise: { exercise?: string; name?: string; sets: Array<{ reps: number; weight: number }> };
+  exerciseIndex: number;
+  totalExercises: number;
+  isLastExercise: boolean;
+  onBack: () => void;
+  onLogSet: (weight: number, reps: number, type: 'normal' | 'warmup' | 'drop' | 'failure') => void;
+  onRemoveSet: (index: number) => void;
+  onAdvance: () => void;
+  onFinishWorkout: () => void;
+  userData: any;
+  workoutStartTime: number | null;
+  existingSets: Array<{ reps: number; weight: number }>;
+}) => {
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+  
+  // Derive exercise name from either field
+  const exerciseName = exercise.exercise || exercise.name || 'Exercise';
+  
+  const [currentReps, setCurrentReps] = useState('');
+  const [currentWeight, setCurrentWeight] = useState('');
+  const [currentSetType, setCurrentSetType] = useState<'normal' | 'warmup' | 'drop' | 'failure'>('normal');
+  const [lastWorkoutData, setLastWorkoutData] = useState<any>(null);
+  
+  const useMetric = userData?.measurementUnit !== 'imperial';
+  const weightUnit = useMetric ? 'kg' : 'lbs';
+  
+  // Persistent timer
+  const { elapsedTime, formatTime } = useWorkoutTimer(workoutStartTime);
+  
+  // Scroll to top on mount
+  useEffect(() => {
+    if (scrollContainerRef.current) {
+      scrollContainerRef.current.scrollTop = 0;
+    }
+  }, []);
+  
+  // Load last workout data for this exercise
+  useEffect(() => {
+    const loadLastWorkout = async () => {
+      const user = auth.currentUser;
+      if (!user) return;
+      
+      try {
+        const workoutQuery = query(
+          collection(db, 'workoutHistory'),
+          where('userId', '==', user.uid),
+          where('exercise', '==', exercise.exercise),
+          orderBy('timestamp', 'desc'),
+          limit(1)
+        );
+        const snapshot = await getDocs(workoutQuery);
+        if (!snapshot.empty) {
+          setLastWorkoutData(snapshot.docs[0].data());
+        }
+      } catch (error) {
+        console.error('Error loading last workout:', error);
+      }
+    };
+    
+    loadLastWorkout();
+  }, [exercise.exercise]);
+  
+  const addSet = () => {
+    const reps = parseInt(currentReps);
+    const weight = parseFloat(currentWeight);
+    
+    if (reps > 0 && weight >= 0) {
+      onLogSet(weight, reps, currentSetType);
+      setCurrentReps('');
+      setCurrentWeight('');
+      setCurrentSetType('normal');
+    } else {
+      toast.error('Enter valid reps and weight');
+    }
+  };
+  
+  const quickAddSet = (weight: number, reps: number) => {
+    onLogSet(weight, reps, 'normal');
+  };
+  
+  const handleFinish = async () => {
+    if (existingSets.length === 0) {
+      toast.error('Log at least one set before finishing');
+      return;
+    }
+    
+    // Save individual exercise to Firebase (for history/PRs)
+    const user = auth.currentUser;
+    if (user) {
+      try {
+        const now = new Date();
+        const bestSet = getBestSet(existingSets.map(s => ({ ...s, type: 'normal' as const })));
+        await addDoc(collection(db, 'workoutHistory'), {
+          userId: user.uid,
+          exercise: exerciseName,
+          sets: existingSets.map(s => ({ reps: s.reps, weight: s.weight, type: 'normal' })),
+          timestamp: now.getTime(),
+          date: now.toISOString().split('T')[0],
+          bestSet
+        });
+        console.log(`Saved exercise: ${exerciseName} with ${existingSets.length} sets`);
+      } catch (error) {
+        console.error('Error saving exercise:', error);
+        toast.error('Failed to save exercise data');
+      }
+    }
+    
+    // Advance or finish
+    if (isLastExercise) {
+      await onFinishWorkout();
+    } else {
+      onAdvance();
+    }
+  };
+  
+  return (
+    <div ref={scrollContainerRef} className="fixed inset-0 z-50 bg-gradient-to-br from-slate-900 to-indigo-900 flex flex-col overflow-y-auto" style={{ paddingTop: 'env(safe-area-inset-top, 48px)' }}>
+      {/* Header */}
+      <div className="bg-black/30 px-4 py-4 flex items-center justify-between border-b border-white/10">
+        <button 
+          onClick={onBack}
+          className="flex items-center gap-2 text-white/70 hover:text-white transition-colors"
+        >
+          <ArrowLeft className="w-5 h-5" />
+          <span className="font-medium">Back</span>
+        </button>
+        
+        <div className="text-center">
+          <p className="text-white/60 text-xs">Logging</p>
+          <p className="text-white font-bold">{exerciseName}</p>
+        </div>
+        
+        <div className="text-white/60 text-sm font-mono">
+          {formatTime(elapsedTime)}
+        </div>
+      </div>
+      
+      {/* Content */}
+      <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4" style={{ paddingBottom: '160px' }}>
+        {/* Progress Indicator */}
+        <div className="bg-white/5 rounded-xl px-4 py-2 flex items-center justify-between">
+          <span className="text-white/60 text-sm">Exercise {exerciseIndex + 1} of {totalExercises}</span>
+          <span className="text-white font-medium">{existingSets.length} sets logged</span>
+        </div>
+        
+        {/* Last Session History - LoggingScreenIntegrated */}
+        {lastWorkoutData && lastWorkoutData.sets && lastWorkoutData.sets.length > 0 && (
+          <div className="bg-yellow-500/10 border border-yellow-500/30 rounded-xl p-4">
+            <p className="text-yellow-400 text-sm font-semibold mb-3">📊 Last Session ({new Date(lastWorkoutData.timestamp).toLocaleDateString()})</p>
+            <div className="flex flex-wrap gap-2">
+              {lastWorkoutData.sets.slice(0, 4).map((set: any, idx: number) => (
+                <button
+                  key={idx}
+                  onClick={() => quickAddSet(set.weight, set.reps)}
+                  className="px-3 py-2 bg-yellow-500/20 hover:bg-yellow-500/30 text-yellow-300 rounded-lg text-sm font-medium transition-colors flex items-center gap-1"
+                >
+                  <span>{set.weight}{weightUnit}×{set.reps}</span>
+                  <span className="text-xs">+</span>
+                </button>
+              ))}
+            </div>
+            <p className="text-yellow-400/60 text-xs mt-2">Tap to quick-add</p>
+          </div>
+        )}
+        
+        {/* Input Form */}
+        <div className="bg-white/5 rounded-2xl p-4 space-y-4">
+          <h3 className="text-white font-bold">Add Set #{existingSets.length + 1}</h3>
+          
+          {/* Weight & Reps Inputs */}
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-white/60 text-sm mb-2 block">Weight ({weightUnit})</label>
+              <input
+                type="number"
+                value={currentWeight}
+                onChange={(e) => setCurrentWeight(e.target.value)}
+                placeholder={lastWorkoutData?.sets?.[existingSets.length]?.weight?.toString() || (useMetric ? "60" : "135")}
+                className="w-full px-4 py-3 rounded-xl bg-white/10 border border-white/20 text-white text-center text-xl font-bold focus:border-indigo-500 focus:outline-none placeholder:text-white/20"
+              />
+            </div>
+            <div>
+              <label className="text-white/60 text-sm mb-2 block">Reps</label>
+              <input
+                type="number"
+                value={currentReps}
+                onChange={(e) => setCurrentReps(e.target.value)}
+                placeholder={lastWorkoutData?.sets?.[existingSets.length]?.reps?.toString() || "12"}
+                className="w-full px-4 py-3 rounded-xl bg-white/10 border border-white/20 text-white text-center text-xl font-bold focus:border-indigo-500 focus:outline-none placeholder:text-white/20"
+              />
+            </div>
+          </div>
+          
+          {/* Set Type Selector */}
+          <div className="flex gap-2">
+            {[
+              { type: 'normal', label: 'Normal', color: 'bg-gray-600' },
+              { type: 'warmup', label: 'Warmup', color: 'bg-orange-500' },
+              { type: 'drop', label: 'Drop', color: 'bg-purple-500' },
+              { type: 'failure', label: 'Failure', color: 'bg-red-500' }
+            ].map((t) => (
+              <button
+                key={t.type}
+                onClick={() => setCurrentSetType(t.type as any)}
+                className={`flex-1 py-2 rounded-lg text-xs font-bold transition-all ${
+                  currentSetType === t.type 
+                    ? `${t.color} text-white` 
+                    : 'bg-white/10 text-white/40'
+                }`}
+              >
+                {t.label}
+              </button>
+            ))}
+          </div>
+          
+          {/* Add Set Button */}
+          <button
+            onClick={addSet}
+            disabled={!currentReps || !currentWeight}
+            className="w-full py-3 bg-gradient-to-r from-teal-500 to-emerald-600 hover:from-teal-600 hover:to-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed rounded-xl text-white font-bold transition-all"
+          >
+            + Add Set
+          </button>
+        </div>
+        
+        {/* Logged Sets */}
+        {existingSets.length > 0 && (
+          <div className="bg-white/5 rounded-2xl p-4">
+            <h3 className="text-white font-bold mb-3">Logged Sets</h3>
+            <div className="space-y-2">
+              {existingSets.map((set, idx) => (
+                <div key={idx} className="flex items-center justify-between bg-white/10 rounded-lg px-4 py-2">
+                  <div className="flex items-center gap-3">
+                    <span className="w-6 h-6 bg-indigo-500 text-white rounded-full flex items-center justify-center text-xs font-bold">
+                      {idx + 1}
+                    </span>
+                    <span className="text-white font-semibold">{set.weight}{weightUnit} × {set.reps}</span>
+                  </div>
+                  <button onClick={() => onRemoveSet(idx)} className="text-red-400 hover:text-red-500 p-1">
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+              ))}
+            </div>
+            
+            {/* Volume Summary */}
+            <div className="mt-3 pt-3 border-t border-white/10 flex items-center justify-between">
+              <span className="text-white/60 text-sm">Total Volume</span>
+              <span className="text-white font-bold">
+                {existingSets.reduce((sum, s) => sum + s.weight * s.reps, 0).toLocaleString()} {weightUnit}
+              </span>
+            </div>
+          </div>
+        )}
+      </div>
+      
+      {/* Footer Action - Fixed to bottom with safe area padding */}
+      <div className="fixed bottom-0 left-0 right-0 bg-black/50 backdrop-blur-lg px-4 py-4 border-t border-white/10" style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 80px)' }}>
+        <button
+          onClick={handleFinish}
+          disabled={existingSets.length === 0}
+          className="w-full py-4 bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed rounded-2xl text-white text-lg font-bold shadow-2xl transition-all"
+        >
+          {isLastExercise ? '✓ Finish Workout' : 'Finish Exercise →'}
+        </button>
+      </div>
+    </div>
+  );
+};
+
+// ==========================================
+// LEGACY LOGGING SCREEN - Keep for compatibility
+// ==========================================
+// @ts-ignore - Reserved for legacy compatibility
+const LoggingScreen = ({
+  exercise,
+  exerciseIndex,
+  totalExercises,
+  onBack,
+  onFinishExercise,
+  userData,
+  workoutStartTime
+}: {
+  exercise: { exercise?: string; name?: string; sets: Array<{ reps: number; weight: number }> };
+  exerciseIndex: number;
+  totalExercises: number;
+  onBack: () => void;
+  onFinishExercise: (sets: Array<{ reps: number; weight: number }>) => void;
+  userData: any;
+  workoutStartTime: number | null;
+}) => {
+  // Derive exercise name from either field
+  const exerciseName = exercise.exercise || exercise.name || 'Exercise';
+  
+  // Ref for scroll management
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+  
+  const [sets, setSets] = useState<Array<{ reps: number; weight: number; type: 'normal' | 'warmup' | 'drop' | 'failure' }>>(
+    exercise.sets.map(s => ({ ...s, type: 'normal' as const })) || []
+  );
+  const [currentReps, setCurrentReps] = useState('');
+  const [currentWeight, setCurrentWeight] = useState('');
+  const [currentSetType, setCurrentSetType] = useState<'normal' | 'warmup' | 'drop' | 'failure'>('normal');
+  const [lastWorkoutData, setLastWorkoutData] = useState<any>(null);
+  
+  const useMetric = userData?.measurementUnit !== 'imperial';
+  const weightUnit = useMetric ? 'kg' : 'lbs';
+  
+  // Persistent timer
+  const { elapsedTime, formatTime } = useWorkoutTimer(workoutStartTime);
+  
+  // Load last workout data for this exercise
+  useEffect(() => {
+    const loadLastWorkout = async () => {
+      const user = auth.currentUser;
+      if (!user) return;
+      
+      try {
+        const workoutQuery = query(
+          collection(db, 'workoutHistory'),
+          where('userId', '==', user.uid),
+          where('exercise', '==', exercise.exercise),
+          orderBy('timestamp', 'desc'),
+          limit(1)
+        );
+        const snapshot = await getDocs(workoutQuery);
+        if (!snapshot.empty) {
+          setLastWorkoutData(snapshot.docs[0].data());
+        }
+      } catch (error) {
+        console.error('Error loading last workout:', error);
+      }
+    };
+    
+    loadLastWorkout();
+  }, [exercise.exercise]);
+  
+  const addSet = () => {
+    const reps = parseInt(currentReps);
+    const weight = parseFloat(currentWeight);
+    
+    if (reps > 0 && weight >= 0) {
+      const newSet = { reps, weight, type: currentSetType };
+      setSets([...sets, newSet]);
+      setCurrentReps('');
+      setCurrentWeight('');
+      setCurrentSetType('normal');
+      toast.success(`Set ${sets.length + 1} logged! 💪`);
+    } else {
+      toast.error('Enter valid reps and weight');
+    }
+  };
+  
+  const quickAddSet = (weight: number, reps: number) => {
+    const newSet = { reps, weight, type: 'normal' as const };
+    setSets([...sets, newSet]);
+    toast.success(`Set added: ${weight}${weightUnit} × ${reps}`);
+  };
+  
+  const removeSet = (index: number) => {
+    setSets(sets.filter((_, i) => i !== index));
+  };
+  
+  const handleFinish = async () => {
+    if (sets.length === 0) {
+      toast.error('Log at least one set before finishing');
+      return;
+    }
+    
+    // Save individual exercise to Firebase (for history/PRs)
+    const user = auth.currentUser;
+    if (user) {
+      try {
+        const now = new Date();
+        const bestSet = getBestSet(sets);
+        await addDoc(collection(db, 'workoutHistory'), {
+          userId: user.uid,
+          exercise: exerciseName,
+          sets: sets.map(s => ({ reps: s.reps, weight: s.weight, type: s.type })),
+          timestamp: now.getTime(),
+          date: now.toISOString().split('T')[0],
+          bestSet
+        });
+        console.log(`Saved exercise: ${exerciseName} with ${sets.length} sets`);
+      } catch (error) {
+        console.error('Error saving exercise:', error);
+        toast.error('Failed to save exercise data');
+      }
+    }
+    
+    // Call parent handler - this will update currentWorkout and trigger next action
+    onFinishExercise(sets.map(s => ({ reps: s.reps, weight: s.weight })));
+  };
+  
+  return (
+    <div ref={scrollContainerRef} className="fixed inset-0 z-50 bg-gradient-to-br from-slate-900 to-indigo-900 flex flex-col overflow-y-auto" style={{ paddingTop: 'env(safe-area-inset-top, 48px)' }}>
+      {/* Header */}
+      <div className="bg-black/30 px-4 py-4 flex items-center justify-between border-b border-white/10">
+        <button 
+          onClick={onBack}
+          className="flex items-center gap-2 text-white/70 hover:text-white transition-colors"
+        >
+          <ArrowLeft className="w-5 h-5" />
+          <span className="font-medium">Back</span>
+        </button>
+        
+        <div className="text-center">
+          <p className="text-white/60 text-xs">Logging</p>
+          <p className="text-white font-bold">{exerciseName}</p>
+        </div>
+        
+        <div className="text-white/60 text-sm font-mono">
+          {formatTime(elapsedTime)}
+        </div>
+      </div>
+      
+      {/* Content - Legacy LoggingScreen */}
+      <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4" style={{ paddingBottom: '160px' }}>
+        {/* Progress Indicator */}
+        <div className="bg-white/5 rounded-xl px-4 py-2 flex items-center justify-between">
+          <span className="text-white/60 text-sm">Exercise {exerciseIndex + 1} of {totalExercises}</span>
+          <span className="text-white font-medium">{sets.length} sets logged</span>
+        </div>
+        
+        {/* Last Session History */}
+        {lastWorkoutData && lastWorkoutData.sets && lastWorkoutData.sets.length > 0 && (
+          <div className="bg-yellow-500/10 border border-yellow-500/30 rounded-xl p-4">
+            <p className="text-yellow-400 text-sm font-semibold mb-3">📊 Last Session ({new Date(lastWorkoutData.timestamp).toLocaleDateString()})</p>
+            <div className="flex flex-wrap gap-2">
+              {lastWorkoutData.sets.slice(0, 4).map((set: any, idx: number) => (
+                <button
+                  key={idx}
+                  onClick={() => quickAddSet(set.weight, set.reps)}
+                  className="px-3 py-2 bg-yellow-500/20 hover:bg-yellow-500/30 text-yellow-300 rounded-lg text-sm font-medium transition-colors flex items-center gap-1"
+                >
+                  <span>{set.weight}{weightUnit}×{set.reps}</span>
+                  <span className="text-xs">+</span>
+                </button>
+              ))}
+            </div>
+            <p className="text-yellow-400/60 text-xs mt-2">Tap to quick-add</p>
+          </div>
+        )}
+        
+        {/* Input Form */}
+        <div className="bg-white/5 rounded-2xl p-4 space-y-4">
+          <h3 className="text-white font-bold">Add Set #{sets.length + 1}</h3>
+          
+          {/* Weight & Reps Inputs */}
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-white/60 text-sm mb-2 block">Weight ({weightUnit})</label>
+              <input
+                type="number"
+                value={currentWeight}
+                onChange={(e) => setCurrentWeight(e.target.value)}
+                placeholder={lastWorkoutData?.sets?.[sets.length]?.weight?.toString() || (useMetric ? "60" : "135")}
+                className="w-full px-4 py-3 rounded-xl bg-white/10 border border-white/20 text-white text-center text-xl font-bold focus:border-indigo-500 focus:outline-none placeholder:text-white/20"
+              />
+            </div>
+            <div>
+              <label className="text-white/60 text-sm mb-2 block">Reps</label>
+              <input
+                type="number"
+                value={currentReps}
+                onChange={(e) => setCurrentReps(e.target.value)}
+                placeholder={lastWorkoutData?.sets?.[sets.length]?.reps?.toString() || "12"}
+                className="w-full px-4 py-3 rounded-xl bg-white/10 border border-white/20 text-white text-center text-xl font-bold focus:border-indigo-500 focus:outline-none placeholder:text-white/20"
+              />
+            </div>
+          </div>
+          
+          {/* Set Type Selector */}
+          <div className="flex gap-2">
+            {[
+              { type: 'normal', label: 'Normal', color: 'bg-gray-600' },
+              { type: 'warmup', label: 'Warmup', color: 'bg-orange-500' },
+              { type: 'drop', label: 'Drop', color: 'bg-purple-500' },
+              { type: 'failure', label: 'Failure', color: 'bg-red-500' }
+            ].map((t) => (
+              <button
+                key={t.type}
+                onClick={() => setCurrentSetType(t.type as any)}
+                className={`flex-1 py-2 rounded-lg text-xs font-bold transition-all ${
+                  currentSetType === t.type 
+                    ? `${t.color} text-white` 
+                    : 'bg-white/10 text-white/40'
+                }`}
+              >
+                {t.label}
+              </button>
+            ))}
+          </div>
+          
+          {/* Add Set Button */}
+          <button
+            onClick={addSet}
+            disabled={!currentReps || !currentWeight}
+            className="w-full py-3 bg-gradient-to-r from-teal-500 to-emerald-600 hover:from-teal-600 hover:to-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed rounded-xl text-white font-bold transition-all"
+          >
+            + Add Set
+          </button>
+        </div>
+        
+        {/* Logged Sets */}
+        {sets.length > 0 && (
+          <div className="bg-white/5 rounded-2xl p-4">
+            <h3 className="text-white font-bold mb-3">Logged Sets</h3>
+            <div className="space-y-2">
+              {sets.map((set, idx) => (
+                <div key={idx} className="flex items-center justify-between bg-white/10 rounded-lg px-4 py-2">
+                  <div className="flex items-center gap-3">
+                    <span className="w-6 h-6 bg-indigo-500 text-white rounded-full flex items-center justify-center text-xs font-bold">
+                      {idx + 1}
+                    </span>
+                    <span className="text-white font-semibold">{set.weight}{weightUnit} × {set.reps}</span>
+                    {set.type !== 'normal' && (
+                      <span className={`text-xs px-2 py-0.5 rounded ${
+                        set.type === 'warmup' ? 'bg-orange-500/30 text-orange-300' :
+                        set.type === 'drop' ? 'bg-purple-500/30 text-purple-300' :
+                        'bg-red-500/30 text-red-300'
+                      }`}>
+                        {set.type}
+                      </span>
+                    )}
+                  </div>
+                  <button onClick={() => removeSet(idx)} className="text-red-400 hover:text-red-500 p-1">
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+              ))}
+            </div>
+            
+            {/* Volume Summary */}
+            <div className="mt-3 pt-3 border-t border-white/10 flex items-center justify-between">
+              <span className="text-white/60 text-sm">Total Volume</span>
+              <span className="text-white font-bold">
+                {sets.reduce((sum, s) => sum + s.weight * s.reps, 0).toLocaleString()} {weightUnit}
+              </span>
+            </div>
+          </div>
+        )}
+      </div>
+      
+      {/* Footer Action - Fixed to bottom with safe area padding */}
+      <div className="fixed bottom-0 left-0 right-0 bg-black/50 backdrop-blur-lg px-4 py-4 border-t border-white/10" style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 80px)' }}>
+        <button
+          onClick={handleFinish}
+          disabled={sets.length === 0}
+          className="w-full py-4 bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed rounded-2xl text-white text-lg font-bold shadow-2xl transition-all"
+        >
+          {exerciseIndex >= totalExercises - 1 ? '✓ Finish Workout' : 'Finish Exercise →'}
+        </button>
+      </div>
     </div>
   );
 };
@@ -2511,32 +4651,183 @@ const ExerciseLogger = ({
   onSaveWorkout: (sets: Array<{ reps: number; weight: number }>) => void;
   userData: any;
 }) => {
-  const [sets, setSets] = useState<Array<{ reps: number; weight: number }>>([]);
+  // Set type with normal, warmup, drop, failure
+  type SetType = 'normal' | 'warmup' | 'drop' | 'failure';
+  
+  interface LoggedSet {
+    reps: number;
+    weight: number;
+    type: SetType;
+    completed: boolean;
+  }
+  
+  const [sets, setSets] = useState<LoggedSet[]>([]);
   const [currentReps, setCurrentReps] = useState('');
   const [currentWeight, setCurrentWeight] = useState('');
+  const [currentSetType, setCurrentSetType] = useState<SetType>('normal');
+  const [showRestTimer, setShowRestTimer] = useState(false);
+  const [restDuration, _setRestDuration] = useState(userData?.restTimerDefault || 90);
+  const [currentPR, setCurrentPR] = useState<any>(null);
+  const [showPRCelebration, setShowPRCelebration] = useState(false);
+  const [newPRData, setNewPRData] = useState<any>(null);
+  const [lastWorkouts, setLastWorkouts] = useState<any[]>([]); // Last 3 workouts for this exercise
+  const [progressSuggestion, setProgressSuggestion] = useState<string>('');
+  const [showHistory, setShowHistory] = useState(false); // Inline history panel
+  const [showPlateCalculator, setShowPlateCalculator] = useState(false);
+  const [plateCalcWeight, setPlateCalcWeight] = useState('');
+  
+  // Swipe handler for back navigation
+  const swipeHandlers = useSwipe(onBack);
   
   // Get user's measurement unit preference (default to metric/kg)
   const useMetric = userData?.measurementUnit !== 'imperial';
   const weightUnit = useMetric ? 'kg' : 'lbs';
+  const barWeight = useMetric ? 20 : 45; // Standard Olympic bar
+
+  // Load current PR for this exercise
+  useEffect(() => {
+    const loadCurrentPR = async () => {
+      const user = auth.currentUser;
+      if (!user) return;
+
+      try {
+        const prQuery = query(
+          collection(db, 'personalRecords'),
+          where('userId', '==', user.uid),
+          where('exercise', '==', exercise),
+          limit(1)
+        );
+        const snapshot = await getDocs(prQuery);
+        if (!snapshot.empty) {
+          setCurrentPR(snapshot.docs[0].data());
+        }
+      } catch (error) {
+        console.error('Error loading PR:', error);
+      }
+    };
+
+    loadCurrentPR();
+  }, [exercise]);
+
+  // Load last 3 workouts for this exercise and calculate progressive overload suggestion
+  useEffect(() => {
+    const loadWorkoutHistory = async () => {
+      const user = auth.currentUser;
+      if (!user) return;
+
+      try {
+        const workoutQuery = query(
+          collection(db, 'workoutHistory'),
+          where('userId', '==', user.uid),
+          where('exercise', '==', exercise),
+          orderBy('timestamp', 'desc'),
+          limit(3)
+        );
+        const snapshot = await getDocs(workoutQuery);
+        
+        if (!snapshot.empty) {
+          const workouts = snapshot.docs.map(doc => doc.data());
+          setLastWorkouts(workouts);
+          
+          // Set ghost sets from most recent workout
+          const lastWorkout = workouts[0];
+          if (lastWorkout?.sets?.length > 0) {
+            // Pre-fill with ghost sets (placeholders from last workout)
+            // We don't actually set them, just use for placeholder display
+          }
+          
+          // Calculate progressive overload suggestion
+          const lastBestSet = lastWorkout.bestSet || lastWorkout.sets[0];
+          if (lastBestSet) {
+            const lastWeight = lastBestSet.weight;
+            const lastReps = lastBestSet.reps;
+            
+            // Suggest progression based on reps achieved
+            if (lastReps >= 12) {
+              const suggestedIncrease = useMetric ? 2.5 : 5;
+              const newWeight = lastWeight + suggestedIncrease;
+              setProgressSuggestion(
+                `Last: ${lastWeight}${weightUnit} × ${lastReps}. Try ${newWeight}${weightUnit} × 8-10 reps! 💪`
+              );
+            } else if (lastReps >= 8) {
+              setProgressSuggestion(
+                `Last: ${lastWeight}${weightUnit} × ${lastReps}. Try ${lastWeight}${weightUnit} × ${lastReps + 1} reps or add ${useMetric ? '1.25' : '2.5'}${weightUnit}! 🎯`
+              );
+            } else {
+              setProgressSuggestion(
+                `Last: ${lastWeight}${weightUnit} × ${lastReps}. Focus on hitting ${Math.min(lastReps + 2, 8)} reps! 🔥`
+              );
+            }
+          }
+        } else {
+          setProgressSuggestion('First time doing this exercise! Start with a weight you can handle for 8-12 reps. 🌟');
+        }
+      } catch (error) {
+        console.error('Error loading workout history:', error);
+      }
+    };
+
+    loadWorkoutHistory();
+  }, [exercise, useMetric, weightUnit]);
+
+  // Get ghost set placeholders from last workout
+  const getGhostSet = (setIndex: number) => {
+    if (lastWorkouts.length > 0 && lastWorkouts[0].sets?.[setIndex]) {
+      return lastWorkouts[0].sets[setIndex];
+    }
+    return null;
+  };
 
   const addSet = () => {
     const reps = parseInt(currentReps);
     const weight = parseFloat(currentWeight);
     
     if (reps > 0 && weight >= 0) {
-      setSets([...sets, { reps, weight }]);
+      const newSet: LoggedSet = { 
+        reps, 
+        weight, 
+        type: currentSetType, 
+        completed: true 
+      };
+      setSets([...sets, newSet]);
       setCurrentReps('');
       setCurrentWeight('');
+      setCurrentSetType('normal');
       toast.success(`Set ${sets.length + 1} added! 💪`);
+      
+      // AUTO-REST: Automatically trigger rest timer after completing a set
+      if (userData?.restTimerEnabled !== false) {
+        setShowRestTimer(true);
+      }
     } else {
       toast.error('Please enter valid reps and weight');
     }
+  };
+
+  // Toggle set type cyclically: normal -> warmup -> drop -> failure -> normal
+  const cycleSetType = () => {
+    const types: SetType[] = ['normal', 'warmup', 'drop', 'failure'];
+    const currentIndex = types.indexOf(currentSetType);
+    setCurrentSetType(types[(currentIndex + 1) % types.length]);
+  };
+
+  const getSetTypeConfig = (type: SetType) => {
+    const configs = {
+      normal: { label: 'Normal', color: 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300', icon: '💪' },
+      warmup: { label: 'Warmup', color: 'bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-300', icon: '🔥' },
+      drop: { label: 'Drop', color: 'bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300', icon: '⬇️' },
+      failure: { label: 'Failure', color: 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300', icon: '💀' }
+    };
+    return configs[type];
   };
 
   const removeSet = (index: number) => {
     setSets(sets.filter((_, i) => i !== index));
     toast.success('Set removed');
   };
+
+  // Calculate plate breakdown
+  const plateResult = plateCalcWeight ? calculatePlates(parseFloat(plateCalcWeight), barWeight, weightUnit as 'lbs' | 'kg') : null;
 
   const handleSave = async () => {
     if (sets.length === 0) {
@@ -2551,18 +4842,94 @@ const ExerciseLogger = ({
     }
 
     try {
+      const now = new Date();
+      const today = now.toISOString().split('T')[0];
+      
+      // Filter out warmup sets for PR calculation (warmups don't count as working sets)
+      const workingSets = sets.filter(s => s.type !== 'warmup');
+      const allSetsSimple = sets.map(s => ({ reps: s.reps, weight: s.weight }));
+      
+      // Get best set from working sets
+      const bestSet = workingSets.length > 0 ? getBestSet(workingSets) : getBestSet(sets);
+      const bestEstimatedMax = calculate1RM(bestSet.weight, bestSet.reps);
+      
+      // Check for PR (only from working sets)
+      let isNewPR = false;
+      if (workingSets.length > 0) {
+        if (currentPR) {
+          const currentBestMax = calculate1RM(currentPR.weight, currentPR.reps);
+          isNewPR = bestEstimatedMax > currentBestMax;
+        } else {
+          isNewPR = true;
+        }
+      }
+      
       // Save to Firestore
       await addDoc(collection(db, 'workoutHistory'), {
         userId: user.uid,
         exercise,
-        sets,
-        timestamp: new Date().toISOString(),
-        date: new Date().toLocaleDateString()
+        sets: sets.map(s => ({ reps: s.reps, weight: s.weight, type: s.type })),
+        timestamp: now.getTime(),
+        timestampISO: now.toISOString(),
+        date: today,
+        dateFormatted: now.toLocaleDateString('en-US', { 
+          year: 'numeric', 
+          month: 'short', 
+          day: 'numeric' 
+        }),
+        timeOfDay: now.toLocaleTimeString('en-US', { 
+          hour: '2-digit', 
+          minute: '2-digit' 
+        }),
+        bestSet,
+        estimatedMax: bestEstimatedMax,
+        isNewPR,
+        setTypes: {
+          warmup: sets.filter(s => s.type === 'warmup').length,
+          normal: sets.filter(s => s.type === 'normal').length,
+          drop: sets.filter(s => s.type === 'drop').length,
+          failure: sets.filter(s => s.type === 'failure').length
+        }
       });
 
-      onSaveWorkout(sets);
-      toast.success('Workout logged successfully! 🎉');
-      onBack();
+      // If new PR, save to personalRecords
+      if (isNewPR) {
+        const prData = {
+          userId: user.uid,
+          exercise,
+          weight: bestSet.weight,
+          reps: bestSet.reps,
+          estimatedMax: bestEstimatedMax,
+          date: today,
+          timestamp: now.getTime()
+        };
+
+        const prQuery = query(
+          collection(db, 'personalRecords'),
+          where('userId', '==', user.uid),
+          where('exercise', '==', exercise)
+        );
+        const prSnapshot = await getDocs(prQuery);
+        
+        if (!prSnapshot.empty) {
+          await updateDoc(prSnapshot.docs[0].ref, prData);
+        } else {
+          await addDoc(collection(db, 'personalRecords'), prData);
+        }
+
+        setNewPRData({
+          newPR: { weight: bestSet.weight, reps: bestSet.reps, estimatedMax: bestEstimatedMax },
+          oldPR: currentPR
+        });
+        setShowPRCelebration(true);
+      }
+
+      onSaveWorkout(allSetsSimple);
+      toast.success(isNewPR ? '🏆 NEW PR! Workout saved!' : 'Workout logged successfully! 🏋️');
+      
+      if (!isNewPR) {
+        onBack();
+      }
     } catch (error) {
       console.error('Error saving workout:', error);
       toast.error('Failed to save workout');
@@ -2570,79 +4937,259 @@ const ExerciseLogger = ({
   };
 
   return (
-    <div className="p-4 space-y-6">
+    <div className="p-4 space-y-4 pb-24" {...swipeHandlers}>
+      {/* Header */}
       <button 
         onClick={onBack} 
-        className="flex items-center text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 dark:hover:text-indigo-300 transition duration-200 mb-4"
+        className="flex items-center text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 dark:hover:text-indigo-300 transition duration-200 mb-2"
       >
-        <ArrowLeft className="h-4 w-4 mr-2" /> Back to Details
+        <ArrowLeft className="h-4 w-4 mr-2" /> Back
       </button>
 
+      {/* Exercise Title Card */}
       <div className="bg-gradient-to-r from-indigo-300 via-purple-300 to-pink-300 dark:from-indigo-900/40 dark:to-purple-900/40 p-4 rounded-xl border-2 border-indigo-400 dark:border-indigo-500/30 shadow-xl">
-        <h2 className="text-2xl font-bold text-indigo-900 dark:text-white mb-2">{exercise}</h2>
-        <p className="text-sm text-indigo-700 dark:text-indigo-300">Log your sets and track your progress</p>
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="text-xl font-bold text-indigo-900 dark:text-white">{exercise}</h2>
+            <p className="text-xs text-indigo-700 dark:text-indigo-300">Log your sets with precision</p>
+          </div>
+          {/* History Toggle Button */}
+          <button
+            onClick={() => setShowHistory(!showHistory)}
+            className={`px-3 py-2 rounded-lg text-sm font-semibold transition ${
+              showHistory 
+                ? 'bg-indigo-500 text-white' 
+                : 'bg-white/50 dark:bg-gray-800/50 text-indigo-700 dark:text-indigo-300'
+            }`}
+          >
+            📊 History
+          </button>
+        </div>
+        
+        {/* Current PR Display */}
+        {currentPR && (
+          <div className="mt-3 p-2 bg-white/30 dark:bg-black/20 rounded-lg border border-indigo-300 dark:border-indigo-500/30 flex items-center justify-between">
+            <span className="text-xs font-semibold text-indigo-900 dark:text-indigo-200">🏆 Current PR:</span>
+            <span className="text-sm font-bold text-indigo-900 dark:text-white">
+              {currentPR.weight}{weightUnit} × {currentPR.reps}
+            </span>
+          </div>
+        )}
       </div>
 
-      {/* Add Set Form */}
-      <div className="bg-white dark:bg-gray-800 p-5 rounded-xl shadow-xl border-2 border-indigo-300 dark:border-indigo-500/30">
-        <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">Add New Set</h3>
+      {/* Inline History Panel */}
+      {showHistory && lastWorkouts.length > 0 && (
+        <div className="bg-gray-50 dark:bg-gray-800/50 p-4 rounded-xl border border-gray-200 dark:border-gray-700 space-y-3">
+          <h3 className="text-sm font-bold text-gray-900 dark:text-white flex items-center gap-2">
+            📈 Last 3 Sessions
+          </h3>
+          {lastWorkouts.map((workout, idx) => (
+            <div key={idx} className="bg-white dark:bg-gray-800 p-3 rounded-lg shadow-sm border border-gray-100 dark:border-gray-700">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-xs text-gray-500 dark:text-gray-400">
+                  {new Date(workout.timestamp).toLocaleDateString()}
+                </span>
+                <span className="text-xs font-semibold text-indigo-600 dark:text-indigo-400">
+                  {workout.sets?.length || 0} sets
+                </span>
+              </div>
+              <div className="flex flex-wrap gap-1">
+                {workout.sets?.slice(0, 5).map((set: any, setIdx: number) => (
+                  <span key={setIdx} className="text-xs px-2 py-0.5 bg-gray-100 dark:bg-gray-700 rounded text-gray-700 dark:text-gray-300">
+                    {set.weight}{weightUnit}×{set.reps}
+                  </span>
+                ))}
+                {workout.sets?.length > 5 && (
+                  <span className="text-xs text-gray-400">+{workout.sets.length - 5} more</span>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Progressive Overload Suggestion */}
+      {progressSuggestion && (
+        <div className="bg-gradient-to-r from-yellow-100 to-amber-100 dark:from-yellow-900/30 dark:to-amber-900/30 p-3 rounded-xl border border-yellow-400 dark:border-yellow-500/50 shadow-sm">
+          <div className="flex items-center gap-2">
+            <span className="text-lg">💡</span>
+            <p className="text-sm text-yellow-800 dark:text-yellow-300 font-medium">{progressSuggestion}</p>
+          </div>
+        </div>
+      )}
+
+      {/* Add Set Form - PRO version with ghost sets and set types */}
+      <div className="bg-white dark:bg-gray-800 p-4 rounded-xl shadow-xl border-2 border-indigo-300 dark:border-indigo-500/30">
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Add Set #{sets.length + 1}</h3>
+          {/* Set Type Toggle */}
+          <button
+            onClick={cycleSetType}
+            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${getSetTypeConfig(currentSetType).color}`}
+          >
+            {getSetTypeConfig(currentSetType).icon} {getSetTypeConfig(currentSetType).label}
+          </button>
+        </div>
         
-        <div className="grid grid-cols-2 gap-4 mb-4">
+        <div className="grid grid-cols-2 gap-3 mb-3">
           <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Reps</label>
+            <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Weight ({weightUnit})</label>
+            <div className="relative">
+              <input
+                type="number"
+                value={currentWeight}
+                onChange={(e) => setCurrentWeight(e.target.value)}
+                placeholder={getGhostSet(sets.length)?.weight?.toString() || (useMetric ? "60" : "135")}
+                step="0.5"
+                className="w-full px-3 py-2.5 rounded-lg border-2 border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:border-indigo-500 dark:focus:border-indigo-400 focus:ring-2 focus:ring-indigo-200 dark:focus:ring-indigo-500/20 transition outline-none placeholder:text-gray-400/50 placeholder:italic"
+              />
+              {/* Plate Calculator Button */}
+              <button
+                onClick={() => {
+                  setPlateCalcWeight(currentWeight || getGhostSet(sets.length)?.weight?.toString() || '');
+                  setShowPlateCalculator(!showPlateCalculator);
+                }}
+                className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-gray-400 hover:text-indigo-500 transition"
+                title="Plate Calculator"
+              >
+                🏋️
+              </button>
+            </div>
+          </div>
+          
+          <div>
+            <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Reps</label>
             <input
               type="number"
               value={currentReps}
               onChange={(e) => setCurrentReps(e.target.value)}
-              placeholder="12"
-              className="w-full px-4 py-3 rounded-lg border-2 border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:border-indigo-500 dark:focus:border-indigo-400 focus:ring-2 focus:ring-indigo-200 dark:focus:ring-indigo-500/20 transition outline-none"
-            />
-          </div>
-          
-          <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Weight ({weightUnit})</label>
-            <input
-              type="number"
-              value={currentWeight}
-              onChange={(e) => setCurrentWeight(e.target.value)}
-              placeholder={useMetric ? "60" : "135"}
-              step="0.5"
-              className="w-full px-4 py-3 rounded-lg border-2 border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:border-indigo-500 dark:focus:border-indigo-400 focus:ring-2 focus:ring-indigo-200 dark:focus:ring-indigo-500/20 transition outline-none"
+              placeholder={getGhostSet(sets.length)?.reps?.toString() || "12"}
+              className="w-full px-3 py-2.5 rounded-lg border-2 border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:border-indigo-500 dark:focus:border-indigo-400 focus:ring-2 focus:ring-indigo-200 dark:focus:ring-indigo-500/20 transition outline-none placeholder:text-gray-400/50 placeholder:italic"
             />
           </div>
         </div>
+
+        {/* Plate Calculator Panel */}
+        {showPlateCalculator && (
+          <div className="mb-3 p-3 bg-gray-50 dark:bg-gray-900/50 rounded-lg border border-gray-200 dark:border-gray-700">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-sm font-bold text-gray-900 dark:text-white">🏋️ Plate Calculator</span>
+              <span className="text-xs text-gray-500">Bar: {barWeight}{weightUnit}</span>
+            </div>
+            <input
+              type="number"
+              value={plateCalcWeight}
+              onChange={(e) => setPlateCalcWeight(e.target.value)}
+              placeholder={`Total weight (${weightUnit})`}
+              className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm mb-2"
+            />
+            {plateResult && (
+              <div className="space-y-1">
+                {plateResult.error ? (
+                  <p className="text-xs text-red-500">{plateResult.error}</p>
+                ) : plateResult.plates.length === 0 ? (
+                  <p className="text-xs text-gray-500">Just the bar!</p>
+                ) : (
+                  <div className="flex flex-wrap gap-1">
+                    <span className="text-xs text-gray-500">Per side:</span>
+                    {plateResult.plates.map((plate, idx) => (
+                      <span key={idx} className="text-xs px-2 py-0.5 bg-indigo-100 dark:bg-indigo-900/50 text-indigo-700 dark:text-indigo-300 rounded-full font-semibold">
+                        {plate.count}×{plate.weight}{weightUnit}
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Ghost Set Hint */}
+        {getGhostSet(sets.length) && !currentWeight && !currentReps && (
+          <p className="text-xs text-gray-400 dark:text-gray-500 mb-2 italic">
+            💡 Last time: {getGhostSet(sets.length)?.weight}{weightUnit} × {getGhostSet(sets.length)?.reps} reps
+          </p>
+        )}
 
         <button
           onClick={addSet}
           className="w-full py-3 bg-gradient-to-r from-teal-500 to-emerald-600 hover:from-teal-600 hover:to-emerald-700 rounded-xl text-white font-bold transition duration-300 shadow-lg"
         >
-          + Add Set
+          ✓ Log Set
         </button>
       </div>
 
-      {/* Sets List */}
+      {/* Sets List - PRO version with set types */}
       {sets.length > 0 && (
-        <div className="space-y-3">
-          <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Completed Sets ({sets.length})</h3>
-          {sets.map((set, index) => (
-            <div 
-              key={index}
-              className="bg-white dark:bg-gray-800 p-4 rounded-lg shadow-lg border-l-4 border-teal-500 dark:border-teal-400 flex items-center justify-between"
-            >
-              <div className="flex items-center gap-4">
-                <span className="text-xl font-bold text-teal-600 dark:text-teal-400">#{index + 1}</span>
-                <div>
-                  <p className="text-gray-900 dark:text-white font-semibold">{set.reps} reps × {set.weight} {weightUnit}</p>
-                </div>
-              </div>
-              <button
-                onClick={() => removeSet(index)}
-                className="text-red-500 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300 transition"
+        <div className="space-y-2">
+          <div className="flex items-center justify-between">
+            <h3 className="text-sm font-semibold text-gray-900 dark:text-white">Logged Sets ({sets.length})</h3>
+            {lastWorkouts[0] && (
+              <span className="text-xs text-gray-500">Last: {lastWorkouts[0].sets?.length || 0} sets</span>
+            )}
+          </div>
+          
+          {sets.map((set, index) => {
+            const lastSet = lastWorkouts[0]?.sets?.[index];
+            const typeConfig = getSetTypeConfig(set.type);
+            let comparisonIcon = '';
+            
+            if (lastSet && set.type === 'normal') {
+              const currentVolume = set.weight * set.reps;
+              const lastVolume = lastSet.weight * lastSet.reps;
+              if (currentVolume > lastVolume) comparisonIcon = '📈';
+              else if (currentVolume < lastVolume) comparisonIcon = '📉';
+              else comparisonIcon = '➡️';
+            }
+            
+            return (
+              <div 
+                key={index}
+                className={`p-3 rounded-lg shadow-md flex items-center justify-between ${typeConfig.color} border-l-4 ${
+                  set.type === 'warmup' ? 'border-orange-500' :
+                  set.type === 'drop' ? 'border-purple-500' :
+                  set.type === 'failure' ? 'border-red-500' :
+                  'border-teal-500'
+                }`}
               >
-                <ArrowLeft className="h-5 w-5 transform rotate-180" />
-              </button>
+                <div className="flex items-center gap-3">
+                  <span className="text-lg font-bold opacity-60">#{index + 1}</span>
+                  <div>
+                    <p className="font-semibold">
+                      {set.weight}{weightUnit} × {set.reps}
+                    </p>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs opacity-70">{typeConfig.icon} {typeConfig.label}</span>
+                      {comparisonIcon && lastSet && (
+                        <span className="text-xs">
+                          {comparisonIcon} vs {lastSet.weight}{weightUnit}×{lastSet.reps}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+                <button
+                  onClick={() => removeSet(index)}
+                  className="text-red-500 hover:text-red-700 transition p-1"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+            );
+          })}
+          
+          {/* Volume Summary */}
+          <div className="bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-900/20 dark:to-indigo-900/20 p-3 rounded-lg border border-blue-200 dark:border-blue-700/30">
+            <div className="flex items-center justify-between text-sm">
+              <span className="font-semibold text-gray-700 dark:text-gray-300">Total Volume:</span>
+              <span className="font-bold text-gray-900 dark:text-white">
+                {sets.filter(s => s.type !== 'warmup').reduce((sum, set) => sum + (set.weight * set.reps), 0).toFixed(0)}{weightUnit}
+              </span>
             </div>
-          ))}
+            <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+              {sets.filter(s => s.type === 'warmup').length} warmup, {sets.filter(s => s.type === 'normal').length} working, {sets.filter(s => s.type === 'drop').length} drop, {sets.filter(s => s.type === 'failure').length} failure
+            </p>
+          </div>
         </div>
       )}
 
@@ -2652,15 +5199,45 @@ const ExerciseLogger = ({
           onClick={handleSave}
           className="w-full py-4 bg-gradient-to-r from-indigo-500 to-purple-600 hover:from-indigo-600 hover:to-purple-700 rounded-xl text-white font-bold text-lg transition duration-300 shadow-xl"
         >
-          Save Workout ({sets.length} {sets.length === 1 ? 'set' : 'sets'})
+          💾 Save Workout ({sets.filter(s => s.type !== 'warmup').length} working sets)
         </button>
+      )}
+
+      {/* Rest Timer - Auto-triggered after each set */}
+      {showRestTimer && (
+        <RestTimer
+          duration={restDuration}
+          exerciseName={exercise}
+          onComplete={() => {
+            setShowRestTimer(false);
+            toast.success('Rest complete! Ready for next set 💪', { icon: '✅', duration: 2000 });
+          }}
+          onSkip={() => {
+            setShowRestTimer(false);
+            toast('Rest skipped', { icon: '⏭️' });
+          }}
+        />
+      )}
+
+      {/* PR Celebration Modal */}
+      {showPRCelebration && newPRData && (
+        <PRCelebrationModal
+          exercise={exercise}
+          newPR={newPRData.newPR}
+          oldPR={newPRData.oldPR}
+          onClose={() => {
+            setShowPRCelebration(false);
+            onBack();
+          }}
+        />
       )}
     </div>
   );
 };
 
 // Modal Components
-const ExerciseDetailModal = ({ 
+// @ts-ignore - preserved for potential future use
+const _ExerciseDetailModal = ({ 
   exercise, 
   onClose, 
   onStartLogging 
@@ -2670,6 +5247,7 @@ const ExerciseDetailModal = ({
   onStartLogging?: () => void;
 }) => {
   const swipeHandlers = useSwipe(onClose);
+  useEscapeKey(onClose);
   
   // Get exercise details from the EXERCISE_DETAILS object
   const exerciseDetail = EXERCISE_DETAILS[exercise];
@@ -2679,7 +5257,13 @@ const ExerciseDetailModal = ({
   
   return (
     <AnimatePresence>
-      <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-[60] p-4" onClick={onClose}>
+      <div 
+        className="fixed inset-0 bg-black/80 flex items-center justify-center z-[60] p-4" 
+        onClick={onClose}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="exercise-modal-title"
+      >
         <motion.div 
           className="bg-white dark:bg-gray-800 rounded-2xl max-w-md w-full shadow-2xl border border-gray-300 dark:border-indigo-500/30 max-h-[85vh] flex flex-col" 
           onClick={(e) => e.stopPropagation()}
@@ -2691,8 +5275,12 @@ const ExerciseDetailModal = ({
         >
           {/* Header - Fixed at top */}
           <div className="flex justify-between items-center p-6 pb-4 border-b border-gray-200 dark:border-gray-700 flex-shrink-0">
-            <h3 className="text-2xl font-bold text-gray-900 dark:text-white">{exercise}</h3>
-            <button onClick={onClose} className="text-gray-400 hover:text-gray-600 dark:hover:text-white transition">
+            <h3 id="exercise-modal-title" className="text-2xl font-bold text-gray-900 dark:text-white">{exercise}</h3>
+            <button 
+              onClick={onClose} 
+              className="text-gray-400 hover:text-gray-600 dark:hover:text-white transition"
+              aria-label="Close exercise details"
+            >
               <ArrowLeft className="h-6 w-6 transform rotate-180" />
             </button>
           </div>
@@ -2804,6 +5392,7 @@ const EditProfileModal = ({ onClose, userData }: { onClose: () => void; userData
   const [isLoading, setIsLoading] = useState(false);
   
   const swipeHandlers = useSwipe(onClose);
+  useEscapeKey(onClose);
   
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -2836,7 +5425,13 @@ const EditProfileModal = ({ onClose, userData }: { onClose: () => void; userData
   
   return (
     <AnimatePresence>
-      <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4" onClick={onClose}>
+      <div 
+        className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4" 
+        onClick={onClose}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="edit-profile-title"
+      >
         <motion.div 
           className="bg-white dark:bg-gray-800 rounded-2xl p-6 max-w-md w-full shadow-2xl border border-gray-200 dark:border-indigo-500/30" 
           onClick={(e) => e.stopPropagation()}
@@ -2847,8 +5442,12 @@ const EditProfileModal = ({ onClose, userData }: { onClose: () => void; userData
           {...swipeHandlers}
         >
           <div className="flex justify-between items-center mb-4">
-            <h3 className="text-2xl font-bold text-gray-900 dark:text-white">Edit Profile</h3>
-            <button onClick={onClose} className="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-white transition">
+            <h3 id="edit-profile-title" className="text-2xl font-bold text-gray-900 dark:text-white">Edit Profile</h3>
+            <button 
+              onClick={onClose} 
+              className="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-white transition"
+              aria-label="Close edit profile"
+            >
               <ArrowLeft className="h-6 w-6 transform rotate-180" />
             </button>
           </div>
@@ -3145,7 +5744,7 @@ const DietSurveyScreen = ({ onComplete, userData, initialStep }: { onComplete: (
       {/* Header */}
       <div className="border-b border-indigo-500/50 pb-3">
         <h2 className="text-3xl font-bold text-gray-900 dark:text-white">Diet Preferences</h2>
-        <p className="text-gray-600 dark:text-white/60 text-sm mt-1">Help us personalize your nutrition plan</p>
+        <p className="text-gray-600 dark:text-white/80 text-sm mt-1">Help us personalize your nutrition plan</p>
       </div>
 
       {/* Progress Bar */}
@@ -3167,7 +5766,7 @@ const DietSurveyScreen = ({ onComplete, userData, initialStep }: { onComplete: (
         {currentStep === 1 && (
           <div className="space-y-4">
             <h3 className="text-xl font-semibold text-gray-900 dark:text-white">What's your fitness goal?</h3>
-            <p className="text-gray-600 dark:text-white/60 text-sm">This determines your meal plan type</p>
+            <p className="text-gray-600 dark:text-white/80 text-sm">This determines your meal plan type</p>
             <div className="space-y-3">
               {fitnessGoals.map(goal => (
                 <button
@@ -3179,12 +5778,12 @@ const DietSurveyScreen = ({ onComplete, userData, initialStep }: { onComplete: (
                       : 'border-gray-300 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 hover:border-gray-400 dark:hover:border-gray-600'
                   }`}
                 >
-                  <div className={`text-4xl w-16 h-16 rounded-full ${goal.color} flex items-center justify-center`}>
+                  <div className={`text-4xl w-16 h-16 flex-shrink-0 rounded-full ${goal.color} flex items-center justify-center`}>
                     {goal.icon}
                   </div>
                   <div className="flex-1 text-left">
                     <div className="text-gray-900 dark:text-white font-bold text-lg">{goal.name}</div>
-                    <div className="text-gray-600 dark:text-white/60 text-sm">{goal.desc}</div>
+                    <div className="text-gray-600 dark:text-white/80 text-sm">{goal.desc}</div>
                   </div>
                 </button>
               ))}
@@ -3195,7 +5794,7 @@ const DietSurveyScreen = ({ onComplete, userData, initialStep }: { onComplete: (
         {currentStep === 2 && (
           <div className="space-y-4">
             <h3 className="text-xl font-semibold text-gray-900 dark:text-white">What's your religion or dietary belief?</h3>
-            <p className="text-gray-600 dark:text-white/60 text-sm">This helps us suggest appropriate foods</p>
+            <p className="text-gray-600 dark:text-white/80 text-sm">This helps us suggest appropriate foods</p>
             <div className="grid grid-cols-2 gap-3">
               {religions.map(religion => (
                 <button
@@ -3218,7 +5817,7 @@ const DietSurveyScreen = ({ onComplete, userData, initialStep }: { onComplete: (
         {currentStep === 3 && (
           <div className="space-y-4">
             <h3 className="text-xl font-semibold text-gray-900 dark:text-white">What's your diet type?</h3>
-            <p className="text-gray-600 dark:text-white/60 text-sm">Choose your eating pattern</p>
+            <p className="text-gray-600 dark:text-white/80 text-sm">Choose your eating pattern</p>
             <div className="grid grid-cols-2 gap-3">
               {dietTypes.map(diet => (
                 <button
@@ -3232,7 +5831,7 @@ const DietSurveyScreen = ({ onComplete, userData, initialStep }: { onComplete: (
                 >
                   <div className="text-3xl mb-2">{diet.icon}</div>
                   <div className="text-gray-900 dark:text-white font-semibold text-sm">{diet.name}</div>
-                  <div className="text-gray-600 dark:text-white/50 text-xs mt-1">{diet.desc}</div>
+                  <div className="text-gray-600 dark:text-white/70 text-xs mt-1">{diet.desc}</div>
                 </button>
               ))}
             </div>
@@ -3242,7 +5841,7 @@ const DietSurveyScreen = ({ onComplete, userData, initialStep }: { onComplete: (
         {currentStep === 4 && (
           <div className="space-y-4">
             <h3 className="text-xl font-semibold text-gray-900 dark:text-white">What foods do you like?</h3>
-            <p className="text-gray-600 dark:text-white/60 text-sm">Select all that apply</p>
+            <p className="text-gray-600 dark:text-white/80 text-sm">Select all that apply</p>
             <div className="grid grid-cols-3 gap-2">
               {foodPreferences.map(food => (
                 <button
@@ -3265,7 +5864,7 @@ const DietSurveyScreen = ({ onComplete, userData, initialStep }: { onComplete: (
         {currentStep === 5 && (
           <div className="space-y-4">
             <h3 className="text-xl font-semibold text-gray-900 dark:text-white">Any food allergies?</h3>
-            <p className="text-gray-600 dark:text-white/60 text-sm">We'll exclude these from your plan</p>
+            <p className="text-gray-600 dark:text-white/80 text-sm">We'll exclude these from your plan</p>
             <div className="grid grid-cols-2 gap-3">
               {allergies.map(allergy => (
                 <button
@@ -3288,7 +5887,7 @@ const DietSurveyScreen = ({ onComplete, userData, initialStep }: { onComplete: (
         {currentStep === 6 && (
           <div className="space-y-4">
             <h3 className="text-xl font-semibold text-gray-900 dark:text-white">What's your meal style?</h3>
-            <p className="text-gray-600 dark:text-white/60 text-sm">Choose a style that fits your budget and cooking skills</p>
+            <p className="text-gray-600 dark:text-white/80 text-sm">Choose a style that fits your budget and cooking skills</p>
             <div className="space-y-3">
               {mealStyles.map(style => (
                 <button
@@ -3304,7 +5903,7 @@ const DietSurveyScreen = ({ onComplete, userData, initialStep }: { onComplete: (
                     <div className="text-3xl">{style.icon}</div>
                     <div className="text-left">
                       <div className="text-gray-900 dark:text-white font-semibold">{style.name}</div>
-                      <div className="text-gray-600 dark:text-white/50 text-sm">{style.desc}</div>
+                      <div className="text-gray-600 dark:text-white/70 text-sm">{style.desc}</div>
                     </div>
                   </div>
                 </button>
@@ -3322,7 +5921,7 @@ const DietSurveyScreen = ({ onComplete, userData, initialStep }: { onComplete: (
                     className={`flex-1 py-3 rounded-lg font-semibold transition ${
                       surveyData.mealsPerDay === num
                         ? 'bg-indigo-600 text-white'
-                        : 'bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-white/60 hover:bg-gray-300 dark:hover:bg-gray-600'
+                        : 'bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-white/80 hover:bg-gray-300 dark:hover:bg-gray-600'
                     }`}
                   >
                     {num}
@@ -3404,6 +6003,7 @@ const IngredientSubstitutionModal = ({
 }) => {
   const [localIngredients, setLocalIngredients] = useState(selectedMealForSub.meal.ingredients || []);
   const [portionSize, setPortionSize] = useState(1.0);
+  useEscapeKey(onClose);
 
   // Common substitutions database
   const substitutions: Record<string, string[]> = {
@@ -3439,9 +6039,24 @@ const IngredientSubstitutionModal = ({
   };
 
   return (
-    <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4" onClick={onClose}>
+    <div 
+      className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4" 
+      onClick={onClose}
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="ingredient-sub-title"
+    >
       <div className="bg-white dark:bg-gray-800 rounded-2xl p-6 max-w-md w-full max-h-[85vh] overflow-y-auto shadow-2xl border border-gray-300 dark:border-orange-500/30" onClick={(e) => e.stopPropagation()}>
-        <h3 className="text-2xl font-bold text-orange-600 dark:text-orange-400 mb-4">✏️ Customize Meal</h3>
+        <div className="flex justify-between items-center mb-4">
+          <h3 id="ingredient-sub-title" className="text-2xl font-bold text-orange-600 dark:text-orange-400">✏️ Customize Meal</h3>
+          <button 
+            onClick={onClose}
+            className="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-white transition"
+            aria-label="Close customization"
+          >
+            <X className="h-6 w-6" />
+          </button>
+        </div>
         
         <div className="bg-orange-50 dark:bg-orange-900/20 p-3 rounded-lg mb-4">
           <p className="text-sm font-semibold text-orange-900 dark:text-orange-300">{selectedMealForSub.meal.name}</p>
@@ -3527,6 +6142,219 @@ const IngredientSubstitutionModal = ({
   );
 };
 
+// Meal Swap Modal Component
+const MealSwapModal = ({
+  selectedMealForSwap,
+  onClose,
+  onSwap
+}: {
+  selectedMealForSwap: { week: number; day: number; mealType: string; meal: any };
+  onClose: () => void;
+  onSwap: (week: number, day: number, mealType: string) => void;
+}) => {
+  useEscapeKey(onClose);
+
+  return (
+    <div 
+      className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4" 
+      onClick={onClose}
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="swap-modal-title"
+    >
+      <div 
+        className="bg-white dark:bg-gray-800 rounded-2xl p-6 max-w-md w-full max-h-[85vh] overflow-y-auto shadow-2xl border border-gray-300 dark:border-purple-500/30" 
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex justify-between items-center mb-4">
+          <h3 id="swap-modal-title" className="text-2xl font-bold text-purple-600 dark:text-purple-400">🔄 Swap Meal</h3>
+          <button 
+            onClick={onClose}
+            className="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-white transition"
+            aria-label="Close swap dialog"
+          >
+            <X className="h-6 w-6" />
+          </button>
+        </div>
+        
+        <div className="bg-purple-50 dark:bg-purple-900/20 p-3 rounded-lg mb-4">
+          <p className="text-sm font-semibold text-purple-900 dark:text-purple-300">Selected Meal:</p>
+          <p className="text-xs text-purple-700 dark:text-purple-400">{selectedMealForSwap.meal.name}</p>
+          <p className="text-xs text-purple-600 dark:text-purple-500">Week {selectedMealForSwap.week}, Day {selectedMealForSwap.day}</p>
+        </div>
+
+        <p className="text-sm text-gray-700 dark:text-gray-300 mb-4">Select a meal to swap with:</p>
+
+        <div className="space-y-2 max-h-96 overflow-y-auto">
+          {[1, 2, 3, 4].map(week => (
+            <div key={week} className="border-2 border-gray-200 dark:border-gray-700 rounded-lg p-3">
+              <p className="text-sm font-bold text-gray-900 dark:text-white mb-2">Week {week}</p>
+              <div className="grid grid-cols-7 gap-1">
+                {[1, 2, 3, 4, 5, 6, 7].map(day => (
+                  <button
+                    key={day}
+                    onClick={() => onSwap(week, day, selectedMealForSwap.mealType)}
+                    disabled={week === selectedMealForSwap.week && day === selectedMealForSwap.day}
+                    className="p-2 text-xs bg-purple-100 dark:bg-purple-900/30 hover:bg-purple-200 dark:hover:bg-purple-800/50 text-purple-700 dark:text-purple-300 rounded disabled:opacity-30 disabled:cursor-not-allowed transition"
+                    aria-label={`Swap with Week ${week}, Day ${day}`}
+                  >
+                    D{day}
+                  </button>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+
+        <button
+          onClick={onClose}
+          className="mt-4 w-full py-3 bg-gray-200 dark:bg-gray-700 text-gray-900 dark:text-white hover:bg-gray-300 dark:hover:bg-gray-600 rounded-xl font-semibold transition"
+        >
+          Cancel
+        </button>
+      </div>
+    </div>
+  );
+};
+
+// Meal Detail Screen
+const MealDetailScreen = ({
+  meal,
+  onBack,
+  onLog
+}: {
+  meal: any;
+  onBack: () => void;
+  onLog: () => void;
+}) => {
+  // Swipe handler for back navigation
+  const swipeHandlers = useSwipe(onBack);
+  
+  return (
+    <div className="fixed inset-0 bg-gradient-to-br from-gray-50 to-gray-100 dark:from-gray-900 dark:to-gray-800 z-50 overflow-y-auto" {...swipeHandlers}>
+      <div style={{ paddingTop: 'var(--safe-area-top)', paddingBottom: 'var(--safe-area-bottom)' }} className="min-h-screen pb-24">
+        {/* Header */}
+        <div className="sticky top-0 z-40 bg-gradient-to-br from-indigo-50 via-purple-50 to-pink-50 dark:from-gray-900 dark:via-indigo-900/20 dark:to-gray-900 backdrop-blur-md border-b border-indigo-200 dark:border-indigo-500/30 px-4 py-4 shadow-sm">
+          <button onClick={onBack} className="flex items-center text-indigo-600 dark:text-indigo-400 mb-2">
+            <ArrowLeft className="h-5 w-5 mr-2" /> Back
+          </button>
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-white">{meal.name}</h1>
+        </div>
+
+        <div className="px-4 pt-4 space-y-4">
+          {/* Macros Card */}
+          <div className="bg-gradient-to-r from-indigo-400 to-purple-500 dark:from-indigo-600/60 dark:to-purple-700/60 p-5 rounded-xl shadow-xl text-white">
+            <h3 className="text-lg font-bold mb-3">Nutrition Facts</h3>
+            <div className="grid grid-cols-4 gap-3">
+              <div className="text-center">
+                <p className="text-2xl font-bold">{meal.calories}</p>
+                <p className="text-xs opacity-90">Calories</p>
+              </div>
+              <div className="text-center">
+                <p className="text-2xl font-bold">{meal.protein}g</p>
+                <p className="text-xs opacity-90">Protein</p>
+              </div>
+              <div className="text-center">
+                <p className="text-2xl font-bold">{meal.carbs}g</p>
+                <p className="text-xs opacity-90">Carbs</p>
+              </div>
+              <div className="text-center">
+                <p className="text-2xl font-bold">{meal.fats}g</p>
+                <p className="text-xs opacity-90">Fats</p>
+              </div>
+            </div>
+          </div>
+
+          {/* Ingredients */}
+          {meal.ingredients && (
+            <div className="bg-white dark:bg-gray-800 p-5 rounded-xl shadow-lg border border-gray-200 dark:border-indigo-500/30">
+              <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-3 flex items-center gap-2">
+                🛒 Ingredients
+              </h3>
+              <ul className="space-y-2">
+                {meal.ingredients.map((ingredient: string, idx: number) => (
+                  <li key={idx} className="flex items-start gap-2 text-sm text-gray-700 dark:text-gray-300">
+                    <span className="text-green-500 mt-0.5">✓</span>
+                    <span>{ingredient}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {/* Instructions */}
+          {meal.instructions && (
+            <div className="bg-white dark:bg-gray-800 p-5 rounded-xl shadow-lg border border-gray-200 dark:border-indigo-500/30">
+              <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-3 flex items-center gap-2">
+                👨‍🍳 Instructions
+              </h3>
+              <ol className="space-y-3">
+                {meal.instructions.map((step: string, idx: number) => (
+                  <li key={idx} className="flex gap-3">
+                    <span className="flex-shrink-0 w-6 h-6 bg-indigo-500 text-white rounded-full flex items-center justify-center text-xs font-bold">
+                      {idx + 1}
+                    </span>
+                    <span className="text-sm text-gray-700 dark:text-gray-300">{step}</span>
+                  </li>
+                ))}
+              </ol>
+            </div>
+          )}
+
+          {/* Diet Tags */}
+          {meal.dietTags && meal.dietTags.length > 0 && (
+            <div className="bg-gradient-to-r from-green-50 to-emerald-50 dark:from-green-900/20 dark:to-emerald-900/20 p-4 rounded-xl border border-green-200 dark:border-green-500/30">
+              <h3 className="text-sm font-bold text-green-900 dark:text-green-200 mb-2">🌱 Diet Tags</h3>
+              <div className="flex flex-wrap gap-2">
+                {meal.dietTags.map((tag: string, idx: number) => (
+                  <span
+                    key={idx}
+                    className="px-3 py-1 bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-300 rounded-full text-xs font-semibold capitalize"
+                  >
+                    {tag.replace('-', ' ')}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Prep Time & Servings */}
+          <div className="grid grid-cols-2 gap-4">
+            {meal.prepTime && (
+              <div className="bg-white dark:bg-gray-800 p-4 rounded-xl shadow-lg border border-gray-200 dark:border-indigo-500/30">
+                <div className="flex items-center gap-2 mb-1">
+                  <Clock className="w-4 h-4 text-indigo-500" />
+                  <p className="text-xs font-semibold text-gray-600 dark:text-gray-400">Prep Time</p>
+                </div>
+                <p className="text-lg font-bold text-gray-900 dark:text-white">{meal.prepTime}</p>
+              </div>
+            )}
+            {meal.servings && (
+              <div className="bg-white dark:bg-gray-800 p-4 rounded-xl shadow-lg border border-gray-200 dark:border-indigo-500/30">
+                <div className="flex items-center gap-2 mb-1">
+                  <User className="w-4 h-4 text-indigo-500" />
+                  <p className="text-xs font-semibold text-gray-600 dark:text-gray-400">Servings</p>
+                </div>
+                <p className="text-lg font-bold text-gray-900 dark:text-white">{meal.servings}</p>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Log Meal Button */}
+        <div className="fixed bottom-0 left-0 right-0 p-4 bg-white dark:bg-gray-900 border-t border-gray-200 dark:border-gray-700 z-40" style={{ paddingBottom: 'calc(1rem + var(--safe-area-bottom))' }}>
+          <button
+            onClick={onLog}
+            className="w-full py-4 bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700 rounded-xl text-white font-bold text-lg transition duration-300 shadow-xl"
+          >
+            Log This Meal
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 // 2. Diet Plan Screens
 const DietPlanScreen = ({ 
   goal, setGoal, showPlanModal, setShowPlanModal, userData, isPremium, 
@@ -3570,6 +6398,21 @@ const DietPlanScreen = ({
   resetCustomization: (week: number, day: number, mealType: string) => Promise<void>;
 }) => {
   const [showPremiumLock, setShowPremiumLock] = useState(false);
+  const [selectedMealDetail, setSelectedMealDetail] = useState<any>(null);
+
+  // Render Meal Detail Screen if selected (overlay on all views)
+  if (selectedMealDetail) {
+    return (
+      <MealDetailScreen
+        meal={selectedMealDetail}
+        onBack={() => setSelectedMealDetail(null)}
+        onLog={() => {
+          logMeal({ name: selectedMealDetail.name, macros: { calories: selectedMealDetail.calories, protein: selectedMealDetail.protein, carbs: selectedMealDetail.carbs, fats: selectedMealDetail.fats } }, selectedMealDetail.mealTypeName || 'Meal');
+          setSelectedMealDetail(null);
+        }}
+      />
+    );
+  }
 
   const dayNames = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
   const dayNamesShort = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
@@ -3851,8 +6694,8 @@ const DietPlanScreen = ({
 
   return (
     <>
-      {/* Sticky Header */}
-      <div className="sticky top-0 z-40 w-full bg-gradient-to-br from-indigo-50 via-purple-50 to-pink-50 dark:from-gray-900 dark:via-indigo-900/20 dark:to-gray-900 backdrop-blur-md border-b border-indigo-200 dark:border-indigo-500/30 px-4 py-4 shadow-sm">
+      {/* Sticky Header with Safe Area */}
+      <div style={{ paddingTop: 'var(--safe-area-top)' }} className="sticky top-0 z-40 w-full bg-gradient-to-br from-indigo-50 via-purple-50 to-pink-50 dark:from-gray-900 dark:via-indigo-900/20 dark:to-gray-900 backdrop-blur-md border-b border-indigo-200 dark:border-indigo-500/30 px-4 py-4 shadow-sm">
         <div className="flex justify-between items-center">
           <h2 className="text-2xl font-bold text-gray-900 dark:text-white">Your Nutrition Goal</h2>
           {hasDietPreferences && (
@@ -3866,7 +6709,7 @@ const DietPlanScreen = ({
         </div>
       </div>
       
-      <div className="p-4 space-y-6">
+      <div className="p-4 space-y-6 pb-24">
 
       {showSurvey ? (
         <DietSurveyScreen onComplete={() => setShowSurvey(false)} userData={userData} />
@@ -3874,94 +6717,99 @@ const DietPlanScreen = ({
         <>
           {/* User Preferences Summary with Quick Edit */}
           {hasDietPreferences && (
-            <div className="bg-gradient-to-r from-indigo-300 via-purple-300 to-pink-300 dark:from-indigo-900/40 dark:to-purple-900/40 p-4 rounded-xl border-2 border-indigo-400 dark:border-indigo-500/30 shadow-xl">
-              <div className="flex items-center justify-between mb-3">
-                <h3 className="text-sm font-semibold text-indigo-900 dark:text-white">Your Diet Profile</h3>
+            <div className="bg-gradient-to-br from-purple-400 via-pink-400 to-purple-500 dark:from-purple-600 dark:via-pink-600 dark:to-purple-700 rounded-2xl p-6 shadow-xl" style={{ boxShadow: '0 10px 25px rgba(167, 139, 250, 0.3)' }}>
+              {/* Header */}
+              <div className="flex items-center justify-between mb-5">
+                <h3 className="text-lg font-bold text-white" style={{ opacity: 0.95 }}>Your Diet Profile</h3>
                 <button
                   onClick={() => setShowSurvey(true)}
-                  className="text-[10px] px-2 py-1 bg-white/90 dark:bg-indigo-700 text-indigo-600 dark:text-white rounded-md hover:bg-white dark:hover:bg-indigo-600 font-semibold"
+                  className="text-xs px-4 py-2 bg-white/20 backdrop-blur-sm text-white rounded-xl hover:bg-white hover:text-purple-500 font-semibold shadow-md transition-all flex-shrink-0 border border-white/30"
                 >
                   Edit All
                 </button>
               </div>
               
-              {/* Fitness Goal - Step 1 */}
+              {/* Main Goal - Highlighted */}
               {userData.dietPreferences?.fitnessGoal && (
-                <div className="flex items-center justify-between mb-2 bg-white/40 dark:bg-black/20 rounded-lg p-2">
-                  <span className={`px-2 py-1 rounded-full font-semibold border flex-1 ${
-                    userData.dietPreferences.fitnessGoal === 'weight-loss' ? 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300 border-red-300' :
-                    userData.dietPreferences.fitnessGoal === 'muscle-gain' ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300 border-green-300' :
-                    'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 border-blue-300'
-                  }`}>
-                    {userData.dietPreferences.fitnessGoal === 'weight-loss' ? '🔥 Weight Loss' :
-                     userData.dietPreferences.fitnessGoal === 'muscle-gain' ? '💪 Muscle Gain' :
-                     '⚖️ Maintenance'}
+                <div className="bg-white/95 rounded-2xl p-4 flex items-center gap-3 mb-4 shadow-md">
+                  <span className="text-2xl">
+                    {userData.dietPreferences.fitnessGoal === 'weight-loss' ? '🔥' :
+                     userData.dietPreferences.fitnessGoal === 'muscle-gain' ? '💪' :
+                     '⚖️'}
                   </span>
-                  <button
-                    onClick={() => setEditStep(1)}
-                    className="ml-2 text-[9px] px-2 py-1 bg-indigo-100 dark:bg-indigo-700 text-indigo-700 dark:text-white rounded hover:bg-indigo-200 dark:hover:bg-indigo-600"
-                  >
-                    Change
-                  </button>
+                  <div className="flex flex-col">
+                    <span className="text-[10px] uppercase text-gray-500 font-bold tracking-wide">Current Goal</span>
+                    <span className={`text-base font-extrabold ${
+                      userData.dietPreferences.fitnessGoal === 'weight-loss' ? 'text-pink-600' :
+                      userData.dietPreferences.fitnessGoal === 'muscle-gain' ? 'text-green-600' :
+                      'text-blue-600'
+                    }`}>
+                      {userData.dietPreferences.fitnessGoal === 'weight-loss' ? 'Weight Loss' :
+                       userData.dietPreferences.fitnessGoal === 'muscle-gain' ? 'Muscle Gain' :
+                       'Maintenance'}
+                    </span>
+                  </div>
                 </div>
               )}
 
-              {/* Other Preferences */}
-              <div className="flex flex-wrap gap-2 text-xs">
+              {/* Details Grid - 2x2 Layout */}
+              <div className="grid grid-cols-2 gap-2.5">
                 {userData.dietPreferences?.religion && (
-                  <div className="flex items-center gap-1 bg-white/60 dark:bg-black/20 rounded-full pr-1">
-                    <span className="px-2 py-1 rounded-full text-indigo-700 dark:text-indigo-300 font-semibold">
-                      {userData.dietPreferences.religion === 'muslim' ? '☪️ Halal' : 
-                       userData.dietPreferences.religion === 'hindu' ? '🕉️ Hindu' :
-                       userData.dietPreferences.religion === 'jewish' ? '✡️ Kosher' :
-                       userData.dietPreferences.religion === 'none' ? '🌍 No Restriction' : '📿 ' + userData.dietPreferences.religion}
-                    </span>
-                    <button
-                      onClick={() => setEditStep(2)}
-                      className="text-[8px] px-1.5 py-0.5 bg-indigo-500 text-white rounded-full hover:bg-indigo-600"
-                    >
-                      ✎
-                    </button>
-                  </div>
+                  <button
+                    onClick={() => setEditStep(2)}
+                    className="bg-white/25 backdrop-blur-sm border border-white/30 rounded-xl p-3 flex flex-col justify-center hover:bg-white/35 transition-all cursor-pointer"
+                  >
+                    <div className="flex items-center justify-between text-white">
+                      <span className="text-sm font-semibold">
+                        {userData.dietPreferences.religion === 'muslim' ? '🌙 Halal' : 
+                         userData.dietPreferences.religion === 'hindu' ? '🕉️ Hindu' :
+                         userData.dietPreferences.religion === 'jewish' ? '✡️ Kosher' :
+                         userData.dietPreferences.religion === 'none' ? '🌍 None' : '📿 ' + userData.dietPreferences.religion}
+                      </span>
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className="opacity-60">
+                        <path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"></path>
+                      </svg>
+                    </div>
+                  </button>
                 )}
                 {userData.dietPreferences?.dietType && (
-                  <div className="flex items-center gap-1 bg-white/60 dark:bg-black/20 rounded-full pr-1">
-                    <span className="px-2 py-1 rounded-full text-purple-700 dark:text-purple-300 font-semibold">
-                      {userData.dietPreferences.dietType}
-                    </span>
-                    <button
-                      onClick={() => setEditStep(3)}
-                      className="text-[8px] px-1.5 py-0.5 bg-purple-500 text-white rounded-full hover:bg-purple-600"
-                    >
-                      ✎
-                    </button>
-                  </div>
+                  <button
+                    onClick={() => setEditStep(3)}
+                    className="bg-white/25 backdrop-blur-sm border border-white/30 rounded-xl p-3 flex flex-col justify-center hover:bg-white/35 transition-all cursor-pointer"
+                  >
+                    <div className="flex items-center justify-between text-white">
+                      <span className="text-sm font-semibold">🥩 {userData.dietPreferences.dietType}</span>
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className="opacity-60">
+                        <path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"></path>
+                      </svg>
+                    </div>
+                  </button>
                 )}
                 {userData.dietPreferences?.mealsPerDay && (
-                  <div className="flex items-center gap-1 bg-white/60 dark:bg-black/20 rounded-full pr-1">
-                    <span className="px-2 py-1 rounded-full text-teal-700 dark:text-teal-300 font-semibold">
-                      {userData.dietPreferences.mealsPerDay} meals/day
-                    </span>
-                    <button
-                      onClick={() => setEditStep(6)}
-                      className="text-[8px] px-1.5 py-0.5 bg-teal-500 text-white rounded-full hover:bg-teal-600"
-                    >
-                      ✎
-                    </button>
-                  </div>
+                  <button
+                    onClick={() => setEditStep(6)}
+                    className="bg-white/25 backdrop-blur-sm border border-white/30 rounded-xl p-3 flex flex-col justify-center hover:bg-white/35 transition-all cursor-pointer"
+                  >
+                    <div className="flex items-center justify-between text-white">
+                      <span className="text-sm font-semibold">🍽️ {userData.dietPreferences.mealsPerDay}/day</span>
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className="opacity-60">
+                        <path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"></path>
+                      </svg>
+                    </div>
+                  </button>
                 )}
                 {userData.dietPreferences?.mealStyle && (
-                  <div className="flex items-center gap-1 bg-white/60 dark:bg-black/20 rounded-full pr-1">
-                    <span className="px-2 py-1 rounded-full text-purple-700 dark:text-purple-300 font-semibold">
-                      {mealStyles.find(s => s.id === userData.dietPreferences?.mealStyle)?.icon || '🍽️'} {mealStyles.find(s => s.id === userData.dietPreferences?.mealStyle)?.name || 'Meal Style'}
-                    </span>
-                    <button
-                      onClick={() => setEditStep(6)}
-                      className="text-[8px] px-1.5 py-0.5 bg-purple-500 text-white rounded-full hover:bg-purple-600"
-                    >
-                      ✎
-                    </button>
-                  </div>
+                  <button
+                    onClick={() => setEditStep(6)}
+                    className="bg-white/25 backdrop-blur-sm border border-white/30 rounded-xl p-3 flex flex-col justify-center hover:bg-white/35 transition-all cursor-pointer"
+                  >
+                    <div className="flex items-center justify-between text-white">
+                      <span className="text-sm font-semibold truncate">{mealStyles.find(s => s.id === userData.dietPreferences?.mealStyle)?.icon || '💰'} {mealStyles.find(s => s.id === userData.dietPreferences?.mealStyle)?.name || 'Style'}</span>
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className="opacity-60">
+                        <path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"></path>
+                      </svg>
+                    </div>
+                  </button>
                 )}
               </div>
             </div>
@@ -4555,12 +7403,19 @@ const DietPlanScreen = ({
                                 <p className="text-sm text-gray-600 dark:text-gray-400">{meal.time}</p>
                               </div>
                             </div>
-                            <span className="text-xs px-2 py-1 bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400 rounded-full font-semibold">
+                            <button
+                              onClick={() => setSelectedMealDetail({ ...meal, calories: adjustedMacros.calories, protein: adjustedMacros.protein, carbs: adjustedMacros.carbs, fats: adjustedMacros.fats, mealTypeName: mealType.name })}
+                              className="text-xs px-2 py-1 bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400 rounded-full font-semibold hover:bg-emerald-200 dark:hover:bg-emerald-900/50 transition flex items-center gap-1 cursor-pointer"
+                            >
                               {adjustedMacros.calories} cal
-                            </span>
+                              <ChevronRight className="w-3 h-3" />
+                            </button>
                           </div>
                           
-                          <p className="text-lg font-semibold text-gray-900 dark:text-white mb-2">{meal.name}</p>
+                          <p 
+                            onClick={() => setSelectedMealDetail({ ...meal, calories: adjustedMacros.calories, protein: adjustedMacros.protein, carbs: adjustedMacros.carbs, fats: adjustedMacros.fats, mealTypeName: mealType.name })}
+                            className="text-lg font-semibold text-gray-900 dark:text-white mb-2 cursor-pointer hover:text-emerald-600 dark:hover:text-emerald-400 transition"
+                          >{meal.name}</p>
                           <p className="text-sm text-gray-600 dark:text-gray-400 mb-3 italic">{meal.description}</p>
                           
                           {/* Macros Grid */}
@@ -4636,6 +7491,7 @@ const DietPlanScreen = ({
                           <button
                             onClick={() => logMeal({ name: meal.name, macros: adjustedMacros }, mealType.name)}
                             className="w-full py-2 px-4 bg-gradient-to-r from-teal-500 to-emerald-500 hover:from-teal-600 hover:to-emerald-600 text-white text-xs font-semibold rounded-lg shadow-md transition flex items-center justify-center gap-2 mb-2"
+                            aria-label={`Log ${meal.name} to meal history`}
                           >
                             <span>✓</span>
                             <span>Log This Meal</span>
@@ -4650,6 +7506,7 @@ const DietPlanScreen = ({
                                 setShowSwapModal(true);
                               }}
                               className="py-2 px-3 bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 text-white text-xs font-semibold rounded-lg shadow-md transition flex items-center justify-center gap-1"
+                              aria-label={`Swap ${meal.name} with another meal`}
                             >
                               <span>🔄</span>
                               <span>Swap</span>
@@ -4661,6 +7518,7 @@ const DietPlanScreen = ({
                                 setSelectedMealForSub({ week: currentWeek, day: currentDay, mealType: mealType.key, meal });
                                 setShowSubstitutionModal(true);
                               }}
+                              aria-label={`Customize ingredients for ${meal.name}`}
                               className="py-2 px-3 bg-gradient-to-r from-orange-500 to-red-500 hover:from-orange-600 hover:to-red-600 text-white text-xs font-semibold rounded-lg shadow-md transition flex items-center justify-center gap-1"
                             >
                               <span>✏️</span>
@@ -4763,8 +7621,18 @@ const DietPlanScreen = ({
 
                   if (datesWithMeals.length === 0) {
                     return (
-                      <div className="bg-gray-100 dark:bg-gray-800 p-6 rounded-xl text-center">
-                        <p className="text-gray-500 dark:text-gray-400">No meals logged yet. Start logging meals to track your nutrition!</p>
+                      <div className="bg-gradient-to-br from-orange-50 to-red-50 dark:from-gray-800 dark:to-gray-800 p-8 rounded-xl text-center border-2 border-orange-200 dark:border-orange-500/30">
+                        <div className="w-16 h-16 bg-orange-100 dark:bg-orange-900/30 rounded-full flex items-center justify-center mx-auto mb-4">
+                          <Soup className="w-8 h-8 text-orange-500 dark:text-orange-400" />
+                        </div>
+                        <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-2">No Meals Logged</h3>
+                        <p className="text-gray-600 dark:text-gray-300 text-sm mb-4">
+                          Start tracking your meals to see your nutrition summary here!
+                        </p>
+                        <div className="flex items-center justify-center gap-2 text-orange-600 dark:text-orange-400 text-sm font-medium">
+                          <span>🍽️</span>
+                          <span>Tap "Log This Meal" on any meal card above</span>
+                        </div>
                       </div>
                     );
                   }
@@ -4804,7 +7672,7 @@ const DietPlanScreen = ({
                                 onClick={() => removeLoggedMeal(date, idx)}
                                 className="ml-2 p-2 bg-red-500 hover:bg-red-600 text-white rounded-lg text-xs transition"
                               >
-                                🗑️
+                                <Trash2 className="w-4 h-4" />
                               </button>
                             </div>
                           ))}
@@ -4847,46 +7715,14 @@ const DietPlanScreen = ({
 
       {/* Meal Swap Modal */}
       {showSwapModal && selectedMealForSwap && (
-        <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4" onClick={() => setShowSwapModal(false)}>
-          <div className="bg-white dark:bg-gray-800 rounded-2xl p-6 max-w-md w-full max-h-[85vh] overflow-y-auto shadow-2xl border border-gray-300 dark:border-purple-500/30" onClick={(e) => e.stopPropagation()}>
-            <h3 className="text-2xl font-bold text-purple-600 dark:text-purple-400 mb-4">🔄 Swap Meal</h3>
-            
-            <div className="bg-purple-50 dark:bg-purple-900/20 p-3 rounded-lg mb-4">
-              <p className="text-sm font-semibold text-purple-900 dark:text-purple-300">Selected Meal:</p>
-              <p className="text-xs text-purple-700 dark:text-purple-400">{selectedMealForSwap.meal.name}</p>
-              <p className="text-xs text-purple-600 dark:text-purple-500">Week {selectedMealForSwap.week}, Day {selectedMealForSwap.day}</p>
-            </div>
-
-            <p className="text-sm text-gray-700 dark:text-gray-300 mb-4">Select a meal to swap with:</p>
-
-            <div className="space-y-2 max-h-96 overflow-y-auto">
-              {[1, 2, 3, 4].map(week => (
-                <div key={week} className="border-2 border-gray-200 dark:border-gray-700 rounded-lg p-3">
-                  <p className="text-sm font-bold text-gray-900 dark:text-white mb-2">Week {week}</p>
-                  <div className="grid grid-cols-7 gap-1">
-                    {[1, 2, 3, 4, 5, 6, 7].map(day => (
-                      <button
-                        key={day}
-                        onClick={() => swapMeal(week, day, selectedMealForSwap.mealType)}
-                        disabled={week === selectedMealForSwap.week && day === selectedMealForSwap.day}
-                        className="p-2 text-xs bg-purple-100 dark:bg-purple-900/30 hover:bg-purple-200 dark:hover:bg-purple-800/50 text-purple-700 dark:text-purple-300 rounded disabled:opacity-30 disabled:cursor-not-allowed transition"
-                      >
-                        D{day}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              ))}
-            </div>
-
-            <button
-              onClick={() => setShowSwapModal(false)}
-              className="mt-4 w-full py-3 bg-gray-200 dark:bg-gray-700 text-gray-900 dark:text-white hover:bg-gray-300 dark:hover:bg-gray-600 rounded-xl font-semibold transition"
-            >
-              Cancel
-            </button>
-          </div>
-        </div>
+        <MealSwapModal
+          selectedMealForSwap={selectedMealForSwap}
+          onClose={() => {
+            setShowSwapModal(false);
+            setSelectedMealForSwap(null);
+          }}
+          onSwap={swapMeal}
+        />
       )}
 
       {/* Ingredient Substitution Modal */}
@@ -5168,13 +8004,25 @@ const PremiumWeeklyPlansScreen = ({ onBack, userData, isPremium }: { onBack: () 
       if (!meal) return false;
       
       // Check religion restrictions
-      if (religion === 'Muslim') {
-        const hasNonHalal = meal.ingredients.some((ing: string) => 
-          ing.toLowerCase().includes('pork') || 
-          ing.toLowerCase().includes('bacon') ||
-          ing.toLowerCase().includes('ham') ||
-          ing.toLowerCase().includes('alcohol')
-        );
+      if (religion === 'muslim') { // FIX: lowercase to match religion ID
+        const hasNonHalal = meal.ingredients.some((ing: string) => {
+          const ingredient = ing.toLowerCase();
+          return (
+            ingredient.includes('pork') ||
+            ingredient.includes('bacon') || // NO bacon of any kind - not even turkey bacon
+            ingredient.includes('ham') ||
+            ingredient.includes('prosciutto') || // PORK - Italian cured ham
+            ingredient.includes('salami') || // Often contains pork
+            ingredient.includes('pepperoni') || // Usually pork-based
+            ingredient.includes('chorizo') || // Spanish chorizo often pork-based
+            ingredient.includes('gelatin') || // Often from pork
+            ingredient.includes('lard') || // Pork fat
+            (ingredient.includes('sausage') && !ingredient.includes('beef') && !ingredient.includes('turkey') && !ingredient.includes('chicken') && !ingredient.includes('halal')) || // Allow halal sausages only
+            ingredient.includes('alcohol') ||
+            ingredient.includes('wine') ||
+            ingredient.includes('beer')
+          );
+        });
         if (hasNonHalal) return false;
       }
 
@@ -5794,7 +8642,881 @@ const PremiumWeeklyPlansScreen = ({ onBack, userData, isPremium }: { onBack: () 
   );
 };
 
-// 3. Exercise Finder Screens
+// Enhanced Exercise Detail Screen
+const ExerciseDetailScreen = ({
+  exercise,
+  onBack,
+  onStartLogging,
+  onToggleFavorite,
+  isFavorite,
+  userData,
+  onMuscleClick,
+  onExerciseClick
+}: {
+  exercise: string;
+  onBack: () => void;
+  onStartLogging: () => void;
+  onToggleFavorite: (exercise: string) => void;
+  isFavorite: boolean;
+  userData: any;
+  onMuscleClick?: (muscle: string) => void;
+  onExerciseClick?: (exercise: string) => void;
+}) => {
+  const [exerciseHistory, setExerciseHistory] = useState<any[]>([]);
+  const [currentPR, setCurrentPR] = useState<any>(null);
+  
+  // Swipe handler for back navigation
+  const swipeHandlers = useSwipe(onBack);
+
+  useEffect(() => {
+    const loadExerciseData = async () => {
+      const user = auth.currentUser;
+      if (!user) return;
+
+      try {
+        // Load exercise history
+        const historyQuery = query(
+          collection(db, 'workoutHistory'),
+          where('userId', '==', user.uid),
+          where('exercise', '==', exercise),
+          orderBy('timestamp', 'desc'),
+          limit(10)
+        );
+        const historySnapshot = await getDocs(historyQuery);
+        const history = historySnapshot.docs.map(doc => doc.data());
+        setExerciseHistory(history);
+
+        // Load PR
+        const prQuery = query(
+          collection(db, 'personalRecords'),
+          where('userId', '==', user.uid),
+          where('exercise', '==', exercise),
+          limit(1)
+        );
+        const prSnapshot = await getDocs(prQuery);
+        if (!prSnapshot.empty) {
+          setCurrentPR(prSnapshot.docs[0].data());
+        }
+      } catch (error) {
+        console.error('Error loading exercise data:', error);
+      }
+    };
+
+    loadExerciseData();
+  }, [exercise]);
+
+  // Find which muscle groups this exercise belongs to
+  const getMuscleGroups = () => {
+    const muscles: string[] = [];
+    MUSCLE_GROUPS.forEach(group => {
+      if (group.exercises.gym.includes(exercise) || group.exercises.home.includes(exercise)) {
+        muscles.push(group.name);
+      }
+    });
+    return muscles;
+  };
+  
+  const exerciseMuscles = getMuscleGroups();
+  const exerciseDetail = EXERCISE_DETAILS[exercise];
+  const exerciseImage = EXERCISE_IMAGES[exercise];
+  const useMetric = userData?.measurementUnit !== 'imperial';
+  const weightUnit = useMetric ? 'kg' : 'lbs';
+
+  return (
+    <div className="fixed inset-0 bg-gradient-to-br from-gray-50 to-gray-100 dark:from-gray-900 dark:to-gray-800 z-50 overflow-y-auto" {...swipeHandlers}>
+      <div style={{ paddingTop: 'var(--safe-area-top)', paddingBottom: 'var(--safe-area-bottom)' }} className="min-h-screen pb-24">
+        {/* Header */}
+        <div className="sticky top-0 z-40 bg-gradient-to-br from-indigo-50 via-purple-50 to-pink-50 dark:from-gray-900 dark:via-indigo-900/20 dark:to-gray-900 backdrop-blur-md border-b border-indigo-200 dark:border-indigo-500/30 px-4 py-4 shadow-sm">
+          <div className="flex items-center justify-between mb-2">
+            <button onClick={onBack} className="flex items-center text-indigo-600 dark:text-indigo-400">
+              <ArrowLeft className="h-5 w-5 mr-2" /> Back
+            </button>
+            <button
+              onClick={() => onToggleFavorite(exercise)}
+              className={`p-2 rounded-xl transition ${
+                isFavorite
+                  ? 'bg-red-500 text-white'
+                  : 'bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-400'
+              }`}
+            >
+              <Heart className={`w-5 h-5 ${isFavorite ? 'fill-current' : ''}`} />
+            </button>
+          </div>
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-white">{exercise}</h1>
+          
+          {/* Clickable Muscle Tags */}
+          {exerciseMuscles.length > 0 && (
+            <div className="flex flex-wrap gap-2 mt-2">
+              {exerciseMuscles.map((muscle, idx) => (
+                <button
+                  key={idx}
+                  onClick={() => {
+                    if (onMuscleClick) {
+                      onMuscleClick(muscle);
+                    }
+                  }}
+                  className="px-3 py-1 bg-indigo-100 dark:bg-indigo-900/40 text-indigo-700 dark:text-indigo-300 rounded-full text-xs font-semibold hover:bg-indigo-200 dark:hover:bg-indigo-800/60 transition flex items-center gap-1"
+                >
+                  <span>{MUSCLE_GROUPS.find(g => g.name === muscle)?.icon || '💪'}</span>
+                  <span>{muscle}</span>
+                  <ChevronRight className="w-3 h-3" />
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <div className="px-4 pt-4 space-y-4">
+          {/* Exercise Image/GIF */}
+          {exerciseImage && (
+            <div className="bg-white dark:bg-gray-800 rounded-xl overflow-hidden shadow-xl border border-gray-200 dark:border-indigo-500/30">
+              <img
+                src={exerciseImage}
+                alt={exercise}
+                className="w-full h-64 object-cover"
+              />
+            </div>
+          )}
+
+          {/* Quick Stats */}
+          <div className="grid grid-cols-2 gap-4">
+            {currentPR && (
+              <div className="bg-gradient-to-br from-yellow-400 to-amber-500 dark:from-yellow-600/40 dark:to-amber-700/40 p-4 rounded-xl shadow-lg">
+                <p className="text-xs font-semibold text-yellow-900 dark:text-yellow-200 mb-1">🏆 Your PR</p>
+                <p className="text-2xl font-bold text-yellow-900 dark:text-white">
+                  {currentPR.weight}{weightUnit} × {currentPR.reps}
+                </p>
+                <p className="text-xs text-yellow-800 dark:text-yellow-300 mt-1">
+                  {new Date(currentPR.timestamp).toLocaleDateString()}
+                </p>
+              </div>
+            )}
+            <div className="bg-gradient-to-br from-indigo-400 to-purple-500 dark:from-indigo-600/40 dark:to-purple-700/40 p-4 rounded-xl shadow-lg">
+              <p className="text-xs font-semibold text-indigo-900 dark:text-indigo-200 mb-1">📊 Times Done</p>
+              <p className="text-2xl font-bold text-indigo-900 dark:text-white">
+                {exerciseHistory.length}
+              </p>
+              <p className="text-xs text-indigo-800 dark:text-indigo-300 mt-1">Total workouts</p>
+            </div>
+          </div>
+
+          {/* Exercise Details */}
+          {exerciseDetail && (
+            <>
+              {/* Description */}
+              {exerciseDetail.description && (
+                <div className="bg-white dark:bg-gray-800 p-5 rounded-xl shadow-lg border border-gray-200 dark:border-indigo-500/30">
+                  <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-3">📖 About</h3>
+                  <p className="text-sm text-gray-700 dark:text-gray-300">{exerciseDetail.description}</p>
+                </div>
+              )}
+
+              {/* Instructions/Steps */}
+              {exerciseDetail.steps && exerciseDetail.steps.length > 0 && (
+                <div className="bg-white dark:bg-gray-800 p-5 rounded-xl shadow-lg border border-gray-200 dark:border-indigo-500/30">
+                  <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-3 flex items-center gap-2">
+                    📝 How To Perform
+                  </h3>
+                  <ol className="space-y-2">
+                    {exerciseDetail.steps.map((step: string, idx: number) => (
+                      <li key={idx} className="flex gap-3">
+                        <span className="flex-shrink-0 w-6 h-6 bg-indigo-500 text-white rounded-full flex items-center justify-center text-xs font-bold">
+                          {idx + 1}
+                        </span>
+                        <span className="text-sm text-gray-700 dark:text-gray-300">{step}</span>
+                      </li>
+                    ))}
+                  </ol>
+                </div>
+              )}
+            </>
+          )}
+
+          {/* History */}
+          {exerciseHistory.length > 0 && (
+            <div className="bg-white dark:bg-gray-800 p-5 rounded-xl shadow-lg border border-gray-200 dark:border-indigo-500/30">
+              <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-3 flex items-center gap-2">
+                📈 Your History
+              </h3>
+              <div className="space-y-2">
+                {exerciseHistory.slice(0, 5).map((workout, idx) => (
+                  <div
+                    key={idx}
+                    className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-700/50 rounded-lg"
+                  >
+                    <div>
+                      <p className="text-sm font-semibold text-gray-900 dark:text-white">
+                        {workout.sets?.length || 0} sets
+                      </p>
+                      <p className="text-xs text-gray-600 dark:text-gray-400">
+                        {new Date(workout.timestamp).toLocaleDateString()}
+                      </p>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-sm font-bold text-indigo-600 dark:text-indigo-400">
+                        {workout.bestSet?.weight}{weightUnit} × {workout.bestSet?.reps}
+                      </p>
+                      {workout.isNewPR && (
+                        <span className="text-xs text-yellow-600 dark:text-yellow-400">🏆 PR</span>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Exercise Alternatives */}
+          {exerciseMuscles.length > 0 && (
+            <div className="bg-white dark:bg-gray-800 p-5 rounded-xl shadow-lg border border-gray-200 dark:border-indigo-500/30">
+              <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-3 flex items-center gap-2">
+                🔄 Similar Exercises
+              </h3>
+              <div className="space-y-2">
+                {(() => {
+                  // Get alternatives from same muscle groups
+                  const alternatives: { name: string; location: string }[] = [];
+                  exerciseMuscles.forEach(muscleName => {
+                    const muscleGroup = MUSCLE_GROUPS.find(g => g.name === muscleName);
+                    if (muscleGroup) {
+                      muscleGroup.exercises.gym.forEach(ex => {
+                        if (ex !== exercise && alternatives.length < 5 && !alternatives.find(a => a.name === ex)) {
+                          alternatives.push({ name: ex, location: 'gym' });
+                        }
+                      });
+                      muscleGroup.exercises.home.forEach(ex => {
+                        if (ex !== exercise && alternatives.length < 5 && !alternatives.find(a => a.name === ex)) {
+                          alternatives.push({ name: ex, location: 'home' });
+                        }
+                      });
+                    }
+                  });
+                  
+                  return alternatives.slice(0, 4).map((alt, idx) => (
+                    <button
+                      key={idx}
+                      onClick={() => {
+                        // Navigate directly to this alternative exercise's detail
+                        if (onExerciseClick) {
+                          onExerciseClick(alt.name);
+                        }
+                      }}
+                      className="w-full flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-700/50 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-600/50 transition"
+                    >
+                      <div className="flex items-center gap-3">
+                        <span className="text-lg">{alt.location === 'gym' ? '🏋️' : '🏠'}</span>
+                        <span className="text-sm font-semibold text-gray-900 dark:text-white">{alt.name}</span>
+                      </div>
+                      <span className="text-xs px-2 py-1 bg-indigo-100 dark:bg-indigo-900/40 text-indigo-600 dark:text-indigo-300 rounded-full">
+                        {alt.location === 'gym' ? 'Gym' : 'Home'}
+                      </span>
+                    </button>
+                  ));
+                })()}
+              </div>
+            </div>
+          )}
+
+          {/* Start Exercise Button */}
+          <div className="fixed bottom-0 left-0 right-0 p-4 bg-white dark:bg-gray-900 border-t border-gray-200 dark:border-gray-700 z-40" style={{ paddingBottom: 'calc(1rem + var(--safe-area-bottom))' }}>
+            <button
+              onClick={onStartLogging}
+              className="w-full py-4 bg-gradient-to-r from-indigo-500 to-purple-600 hover:from-indigo-600 hover:to-purple-700 rounded-xl text-white font-bold text-lg transition duration-300 shadow-xl"
+            >
+              Start Exercise
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// PR History Screen
+const PRHistoryScreen = ({
+  onBack,
+  userData
+}: {
+  onBack: () => void;
+  userData: any;
+}) => {
+  const [prs, setPRs] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  
+  // Swipe handler for back navigation
+  const swipeHandlers = useSwipe(onBack);
+
+  useEffect(() => {
+    const loadPRs = async () => {
+      const user = auth.currentUser;
+      if (!user) return;
+
+      try {
+        const prQuery = query(
+          collection(db, 'personalRecords'),
+          where('userId', '==', user.uid),
+          orderBy('timestamp', 'desc')
+        );
+        const snapshot = await getDocs(prQuery);
+        const prData = snapshot.docs.map(doc => doc.data());
+        setPRs(prData);
+      } catch (error) {
+        console.error('Error loading PRs:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadPRs();
+  }, []);
+
+  const useMetric = userData?.measurementUnit !== 'imperial';
+  const weightUnit = useMetric ? 'kg' : 'lbs';
+
+  return (
+    <div {...swipeHandlers}>
+      {/* Header */}
+      <div className="mb-4">
+        <button onClick={onBack} className="flex items-center text-indigo-600 dark:text-indigo-400 mb-2">
+          <ArrowLeft className="h-5 w-5 mr-2" /> Back to Today
+        </button>
+        <h1 className="text-2xl font-bold text-gray-900 dark:text-white">🏆 Personal Records</h1>
+        <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">Your best performances</p>
+      </div>
+
+      <div className="space-y-4">
+        {loading ? (
+          <div className="flex items-center justify-center py-12">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-500"></div>
+          </div>
+        ) : prs.length === 0 ? (
+          <div className="text-center py-12">
+            <p className="text-gray-600 dark:text-gray-400 text-lg mb-2">No PRs yet</p>
+              <p className="text-sm text-gray-500 dark:text-gray-500">Start working out to set your first records!</p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {prs.map((pr, idx) => (
+                <div
+                  key={idx}
+                  className="bg-white dark:bg-gray-800 p-5 rounded-xl shadow-lg border-l-4 border-yellow-500 dark:border-yellow-400"
+                >
+                  <div className="flex items-start justify-between">
+                    <div className="flex-1">
+                      <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-1">
+                        {pr.exercise}
+                      </h3>
+                      <p className="text-2xl font-bold text-yellow-600 dark:text-yellow-400">
+                        {pr.weight}{weightUnit} × {pr.reps}
+                      </p>
+                      <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
+                        Est. 1RM: {pr.estimatedMax.toFixed(1)}{weightUnit}
+                      </p>
+                      <p className="text-xs text-gray-500 dark:text-gray-500 mt-2">
+                        {new Date(pr.timestamp).toLocaleDateString('en-US', {
+                          year: 'numeric',
+                          month: 'short',
+                          day: 'numeric'
+                        })}
+                      </p>
+                    </div>
+                    <div className="text-4xl">🏆</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+      </div>
+    </div>
+  );
+};
+
+// Workout Programs Screen - REFACTORED: Props-controlled, fixed math, single source of truth
+const WorkoutProgramsScreen = ({ 
+  userData,
+  onBack,
+  onExerciseClick,
+  onStartTodaysWorkout,
+  // Props controlled by parent ExerciseFinderScreen
+  programView,
+  setProgramView
+}: {
+  userData: any;
+  onBack: () => void;
+  onExerciseClick?: (exercise: string) => void;
+  onStartTodaysWorkout?: (exercises: string[], programId: string) => void;
+  programView: { mode: 'list' | 'detail'; programId: string | null };
+  setProgramView: (view: { mode: 'list' | 'detail'; programId: string | null }) => void;
+}) => {
+  // Get the selected program from props
+  const programData = useMemo(() => {
+    if (!programView.programId) return null;
+    return WORKOUT_PROGRAMS.find(p => p.id === programView.programId);
+  }, [programView.programId]);
+  
+  const userProgram = userData?.activeProgram || null;
+  
+  // Day names for display
+  const dayNames = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+  
+  // Get current calendar day of week (1=Monday, 7=Sunday)
+  const getCalendarDayOfWeek = useCallback(() => {
+    const jsDay = new Date().getDay(); // 0=Sunday, 1=Monday, ..., 6=Saturday
+    return ((jsDay + 6) % 7) + 1; // Convert to 1=Monday, 7=Sunday
+  }, []);
+  
+  const calendarDay = getCalendarDayOfWeek(); // Today's actual calendar day (1-7)
+  const calendarDayName = dayNames[calendarDay - 1]; // e.g., "Monday"
+  
+  // Check if today is a rest day based on program schedule
+  const isRestDay = useCallback(() => {
+    if (!programData) return false;
+    // If calendar day exceeds program's days per week, it's a rest day
+    return calendarDay > programData.daysPerWeek;
+  }, [programData, calendarDay]);
+  
+  // Calculate current schedule index based on CALENDAR day, not program progress
+  // Maps actual day of week to the program's schedule
+  const getCurrentScheduleIndex = useCallback(() => {
+    if (!programData) return 0;
+    // Use calendar day to determine which workout to show
+    // Calendar day 1-7 maps to schedule index 0-(daysPerWeek-1)
+    // If it's a rest day, show the last workout as preview
+    if (calendarDay > programData.daysPerWeek) {
+      return 0; // Show first workout on rest days as "next up"
+    }
+    // Calendar day is 1-indexed, schedule is 0-indexed
+    // Also use modulo for programs with repeating schedules (e.g., PPL has 3 workouts for 6 days)
+    return (calendarDay - 1) % programData.schedule.length;
+  }, [programData, calendarDay]);
+  
+  // Calculate accurate progress based on total program duration
+  const getProgressInfo = useCallback(() => {
+    if (!userProgram || !programData) {
+      return { currentWeek: 1, currentDay: calendarDay, totalDays: 0, daysCompleted: 0, progressPercent: 0, calendarDayName };
+    }
+    
+    const currentWeek = userProgram.currentWeek || 1;
+    const totalWeeks = parseInt(programData.duration.split(' ')[0]) || 6;
+    const daysPerWeek = programData.daysPerWeek;
+    
+    // Total days in entire program
+    const totalDays = totalWeeks * daysPerWeek;
+    // Days completed from stored progress
+    const daysCompleted = userProgram.daysCompleted || 0;
+    // Progress percentage
+    const progressPercent = totalDays > 0 ? (daysCompleted / totalDays) * 100 : 0;
+    
+    return { currentWeek, currentDay: calendarDay, totalDays, daysCompleted, progressPercent, calendarDayName };
+  }, [userProgram, programData, calendarDay, calendarDayName]);
+  
+  // Hierarchical back handler - controlled by parent
+  const handleBack = useCallback(() => {
+    if (programView.mode === 'detail') {
+      setProgramView({ mode: 'list', programId: null });
+    } else {
+      onBack();
+    }
+  }, [programView.mode, setProgramView, onBack]);
+  
+  // Swipe handler for back navigation
+  const swipeHandlers = useSwipe(handleBack);
+  
+  const handleStartProgram = async (programId: string) => {
+    try {
+      const user = auth.currentUser;
+      if (!user) return;
+      
+      await updateDoc(doc(db, 'users', user.uid), {
+        activeProgram: {
+          programId,
+          currentWeek: 1,
+          currentDay: 1,
+          startDate: new Date().toISOString()
+        }
+      });
+      
+      // Navigate to detail view
+      setProgramView({ mode: 'detail', programId });
+      toast.success('Program started! Let\'s begin your journey. 💪');
+    } catch (error) {
+      console.error('Error starting program:', error);
+      toast.error('Failed to start program');
+    }
+  };
+  
+  const handleResetProgram = async () => {
+    try {
+      const user = auth.currentUser;
+      if (!user) return;
+      
+      await updateDoc(doc(db, 'users', user.uid), {
+        activeProgram: null
+      });
+      
+      setProgramView({ mode: 'list', programId: null });
+      toast.success('Program reset successfully');
+    } catch (error) {
+      console.error('Error resetting program:', error);
+      toast.error('Failed to reset program');
+    }
+  };
+  
+  // Handle starting today's workout - adds exercises to currentWorkout
+  const handleStartWorkout = () => {
+    if (!programData) return;
+    
+    const scheduleIndex = getCurrentScheduleIndex();
+    const todayWorkout = programData.schedule[scheduleIndex];
+    
+    if (todayWorkout && onStartTodaysWorkout) {
+      onStartTodaysWorkout(todayWorkout.exercises, programData.id);
+    }
+  };
+  
+  // Program List View
+  if (programView.mode === 'list') {
+    return (
+      <div {...swipeHandlers}>
+        {/* Header - now inline, not sticky (main header handles sticky) */}
+        <div className="mb-4">
+          <button onClick={handleBack} className="flex items-center text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 dark:hover:text-indigo-300 transition duration-200 mb-2">
+            <ArrowLeft className="h-4 w-4 mr-2" /> Back to Today
+          </button>
+          <h2 className="text-2xl font-bold text-gray-900 dark:text-white">Workout Programs</h2>
+        </div>
+        
+        <div className="space-y-4">
+          {/* Active Program Banner */}
+          {userProgram && (
+            <div className="bg-gradient-to-r from-green-500 to-emerald-600 rounded-xl p-4 shadow-lg">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-white/80 text-xs font-medium">ACTIVE PROGRAM</p>
+                  <p className="text-white font-bold text-lg">
+                    {WORKOUT_PROGRAMS.find(p => p.id === userProgram.programId)?.name || 'Unknown'}
+                  </p>
+                  <p className="text-white/70 text-sm">
+                    Week {userProgram.currentWeek || 1} • {calendarDayName}
+                    {isRestDay() && ' (Rest Day)'}
+                  </p>
+                </div>
+                <button
+                  onClick={() => setProgramView({ mode: 'detail', programId: userProgram.programId })}
+                  className="bg-white/20 hover:bg-white/30 text-white px-4 py-2 rounded-xl font-semibold transition"
+                >
+                  Continue →
+                </button>
+              </div>
+            </div>
+          )}
+          
+          <div className="bg-gradient-to-r from-indigo-500/20 to-purple-500/20 dark:from-indigo-900/40 dark:to-purple-900/40 p-4 rounded-xl border border-indigo-300 dark:border-indigo-500/30">
+            <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-2">Choose Your Path</h3>
+            <p className="text-sm text-gray-700 dark:text-gray-300">
+              Follow a structured program designed by fitness experts. Each program includes progressive overload and recovery optimization.
+            </p>
+          </div>
+          
+          {WORKOUT_PROGRAMS.map((program) => {
+            const isActive = userProgram?.programId === program.id;
+            
+            return (
+              <div 
+                key={program.id}
+                className={`bg-white dark:bg-gray-800 rounded-xl p-5 shadow-xl border-2 ${
+                  isActive 
+                    ? 'border-green-500 dark:border-green-400' 
+                    : 'border-gray-200 dark:border-indigo-500/30'
+                }`}
+              >
+                <div className="flex items-start justify-between mb-3">
+                  <div className="flex items-center gap-3">
+                    <div className={`w-12 h-12 rounded-xl bg-gradient-to-br ${program.color} flex items-center justify-center text-2xl`}>
+                      {program.icon}
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <h3 className="text-lg font-bold text-gray-900 dark:text-white">{program.name}</h3>
+                        {isActive && (
+                          <span className="px-2 py-0.5 bg-green-500 text-white text-xs rounded-full font-bold">
+                            ACTIVE
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-xs text-gray-600 dark:text-gray-400 capitalize">
+                        {program.level} • {program.daysPerWeek} days/week
+                      </p>
+                    </div>
+                  </div>
+                </div>
+                
+                <p className="text-sm text-gray-700 dark:text-gray-300 mb-3">
+                  {program.description}
+                </p>
+                
+                <div className="flex items-center gap-2 mb-4 text-xs text-gray-600 dark:text-gray-400">
+                  <Clock className="w-4 h-4" />
+                  <span>{program.duration} program</span>
+                </div>
+                
+                {isActive ? (
+                  <button
+                    onClick={() => setProgramView({ mode: 'detail', programId: program.id })}
+                    className="w-full py-3 bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700 rounded-xl text-white font-bold transition duration-300 shadow-lg"
+                  >
+                    Continue Program →
+                  </button>
+                ) : (
+                  <button
+                    onClick={() => handleStartProgram(program.id)}
+                    className="w-full py-3 bg-gradient-to-r from-indigo-500 to-purple-600 hover:from-indigo-600 hover:to-purple-700 rounded-xl text-white font-bold transition duration-300 shadow-lg"
+                  >
+                    Start Program
+                  </button>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    );
+  }
+  
+  // Program Details View
+  if (!programData) return null;
+  
+  const scheduleIndex = getCurrentScheduleIndex();
+  const currentWorkoutData = programData.schedule[scheduleIndex];
+  const { currentWeek, progressPercent } = getProgressInfo();
+  const totalWeeks = parseInt(programData.duration.split(' ')[0]) || 6;
+  const isActive = userProgram?.programId === programData.id;
+  
+  return (
+    <div {...swipeHandlers}>
+      {/* Header - now inline, not sticky (main header handles sticky) */}
+      <div className="mb-4">
+        <button onClick={handleBack} className="flex items-center text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 dark:hover:text-indigo-300 transition duration-200 mb-2">
+          <ArrowLeft className="h-4 w-4 mr-2" /> Back to Programs
+        </button>
+        <div className="flex items-center justify-between">
+          <h2 className="text-2xl font-bold text-gray-900 dark:text-white">{programData.name}</h2>
+          {isActive && (
+            <button
+              onClick={handleResetProgram}
+              className="p-2 bg-red-500 hover:bg-red-600 dark:bg-red-600 dark:hover:bg-red-700 rounded-xl transition shadow-lg"
+              aria-label="Reset program"
+            >
+              <RefreshCw className="w-5 h-5 text-white" />
+            </button>
+          )}
+        </div>
+      </div>
+      
+      <div className="space-y-4">
+        {/* Rest Day Banner */}
+        {isActive && isRestDay() && (
+          <div className="bg-gradient-to-r from-blue-400/20 to-cyan-500/20 dark:from-blue-900/40 dark:to-cyan-900/40 p-4 rounded-xl border border-blue-300 dark:border-blue-500/30">
+            <div className="flex items-center gap-3">
+              <span className="text-3xl">😴</span>
+              <div>
+                <h3 className="text-lg font-bold text-gray-900 dark:text-white">Rest Day - {calendarDayName}</h3>
+                <p className="text-sm text-gray-600 dark:text-gray-400">Recovery is essential! Next workout on Monday.</p>
+              </div>
+            </div>
+          </div>
+        )}
+        
+        {/* Progress Card - Only show if active */}
+        {isActive && (
+          <div className="bg-gradient-to-r from-green-400/20 to-emerald-500/20 dark:from-green-900/40 dark:to-emerald-900/40 p-4 rounded-xl border border-green-300 dark:border-green-500/30">
+            <div className="flex items-center justify-between mb-2">
+              <h3 className="text-sm font-bold text-gray-900 dark:text-white">Program Progress</h3>
+              <span className="text-xs text-gray-700 dark:text-gray-300">
+                Week {currentWeek} of {totalWeeks} • {calendarDayName}
+              </span>
+            </div>
+            <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-3 overflow-hidden">
+              <div 
+                className="h-full bg-gradient-to-r from-green-500 to-emerald-600 transition-all duration-500"
+                style={{ width: `${Math.min(progressPercent, 100)}%` }}
+              />
+            </div>
+            <p className="text-xs text-gray-600 dark:text-gray-400 mt-2">
+              {Math.round(progressPercent)}% complete
+            </p>
+          </div>
+        )}
+        
+        {/* Current Workout Card */}
+        <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-xl border-2 border-indigo-400 dark:border-indigo-500/50">
+          <div className="flex items-center gap-3 mb-4">
+            <div className={`w-12 h-12 rounded-xl bg-gradient-to-br ${programData.color} flex items-center justify-center text-2xl`}>
+              {programData.icon}
+            </div>
+            <div className="flex-1">
+              <div className="flex items-center gap-2">
+                <h3 className="text-xl font-bold text-gray-900 dark:text-white">{currentWorkoutData.name}</h3>
+                {isActive && !isRestDay() && (
+                  <span className="px-2 py-0.5 bg-indigo-500 text-white text-xs rounded-full font-bold">
+                    TODAY
+                  </span>
+                )}
+                {isActive && isRestDay() && (
+                  <span className="px-2 py-0.5 bg-gray-400 text-white text-xs rounded-full font-bold">
+                    NEXT UP
+                  </span>
+                )}
+              </div>
+              <p className="text-sm text-gray-600 dark:text-gray-400">
+                {calendarDayName} • {currentWorkoutData.exercises.length} exercises
+              </p>
+            </div>
+          </div>
+          
+          {/* Muscle Focus */}
+          <div className="mb-4">
+            <p className="text-xs font-semibold text-gray-700 dark:text-gray-300 mb-2">Target Muscles:</p>
+            <div className="flex flex-wrap gap-2">
+              {currentWorkoutData.focus.map((muscle, idx) => (
+                <span 
+                  key={idx}
+                  className="px-3 py-1 bg-indigo-100 dark:bg-indigo-900/40 text-indigo-700 dark:text-indigo-300 rounded-full text-xs font-semibold"
+                >
+                  {muscle}
+                </span>
+              ))}
+            </div>
+          </div>
+          
+          {/* Exercise List */}
+          <div>
+            <p className="text-xs font-semibold text-gray-700 dark:text-gray-300 mb-2">
+              {isRestDay() ? 'Next Workout:' : `${calendarDayName}'s Exercises:`}
+            </p>
+            <div className="space-y-2">
+              {currentWorkoutData.exercises.map((exercise, idx) => {
+                const exerciseData = findExerciseInMuscleGroups(exercise);
+                const hasMatch = exerciseData !== null;
+                
+                return (
+                  <button 
+                    key={idx}
+                    onClick={() => onExerciseClick?.(exercise)}
+                    className={`w-full p-3 rounded-lg flex items-center gap-3 text-left transition ${
+                      hasMatch 
+                        ? 'bg-gray-50 dark:bg-gray-700/50 hover:bg-indigo-50 dark:hover:bg-indigo-900/30' 
+                        : 'bg-gray-50 dark:bg-gray-700/50 opacity-70'
+                    }`}
+                  >
+                    <span className="flex-shrink-0 w-6 h-6 bg-indigo-500 text-white rounded-full flex items-center justify-center text-xs font-bold">
+                      {idx + 1}
+                    </span>
+                    <span className="text-sm text-gray-900 dark:text-white font-medium flex-1">
+                      {exercise}
+                    </span>
+                    {hasMatch && <ArrowLeft className="w-4 h-4 text-gray-400 transform rotate-180" />}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+          
+          {/* Start Workout Button - FIXED: Now actually starts workout */}
+          {isActive && onStartTodaysWorkout && (
+            <button
+              onClick={handleStartWorkout}
+              className="w-full mt-4 py-4 bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700 rounded-xl text-white font-bold text-lg transition duration-300 shadow-lg flex items-center justify-center gap-2"
+            >
+              <Play className="w-5 h-5" />
+              Start Today's Workout
+            </button>
+          )}
+          
+          {!isActive && (
+            <button
+              onClick={() => handleStartProgram(programData.id)}
+              className="w-full mt-4 py-4 bg-gradient-to-r from-indigo-500 to-purple-600 hover:from-indigo-600 hover:to-purple-700 rounded-xl text-white font-bold text-lg transition duration-300 shadow-lg"
+            >
+              Start This Program
+            </button>
+          )}
+        </div>
+        
+        {/* Full Schedule */}
+        <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-xl border border-gray-200 dark:border-indigo-500/30">
+          <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-4">Weekly Schedule</h3>
+          <div className="space-y-2">
+            {programData.schedule.map((workout, idx) => {
+              // Calculate which calendar day this schedule item represents
+              // For repeating schedules (like PPL with 3 items for 6 days), map appropriately
+              const scheduleRepeats = programData.schedule.length < programData.daysPerWeek;
+              const calendarDayForItem = scheduleRepeats 
+                ? (idx % programData.schedule.length) + 1  // For display, show rotation
+                : idx + 1; // 1-indexed calendar day
+              const dayNameForItem = dayNames[calendarDayForItem - 1] || `Day ${idx + 1}`;
+              
+              // Check if this is today's workout
+              const isCurrentDay = isActive && idx === scheduleIndex && !isRestDay();
+              
+              return (
+                <button
+                  key={idx}
+                  onClick={() => {
+                    // Preview this day's workout (just show exercises)
+                  }}
+                  className={`w-full p-3 rounded-lg border-l-4 text-left transition ${
+                    isCurrentDay 
+                      ? 'bg-indigo-50 dark:bg-indigo-900/30 border-indigo-500' 
+                      : 'bg-gray-50 dark:bg-gray-700/50 border-gray-300 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-700'
+                  }`}
+                >
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className={`text-sm font-bold ${
+                        isCurrentDay 
+                          ? 'text-indigo-700 dark:text-indigo-300' 
+                          : 'text-gray-900 dark:text-white'
+                      }`}>
+                        {scheduleRepeats ? `Day ${idx + 1}` : dayNameForItem}: {workout.name}
+                      </p>
+                      <p className="text-xs text-gray-600 dark:text-gray-400">
+                        {workout.focus.join(', ')} • {workout.exercises.length} exercises
+                      </p>
+                    </div>
+                    {isCurrentDay && (
+                      <span className="px-2 py-1 bg-indigo-500 text-white rounded-full text-xs font-bold">
+                        TODAY
+                      </span>
+                    )}
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+          
+          {/* Rest Days Indicator */}
+          {programData.daysPerWeek < 7 && (
+            <div className="mt-3 p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-200 dark:border-blue-500/30">
+              <p className="text-xs text-blue-700 dark:text-blue-300 text-center">
+                😴 Rest Days: {dayNames.slice(programData.daysPerWeek).join(', ')}
+              </p>
+            </div>
+          )}
+          
+          {/* Note about repeating schedule */}
+          {programData.schedule.length < programData.daysPerWeek && (
+            <p className="text-xs text-gray-500 dark:text-gray-400 mt-3 text-center italic">
+              This {programData.schedule.length}-day rotation repeats {Math.ceil(programData.daysPerWeek / programData.schedule.length)} times per week
+            </p>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// 3. Exercise Finder Screens - REFACTORED: Flat navigation, no stages
 const ExerciseFinderScreen = ({ 
   selectedMuscle, 
   setSelectedMuscle, 
@@ -5804,10 +9526,20 @@ const ExerciseFinderScreen = ({
   setSelectedExercise,
   exerciseSubView,
   setExerciseSubView,
+  exerciseTab,
+  setExerciseTab,
+  selectedExerciseForDetail,
+  setSelectedExerciseForDetail,
+  guidedWorkoutMode,
+  setGuidedWorkoutMode,
   currentWorkout,
   setCurrentWorkout,
   finishWorkout,
-  userData
+  userData,
+  workoutStartTime,
+  setWorkoutStartTime,
+  workoutSummary,
+  setWorkoutSummary
 }: {
   selectedMuscle: string | null;
   setSelectedMuscle: (muscle: string | null) => void;
@@ -5818,31 +9550,277 @@ const ExerciseFinderScreen = ({
   setSelectedExercise: (exercise: any) => void;
   exerciseSubView: 'list' | 'details' | 'log';
   setExerciseSubView: (view: 'list' | 'details' | 'log') => void;
-  currentWorkout: Array<{ exercise: string; sets: Array<{ reps: number; weight: number }> }>;
-  setCurrentWorkout: (workout: Array<{ exercise: string; sets: Array<{ reps: number; weight: number }> }>) => void;
-  finishWorkout: () => Promise<void>;
+  exerciseTab: 'today' | 'programs' | 'library' | 'prs';
+  setExerciseTab: (tab: 'today' | 'programs' | 'library' | 'prs') => void;
+  selectedExerciseForDetail: string | null;
+  setSelectedExerciseForDetail: (exercise: string | null) => void;
+  guidedWorkoutMode: boolean;
+  setGuidedWorkoutMode: (mode: boolean) => void;
+  currentWorkout: Array<{ exercise?: string; name?: string; sets: Array<{ reps: number; weight: number }> }>;
+  setCurrentWorkout: (workout: Array<{ exercise?: string; name?: string; sets: Array<{ reps: number; weight: number }> }>) => void;
+  finishWorkout: (passedWorkout?: Array<{ name?: string; exercise?: string; sets: Array<{ reps: number; weight: number }> }>) => Promise<void>;
+  workoutStartTime: number | null;
+  setWorkoutStartTime: (time: number | null) => void;
+  workoutSummary: {
+    show: boolean;
+    duration: number;
+    exercises: any[];
+    totalSets: number;
+    totalVolume: number;
+    newPRs: { exercise: string; weight: number; reps: number }[];
+  } | null;
+  setWorkoutSummary: (summary: any) => void;
 }) => {
-  const [showRoutineConfirm, setShowRoutineConfirm] = useState(false);
+  const [_showRoutineConfirm, _setShowRoutineConfirm] = useState(false);
+  const [showStats, setShowStats] = useState(false);
+  // REFACTORED: Programs now use unified state controlled by ExerciseFinderScreen
+  const [programView, setProgramView] = useState<{ mode: 'list' | 'detail'; programId: string | null }>({ mode: 'list', programId: null });
+  const [searchQuery, setSearchQuery] = useState('');
+  const [favorites, setFavorites] = useState<string[]>([]);
+  const [muscleRecovery, setMuscleRecovery] = useState<Record<string, { daysSince: number; status: 'ready' | 'recovering' | 'partial' }>>({});
+  const [equipmentFilter, setEquipmentFilter] = useState<string[]>([]);
+  const [showEquipmentFilter, setShowEquipmentFilter] = useState(false);
+  const [showAdvancedTimer, setShowAdvancedTimer] = useState(false);
+  const [timerMode, setTimerMode] = useState<'hiit' | 'tabata' | 'emom' | 'custom' | null>(null);
+  const [showWarmupCooldown, setShowWarmupCooldown] = useState<'warmup' | 'cooldown' | null>(null);
+  // REFACTORED: Expanded muscle for inline exercise viewing in Library
+  const [expandedMuscle, setExpandedMuscle] = useState<string | null>(null);
+  const [currentExerciseIndex, setCurrentExerciseIndex] = useState(0);
 
-  const muscleData = useMemo(() => MUSCLE_GROUPS.find(m => m.name === selectedMuscle), [selectedMuscle]);
+  // Reset program view when switching to Programs tab - always start with list
+  useEffect(() => {
+    if (exerciseTab === 'programs') {
+      // Always show list view first when entering Programs tab
+      // User can click on their active program to see details
+      setProgramView({ mode: 'list', programId: null });
+    }
+  }, [exerciseTab]);
 
-  // Back button handler
+  // Handle starting today's workout from a program
+  const handleStartTodaysWorkout = useCallback((exercises: string[], _programId: string) => {
+    if (exercises.length === 0) {
+      toast.error('No exercises in today\'s workout');
+      return;
+    }
+    
+    // Add each exercise to currentWorkout
+    const newWorkoutExercises: Array<{ exercise: string; sets: Array<{ reps: number; weight: number }> }> = exercises.map(exerciseName => ({
+      exercise: exerciseName,
+      sets: []
+    }));
+    
+    // Batch state updates to prevent jarring transitions
+    // First, switch tab to avoid seeing intermediate states
+    setExerciseTab('today');
+    
+    // Then update all workout-related state in one render cycle
+    requestAnimationFrame(() => {
+      setCurrentWorkout(newWorkoutExercises);
+      setCurrentExerciseIndex(0);
+      setGuidedWorkoutMode(true);
+      
+      // Set workout start time if not already set
+      if (!workoutStartTime) {
+        setWorkoutStartTime(Date.now());
+      }
+      
+      toast.success(`Starting guided workout with ${exercises.length} exercises! 🚀`);
+    });
+  }, [workoutStartTime, setCurrentWorkout, setWorkoutStartTime]);
+
+  // Load favorites from localStorage
+  useEffect(() => {
+    const savedFavorites = localStorage.getItem('exerciseFavorites');
+    if (savedFavorites) {
+      setFavorites(JSON.parse(savedFavorites));
+    }
+  }, []);
+
+  // Save favorites to localStorage
+  const toggleFavorite = useCallback((exercise: string) => {
+    setFavorites(prev => {
+      const newFavorites = prev.includes(exercise)
+        ? prev.filter(e => e !== exercise)
+        : [...prev, exercise];
+      localStorage.setItem('exerciseFavorites', JSON.stringify(newFavorites));
+      return newFavorites;
+    });
+  }, []);
+
+  // Calculate muscle recovery status
+  useEffect(() => {
+    const calculateRecovery = async () => {
+      if (!userData?.uid) return;
+      
+      const user = { uid: userData.uid };
+      
+      try {
+        // Get workouts from last 7 days
+        const sevenDaysAgo = new Date();
+        sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+        const sevenDaysAgoStr = sevenDaysAgo.toISOString().split('T')[0];
+        
+        const workoutsQuery = query(
+          collection(db, 'workoutHistory'),
+          where('userId', '==', user.uid),
+          where('date', '>=', sevenDaysAgoStr),
+          orderBy('date', 'desc')
+        );
+        
+        const workoutsSnapshot = await getDocs(workoutsQuery);
+        const recoveryMap: Record<string, number> = {};
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        
+        // Find last workout date for each muscle group
+        workoutsSnapshot.forEach((doc) => {
+          const workout = doc.data();
+          const exercises = workout.exercises || [];
+          
+          exercises.forEach((ex: any) => {
+            const exerciseName = ex.exercise || '';
+            
+            // Match exercise to muscle group
+            MUSCLE_GROUPS.forEach((group) => {
+              const allExercises = [...group.exercises.gym, ...group.exercises.home];
+              if (allExercises.some(e => exerciseName.toLowerCase().includes(e.toLowerCase()) || e.toLowerCase().includes(exerciseName.toLowerCase()))) {
+                const workoutDate = new Date(workout.date);
+                workoutDate.setHours(0, 0, 0, 0);
+                const daysSince = Math.floor((today.getTime() - workoutDate.getTime()) / (1000 * 60 * 60 * 24));
+                
+                // Keep the most recent (smallest daysSince) workout for this muscle
+                if (!(group.name in recoveryMap) || daysSince < recoveryMap[group.name]) {
+                  recoveryMap[group.name] = daysSince;
+                }
+              }
+            });
+          });
+        });
+        
+        // Calculate recovery status
+        const statusMap: Record<string, { daysSince: number; status: 'ready' | 'recovering' | 'partial' }> = {};
+        Object.entries(recoveryMap).forEach(([muscle, daysSince]) => {
+          let status: 'ready' | 'recovering' | 'partial';
+          
+          if (daysSince === 0) {
+            status = 'recovering'; // Trained today
+          } else if (daysSince === 1) {
+            status = 'recovering'; // Trained yesterday
+          } else if (daysSince === 2) {
+            status = 'partial'; // 2 days rest - partial recovery
+          } else {
+            status = 'ready'; // 3+ days - fully recovered
+          }
+          
+          statusMap[muscle] = { daysSince, status };
+        });
+        
+        // Muscles not found in history are ready
+        MUSCLE_GROUPS.forEach((group) => {
+          if (!(group.name in statusMap)) {
+            statusMap[group.name] = { daysSince: 7, status: 'ready' };
+          }
+        });
+        
+        setMuscleRecovery(statusMap);
+      } catch (error) {
+        console.error('Error calculating muscle recovery:', error);
+      }
+    };
+    
+    calculateRecovery();
+  }, [userData]);
+
+  // @ts-ignore - preserved for potential future use
+  const _muscleData = useMemo(() => MUSCLE_GROUPS.find(m => m.name === selectedMuscle), [selectedMuscle]);
+
+  // REFACTORED: Unified back button handler - hierarchical navigation
   const handleBack = useCallback(() => {
+    // 0. Close stats modal if open
+    if (showStats) {
+      setShowStats(false);
+      return;
+    }
+    
+    // 1. Close exercise detail first
+    if (selectedExerciseForDetail) {
+      setSelectedExerciseForDetail(null);
+      return;
+    }
+    
+    // 2. Exit single exercise logging
+    if (exerciseSubView === 'log') {
+      setExerciseSubView('list');
+      return;
+    }
+    
+    // 3. Handle program navigation (detail -> list -> exit)
+    if (exerciseTab === 'programs') {
+      if (programView.mode === 'detail') {
+        setProgramView({ mode: 'list', programId: null });
+        return;
+      } else {
+        setExerciseTab('today');
+        return;
+      }
+    }
+    
+    // 4. Handle PRs tab
+    if (exerciseTab === 'prs') {
+      setExerciseTab('today');
+      return;
+    }
+    
+    // 5. Collapse expanded muscle in library
+    if (expandedMuscle) {
+      setExpandedMuscle(null);
+      return;
+    }
+    
+    // 6. Handle Library tab
+    if (exerciseTab === 'library') {
+      // If search is active or equipment filter is active, clear them first
+      if (searchQuery) {
+        setSearchQuery('');
+        return;
+      }
+      if (equipmentFilter.length > 0) {
+        setEquipmentFilter([]);
+        return;
+      }
+      if (showEquipmentFilter) {
+        setShowEquipmentFilter(false);
+        return;
+      }
+      // Otherwise go back to Today
+      setExerciseTab('today');
+      return;
+    }
+    
+    // 7. Clear location filter (legacy - for Today tab)
     if (location) {
       setLocation(null);
-    } else if (selectedMuscle) {
-      setSelectedMuscle(null);
+      return;
     }
-  }, [location, selectedMuscle]);
+    
+    // 8. Clear muscle selection (legacy - for Today tab)
+    if (selectedMuscle) {
+      setSelectedMuscle(null);
+      return;
+    }
+    
+    // 9. If on Today tab but with active workout, do nothing (let Android handler deal with it)
+    // Otherwise, this is the root of Exercise tab, user should exit to main app
+  }, [showStats, selectedExerciseForDetail, exerciseSubView, programView, exerciseTab, expandedMuscle, searchQuery, equipmentFilter, showEquipmentFilter, location, selectedMuscle]);
 
-  // Swipe handlers for navigation screens
-  const swipeHandlersLocation = useSwipe(handleBack);
-  const swipeHandlersExerciseList = useSwipe(handleBack);
+  // Swipe handlers for navigation
+  const swipeHandlersMain = useSwipe(handleBack);
 
   // Add to routine handler
-  const handleAddToRoutine = useCallback(() => {
-    setShowRoutineConfirm(true);
-    setTimeout(() => setShowRoutineConfirm(false), 2000);
+  // @ts-ignore - preserved for potential future use
+  const _handleAddToRoutine = useCallback(() => {
+    _setShowRoutineConfirm(true);
+    setTimeout(() => _setShowRoutineConfirm(false), 2000);
   }, []);
 
   // Handle saving workout from logger
@@ -5852,7 +9830,38 @@ const ExerciseFinderScreen = ({
     }
   }, [selectedExercise, currentWorkout, setCurrentWorkout]);
 
-  // Render Exercise Logger
+  // Handle updating exercise sets in guided workout
+  const handleExerciseComplete = useCallback((exerciseIndex: number, sets: Array<{ reps: number; weight: number }>) => {
+    const updated = [...currentWorkout];
+    if (updated[exerciseIndex]) {
+      updated[exerciseIndex] = { ...updated[exerciseIndex], sets };
+    }
+    setCurrentWorkout(updated);
+  }, [currentWorkout, setCurrentWorkout]);
+
+  // Render FOCUS MODE Workout Session - Immersive single-exercise experience
+  if (guidedWorkoutMode && currentWorkout.length > 0) {
+    return (
+      <ActiveWorkoutSession
+        workoutExercises={currentWorkout}
+        currentExerciseIndex={currentExerciseIndex}
+        onExerciseComplete={handleExerciseComplete}
+        onFinishWorkout={finishWorkout}
+        onQuit={() => {
+          // Clear all workout state to ensure clean exit
+          setGuidedWorkoutMode(false);
+          setExerciseSubView('list');
+          setCurrentWorkout([]);
+          setWorkoutStartTime(null);
+          // localStorage is already cleared by ActiveWorkoutSession.handleQuit
+        }}
+        userData={userData}
+        workoutStartTime={workoutStartTime}
+      />
+    );
+  }
+
+  // Render Exercise Logger (single exercise mode)
   if (exerciseSubView === 'log' && selectedExercise) {
     return (
       <ExerciseLogger
@@ -5864,158 +9873,2663 @@ const ExerciseFinderScreen = ({
     );
   }
 
-  // Stage 1: Muscle Group Selection
-  if (!selectedMuscle) {
+  // Render Exercise Detail Screen
+  if (selectedExerciseForDetail) {
+    return (
+      <ExerciseDetailScreen
+        exercise={selectedExerciseForDetail}
+        onBack={() => setSelectedExerciseForDetail(null)}
+        onStartLogging={() => {
+          setSelectedExercise(selectedExerciseForDetail);
+          setExerciseSubView('log');
+          setSelectedExerciseForDetail(null);
+        }}
+        onToggleFavorite={toggleFavorite}
+        isFavorite={favorites.includes(selectedExerciseForDetail)}
+        userData={userData}
+        onMuscleClick={(muscle) => {
+          setSelectedExerciseForDetail(null);
+          setExpandedMuscle(muscle);
+          setExerciseTab('library');
+        }}
+        onExerciseClick={(exercise) => {
+          // Navigate to another exercise's detail directly
+          setSelectedExerciseForDetail(exercise);
+        }}
+      />
+    );
+  }
+
+  // REFACTORED: Programs tab now uses flat programView state - no modal pattern
+  // Removed: if (showPrograms) condition - now inline
+
+  // REFACTORED: PRs tab now renders inline - removed showPRHistory modal pattern
+
+  // REFACTORED: Removed Stage navigation - flat navigation model now in use
+  // Main UI always renders (previously "Stage 1")
+  
+  // Get all exercises for search
+  const allExercises = MUSCLE_GROUPS.flatMap(group => [
+    ...group.exercises.gym.map(ex => ({ name: ex, muscle: group.name, location: 'gym' })),
+    ...group.exercises.home.map(ex => ({ name: ex, muscle: group.name, location: 'home' }))
+  ]);
+  
+  // Helper function to detect equipment from exercise name
+  const getEquipmentType = (exerciseName: string): string[] => {
+    const name = exerciseName.toLowerCase();
+    const equipment: string[] = [];
+      
+      if (name.includes('barbell') || name.includes('bench press') || name.includes('deadlift') || (name.includes('squat') && !name.includes('bodyweight'))) {
+        equipment.push('barbell');
+      }
+      if (name.includes('dumbbell') || name.includes('db ')) {
+        equipment.push('dumbbell');
+      }
+      if (name.includes('cable') || name.includes('pulley')) {
+        equipment.push('cable');
+      }
+      if (name.includes('machine') || name.includes('leg press') || name.includes('smith')) {
+        equipment.push('machine');
+      }
+      if (name.includes('push-up') || name.includes('pull-up') || name.includes('chin-up') || name.includes('plank') || name.includes('bodyweight') || name.includes('dip') || name.includes('lunge') || name.includes('crunch') || name.includes('sit-up')) {
+        equipment.push('bodyweight');
+      }
+      if (name.includes('kettlebell') || name.includes('kb ')) {
+        equipment.push('kettlebell');
+      }
+      if (name.includes('band') || name.includes('resistance')) {
+        equipment.push('band');
+      }
+      
+      if (equipment.length === 0) equipment.push('other');
+      return equipment;
+    };
+    
+    // Filter exercises based on search and equipment
+    let filteredExercises = searchQuery
+      ? allExercises.filter(ex => 
+          ex.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+          ex.muscle.toLowerCase().includes(searchQuery.toLowerCase())
+        )
+      : [];
+    
+    // Apply equipment filter
+    if (equipmentFilter.length > 0) {
+      filteredExercises = filteredExercises.filter(ex => {
+        const exEquipment = getEquipmentType(ex.name);
+        return equipmentFilter.some(filter => exEquipment.includes(filter));
+      });
+    }
+    
+    // REFACTORED: Apply global location filter
+    if (location) {
+      filteredExercises = filteredExercises.filter(ex => ex.location === location);
+    }
+
     return (
       <>
-        {/* Sticky Header */}
-        <div className="sticky top-0 z-40 w-full bg-gradient-to-br from-indigo-50 via-purple-50 to-pink-50 dark:from-gray-900 dark:via-indigo-900/20 dark:to-gray-900 backdrop-blur-md border-b border-indigo-200 dark:border-indigo-500/30 px-4 py-4 shadow-sm">
-          <h2 className="text-2xl font-bold text-gray-900 dark:text-white">Select Muscle Group</h2>
+        {/* Sticky Header with Safe Area - REFACTORED: Added global Gym/Home toggle */}
+        <div style={{ paddingTop: 'var(--safe-area-top)' }} className="sticky top-0 z-40 w-full bg-gradient-to-br from-indigo-50 via-purple-50 to-pink-50 dark:from-gray-900 dark:via-indigo-900/20 dark:to-gray-900 backdrop-blur-md border-b border-indigo-200 dark:border-indigo-500/30 shadow-sm">
+          <div className="px-4 py-4">
+            <div className="flex items-center justify-between mb-3">
+              <h2 className="text-2xl font-bold text-gray-900 dark:text-white">💪 Exercises</h2>
+              <div className="flex items-center gap-2">
+                {/* REFACTORED: Global Gym/Home Toggle - always visible */}
+                <div className="flex bg-gray-200 dark:bg-gray-700 rounded-lg p-0.5">
+                  <button
+                    onClick={() => setLocation(location === 'gym' ? null : 'gym')}
+                    className={`px-3 py-1.5 rounded-md text-xs font-semibold transition ${
+                      location === 'gym' 
+                        ? 'bg-indigo-500 text-white shadow-md' 
+                        : 'text-gray-600 dark:text-gray-300 hover:bg-gray-300 dark:hover:bg-gray-600'
+                    }`}
+                  >
+                    <Dumbbell className="w-3.5 h-3.5 inline mr-1" />
+                    Gym
+                  </button>
+                  <button
+                    onClick={() => setLocation(location === 'home' ? null : 'home')}
+                    className={`px-3 py-1.5 rounded-md text-xs font-semibold transition ${
+                      location === 'home' 
+                        ? 'bg-teal-500 text-white shadow-md' 
+                        : 'text-gray-600 dark:text-gray-300 hover:bg-gray-300 dark:hover:bg-gray-600'
+                    }`}
+                  >
+                    <Home className="w-3.5 h-3.5 inline mr-1" />
+                    Home
+                  </button>
+                </div>
+                <button
+                  onClick={() => setShowStats(true)}
+                  className="p-2 bg-indigo-500 hover:bg-indigo-600 dark:bg-indigo-600 dark:hover:bg-indigo-700 rounded-xl transition shadow-lg"
+                  aria-label="View workout statistics"
+                >
+                  <TrendingUp className="w-6 h-6 text-white" />
+                </button>
+              </div>
+            </div>
+            
+            {/* Tab Navigation */}
+            <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide">
+              {[
+                { id: 'today', label: 'Today', icon: '🔥' },
+                { id: 'programs', label: 'Programs', icon: '🎯' },
+                { id: 'library', label: 'Library', icon: '📚' },
+                { id: 'prs', label: 'PRs', icon: '🏆' }
+              ].map(tab => (
+                <button
+                  key={tab.id}
+                  onClick={() => {
+                    // Warn if workout in progress
+                    if (guidedWorkoutMode && currentWorkout.length > 0 && tab.id !== exerciseTab) {
+                      const confirmed = confirm('You have a workout in progress. Switch tabs anyway? Your workout will continue.');
+                      if (!confirmed) return;
+                    }
+                    
+                    setExerciseTab(tab.id as any);
+                    // Complete state cleanup when changing tabs
+                    setProgramView({ mode: 'list', programId: null });
+                    setExpandedMuscle(null);
+                    setSelectedExerciseForDetail(null);
+                    if (!guidedWorkoutMode) {
+                      setExerciseSubView('list');
+                    }
+                  }}
+                  className={`flex-shrink-0 px-4 py-2 rounded-lg font-semibold transition ${
+                    exerciseTab === tab.id
+                      ? 'bg-indigo-500 text-white shadow-lg'
+                      : 'bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'
+                  }`}
+                >
+                  {tab.icon} {tab.label}
+                </button>
+              ))}
+            </div>
+          </div>
         </div>
         
-        <div className="px-4 space-y-6 pt-4">
+        <div className="px-4 space-y-6 pt-4 pb-24" {...swipeHandlersMain}>
         
-        {/* Active Workout Indicator & Finish Button */}
-        {currentWorkout.length > 0 && (
-          <div className="bg-gradient-to-r from-emerald-300 to-teal-300 dark:from-emerald-900/40 dark:to-teal-900/40 p-4 rounded-xl border-2 border-emerald-400 dark:border-emerald-500/30 shadow-xl">
-            <div className="flex items-center justify-between mb-3">
-              <div>
-                <p className="text-sm font-semibold text-emerald-900 dark:text-emerald-300">Active Workout Session</p>
-                <p className="text-xs text-emerald-700 dark:text-emerald-400">{currentWorkout.length} exercise(s) logged</p>
+        {/* TODAY TAB */}
+        {exerciseTab === 'today' && (
+          <>
+            {/* Active Workout Indicator & Finish Button */}
+            {currentWorkout.length > 0 && (
+              <div className="bg-gradient-to-r from-emerald-300 to-teal-300 dark:from-emerald-900/40 dark:to-teal-900/40 p-4 rounded-xl border-2 border-emerald-400 dark:border-emerald-500/30 shadow-xl">
+                <div className="flex items-center justify-between mb-3">
+                  <div>
+                    <p className="text-sm font-semibold text-emerald-900 dark:text-emerald-300">Active Workout Session</p>
+                    <p className="text-xs text-emerald-700 dark:text-emerald-400">{currentWorkout.length} exercise(s) logged</p>
+                  </div>
+                  <div className="text-2xl">💪</div>
+                </div>
+                <button
+                  onClick={() => finishWorkout()}
+                  className="w-full py-3 bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700 rounded-xl text-white font-bold transition duration-300 shadow-lg"
+                >
+                  🏁 Finish Workout
+                </button>
               </div>
-              <div className="text-2xl">💪</div>
+            )}
+            
+            {/* Quick Timer Access */}
+            <div className="bg-white dark:bg-gray-800 rounded-xl p-4 shadow-lg border border-gray-200 dark:border-indigo-500/30">
+              <h3 className="text-sm font-bold text-gray-900 dark:text-white mb-3 flex items-center gap-2">
+                ⏱️ Quick Timers
+              </h3>
+              <div className="grid grid-cols-2 gap-2">
+                {[
+                  { id: 'tabata', label: 'Tabata', desc: '20s work / 10s rest', icon: '🔥', color: 'from-red-400 to-orange-500' },
+                  { id: 'hiit', label: 'HIIT', desc: '30s work / 30s rest', icon: '⚡', color: 'from-yellow-400 to-amber-500' },
+                  { id: 'emom', label: 'EMOM', desc: 'Every Minute', icon: '⏰', color: 'from-blue-400 to-indigo-500' },
+                  { id: 'custom', label: 'Custom', desc: 'Set your own', icon: '⚙️', color: 'from-purple-400 to-pink-500' }
+                ].map(timer => (
+                  <button
+                    key={timer.id}
+                    onClick={() => {
+                      setTimerMode(timer.id as any);
+                      setShowAdvancedTimer(true);
+                    }}
+                    className={`p-3 rounded-xl bg-gradient-to-br ${timer.color} text-white text-left transition hover:scale-[1.02] active:scale-[0.98] shadow-lg`}
+                  >
+                    <div className="flex items-center gap-2 mb-1">
+                      <span>{timer.icon}</span>
+                      <span className="font-bold text-sm">{timer.label}</span>
+                    </div>
+                    <p className="text-xs text-white/80">{timer.desc}</p>
+                  </button>
+                ))}
+              </div>
             </div>
-            <button
-              onClick={finishWorkout}
-              className="w-full py-3 bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700 rounded-xl text-white font-bold transition duration-300 shadow-lg"
-            >
-              🏁 Finish Workout
-            </button>
+            
+            {/* Warm-up & Cool-down Section */}
+            <div className="bg-white dark:bg-gray-800 rounded-xl p-4 shadow-lg border border-gray-200 dark:border-indigo-500/30">
+              <h3 className="text-sm font-bold text-gray-900 dark:text-white mb-3 flex items-center gap-2">
+                🧘 Warm-up & Cool-down
+              </h3>
+              <div className="grid grid-cols-2 gap-3">
+                <button
+                  onClick={() => setShowWarmupCooldown('warmup')}
+                  className="p-4 rounded-xl bg-gradient-to-br from-orange-400 to-red-500 text-white text-left transition hover:scale-[1.02] active:scale-[0.98] shadow-lg"
+                >
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className="text-2xl">🔥</span>
+                    <span className="font-bold">Warm-up</span>
+                  </div>
+                  <p className="text-xs text-white/80">Dynamic stretches to prepare muscles</p>
+                </button>
+                <button
+                  onClick={() => setShowWarmupCooldown('cooldown')}
+                  className="p-4 rounded-xl bg-gradient-to-br from-blue-400 to-indigo-500 text-white text-left transition hover:scale-[1.02] active:scale-[0.98] shadow-lg"
+                >
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className="text-2xl">❄️</span>
+                    <span className="font-bold">Cool-down</span>
+                  </div>
+                  <p className="text-xs text-white/80">Static stretches for recovery</p>
+                </button>
+              </div>
+            </div>
+
+            {/* Smart Suggestions Widget */}
+            <div className="bg-gradient-to-br from-indigo-500/10 to-purple-500/10 dark:from-indigo-900/30 dark:to-purple-900/30 rounded-xl p-4 shadow-lg border border-indigo-200 dark:border-indigo-500/30">
+              <h3 className="text-sm font-bold text-gray-900 dark:text-white mb-3 flex items-center gap-2">
+                <span className="text-lg">🧠</span> Smart Suggestions
+              </h3>
+              
+              {/* Today's Recommendation */}
+              {(() => {
+                // Find muscles that are ready to train
+                const readyMuscles = MUSCLE_GROUPS.filter(g => {
+                  const recovery = muscleRecovery[g.name];
+                  return !recovery || recovery.status === 'ready';
+                });
+                
+                // Find muscles that haven't been trained in a while (based on recovery data)
+                const neglectedMuscles = MUSCLE_GROUPS.filter(g => {
+                  const recovery = muscleRecovery[g.name];
+                  return recovery && recovery.daysSince >= 5;
+                });
+                
+                // Prioritize neglected muscles, then ready muscles
+                // Use stable selection based on today's date (changes once per day, not on every touch)
+                const todaySeed = new Date().toDateString().split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
+                const stableIndex = readyMuscles.length > 0 ? todaySeed % readyMuscles.length : 0;
+                const suggestedMuscle = neglectedMuscles[0] || readyMuscles[stableIndex];
+                
+                if (!suggestedMuscle) return null;
+                
+                const suggestedExercises = location === 'gym' 
+                  ? suggestedMuscle.exercises.gym.slice(0, 3)
+                  : suggestedMuscle.exercises.home.slice(0, 3);
+                
+                const isNeglected = neglectedMuscles.includes(suggestedMuscle);
+                
+                return (
+                  <div className="space-y-3">
+                    {/* Main Suggestion */}
+                    <div className="bg-white dark:bg-gray-800 rounded-xl p-3 shadow-md">
+                      <div className="flex items-center justify-between mb-2">
+                        <div className="flex items-center gap-2">
+                          <span className="text-2xl">{suggestedMuscle.icon}</span>
+                          <div>
+                            <p className="font-bold text-gray-900 dark:text-white">{suggestedMuscle.name}</p>
+                            <p className="text-xs text-gray-500 dark:text-gray-400">
+                              {isNeglected ? '⚠️ Needs attention!' : '✅ Ready to train'}
+                            </p>
+                          </div>
+                        </div>
+                        <button
+                          onClick={() => {
+                            // REFACTORED: Go directly to Library tab with muscle expanded
+                            setExpandedMuscle(suggestedMuscle.name);
+                            setExerciseTab('library');
+                          }}
+                          className="px-3 py-1.5 bg-indigo-500 hover:bg-indigo-600 text-white text-xs font-semibold rounded-lg transition"
+                        >
+                          Start →
+                        </button>
+                      </div>
+                      
+                      <div className="flex gap-2 flex-wrap">
+                        {suggestedExercises.map((ex, i) => (
+                          <span 
+                            key={i}
+                            className="text-xs px-2 py-1 bg-indigo-100 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 rounded-full"
+                          >
+                            {ex}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                    
+                    {/* Quick Stats */}
+                    <div className="grid grid-cols-3 gap-2">
+                      <div className="bg-white/50 dark:bg-gray-800/50 rounded-lg p-2 text-center">
+                        <p className="text-lg font-bold text-green-600 dark:text-green-400">{readyMuscles.length}</p>
+                        <p className="text-[10px] text-gray-500 dark:text-gray-400">Ready</p>
+                      </div>
+                      <div className="bg-white/50 dark:bg-gray-800/50 rounded-lg p-2 text-center">
+                        <p className="text-lg font-bold text-yellow-600 dark:text-yellow-400">
+                          {MUSCLE_GROUPS.filter(g => muscleRecovery[g.name]?.status === 'partial').length}
+                        </p>
+                        <p className="text-[10px] text-gray-500 dark:text-gray-400">Partial</p>
+                      </div>
+                      <div className="bg-white/50 dark:bg-gray-800/50 rounded-lg p-2 text-center">
+                        <p className="text-lg font-bold text-red-600 dark:text-red-400">
+                          {MUSCLE_GROUPS.filter(g => muscleRecovery[g.name]?.status === 'recovering').length}
+                        </p>
+                        <p className="text-[10px] text-gray-500 dark:text-gray-400">Resting</p>
+                      </div>
+                    </div>
+
+                    {/* Tip of the Day */}
+                    <div className="bg-amber-50 dark:bg-amber-900/20 rounded-lg p-2 flex items-start gap-2">
+                      <span className="text-lg">💡</span>
+                      <p className="text-xs text-amber-800 dark:text-amber-200">
+                        {[
+                          'Train opposing muscle groups together for balanced development!',
+                          'Allow 48-72 hours between training the same muscle group.',
+                          'Progressive overload is key - add weight or reps each week!',
+                          'Stay hydrated! Aim for at least 8 glasses of water on workout days.',
+                          'Sleep 7-9 hours for optimal muscle recovery.',
+                          'Warm up properly to prevent injuries and improve performance.',
+                          'Track your workouts to see progress over time!',
+                          'Compound exercises like squats and deadlifts build overall strength.',
+                        ][new Date().getDay()]}
+                      </p>
+                    </div>
+                  </div>
+                );
+              })()}
+            </div>
+            
+            {/* Recovery Legend */}
+            <div className="bg-white/50 dark:bg-gray-800/50 backdrop-blur-sm p-4 rounded-xl border border-indigo-200 dark:border-indigo-500/30 shadow-md">
+              <h3 className="text-sm font-bold text-gray-900 dark:text-white mb-2">Muscle Recovery Status</h3>
+              <div className="flex items-center justify-between text-xs">
+                <div className="flex items-center gap-1">
+                  <div className="w-4 h-4 bg-green-500 rounded-full flex items-center justify-center text-white font-bold text-[8px]">✓</div>
+                  <span className="text-gray-700 dark:text-gray-300">Ready</span>
+                </div>
+                <div className="flex items-center gap-1">
+                  <div className="w-4 h-4 bg-yellow-500 rounded-full flex items-center justify-center text-white font-bold text-[8px]">⚡</div>
+                  <span className="text-gray-700 dark:text-gray-300">Partial</span>
+                </div>
+                <div className="flex items-center gap-1">
+                  <div className="w-4 h-4 bg-red-500 rounded-full flex items-center justify-center text-white font-bold text-[8px]">○</div>
+                  <span className="text-gray-700 dark:text-gray-300">Rest</span>
+                </div>
+              </div>
+            </div>
+            
+            <div className="grid grid-cols-2 gap-4">
+              {MUSCLE_GROUPS.map((group) => {
+                const recovery = muscleRecovery[group.name];
+                const recoveryStatus = recovery?.status || 'ready';
+                const daysSince = recovery?.daysSince || 7;
+                
+                const recoveryConfig = {
+                  ready: { 
+                    color: 'bg-green-500', 
+                    textColor: 'text-green-700 dark:text-green-300',
+                    label: 'Ready',
+                    icon: '✓'
+                  },
+                  partial: { 
+                    color: 'bg-yellow-500', 
+                    textColor: 'text-yellow-700 dark:text-yellow-300',
+                    label: 'Partial',
+                    icon: '⚡'
+                  },
+                  recovering: { 
+                    color: 'bg-red-500', 
+                    textColor: 'text-red-700 dark:text-red-300',
+                    label: 'Rest',
+                    icon: '○'
+                  }
+                };
+                
+                const config = recoveryConfig[recoveryStatus];
+                
+                return (
+                  <button
+                    key={group.name}
+                    onClick={() => {
+                      // REFACTORED: Go directly to Library tab with muscle expanded
+                      setExpandedMuscle(group.name);
+                      setExerciseTab('library');
+                    }}
+                    className={`relative p-5 ${group.color} rounded-xl shadow-2xl border-2 border-white/30 flex flex-col items-center justify-center transform transition duration-300 hover:scale-[1.05] hover:shadow-2xl active:scale-95 h-32`}
+                  >
+                    <div className={`absolute top-2 right-2 ${config.color} w-6 h-6 rounded-full flex items-center justify-center text-white text-xs font-bold shadow-lg`}>
+                      {config.icon}
+                    </div>
+                    
+                    <span className="text-4xl mb-2">{group.icon}</span>
+                    <span className="text-sm font-semibold">{group.name}</span>
+                    
+                    {daysSince < 7 && (
+                      <span className={`text-xs mt-1 ${config.textColor} font-medium`}>
+                        {daysSince === 0 ? 'Today' : daysSince === 1 ? 'Yesterday' : `${daysSince}d ago`}
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+          </>
+        )}
+        
+        {/* PROGRAMS TAB - REFACTORED: Flat conditional rendering, no modal */}
+        {exerciseTab === 'programs' && (
+          <WorkoutProgramsScreen
+            userData={userData}
+            programView={programView}
+            setProgramView={setProgramView}
+            onBack={() => setExerciseTab('today')}
+            onExerciseClick={(exercise) => {
+              setSelectedExerciseForDetail(exercise);
+            }}
+            onStartTodaysWorkout={handleStartTodaysWorkout}
+          />
+        )}
+        
+        {/* LIBRARY TAB - REFACTORED: Inline muscle expansion instead of navigation */}
+        {exerciseTab === 'library' && (
+          <div className="space-y-4">
+            {/* Search Bar with Filter */}
+            <div className="space-y-3">
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
+                <input
+                  type="text"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  placeholder="Search exercises..."
+                  className="w-full pl-10 pr-4 py-3 rounded-xl border-2 border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:border-indigo-500 dark:focus:border-indigo-400 focus:ring-2 focus:ring-indigo-200 dark:focus:ring-indigo-500/20 transition outline-none"
+                />
+              </div>
+              
+              {/* Equipment Filter Toggle */}
+              <button
+                onClick={() => setShowEquipmentFilter(!showEquipmentFilter)}
+                className={`flex items-center gap-2 px-4 py-2 rounded-xl font-semibold text-sm transition ${
+                  equipmentFilter.length > 0 
+                    ? 'bg-indigo-500 text-white' 
+                    : 'bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300'
+                }`}
+              >
+                <span>🔧</span>
+                <span>Equipment Filter</span>
+                {equipmentFilter.length > 0 && (
+                  <span className="bg-white text-indigo-600 px-2 py-0.5 rounded-full text-xs font-bold">
+                    {equipmentFilter.length}
+                  </span>
+                )}
+              </button>
+              
+              {/* Equipment Filter Panel */}
+              {showEquipmentFilter && (
+                <div className="bg-white dark:bg-gray-800 p-4 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700">
+                  <div className="flex items-center justify-between mb-3">
+                    <p className="text-sm font-bold text-gray-900 dark:text-white">Filter by Equipment</p>
+                    {equipmentFilter.length > 0 && (
+                      <button
+                        onClick={() => setEquipmentFilter([])}
+                        className="text-xs text-red-500 hover:text-red-600 font-semibold"
+                      >
+                        Clear All
+                      </button>
+                    )}
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    {[
+                      { id: 'barbell', label: 'Barbell', icon: '🏋️' },
+                      { id: 'dumbbell', label: 'Dumbbells', icon: '🪨' },
+                      { id: 'cable', label: 'Cable', icon: '🔗' },
+                      { id: 'machine', label: 'Machine', icon: '⚙️' },
+                      { id: 'bodyweight', label: 'Bodyweight', icon: '🧍' },
+                      { id: 'kettlebell', label: 'Kettlebell', icon: '🔔' },
+                      { id: 'band', label: 'Bands', icon: '〰️' },
+                      { id: 'other', label: 'Other', icon: '📦' },
+                    ].map(equip => (
+                      <button
+                        key={equip.id}
+                        onClick={() => {
+                          setEquipmentFilter(prev => 
+                            prev.includes(equip.id) 
+                              ? prev.filter(e => e !== equip.id)
+                              : [...prev, equip.id]
+                          );
+                        }}
+                        className={`p-3 rounded-xl text-sm font-semibold transition flex items-center gap-2 ${
+                          equipmentFilter.includes(equip.id)
+                            ? 'bg-indigo-500 text-white'
+                            : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
+                        }`}
+                      >
+                        <span>{equip.icon}</span>
+                        <span>{equip.label}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+            
+            {/* Favorites Section */}
+            {favorites.length > 0 && !searchQuery && (
+              <div>
+                <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-3 flex items-center gap-2">
+                  <Heart className="w-5 h-5 text-red-500 fill-current" />
+                  Favorites
+                </h3>
+                <div className="space-y-2">
+                  {favorites.slice(0, 5).map((exercise, idx) => (
+                    <button
+                      key={idx}
+                      onClick={() => setSelectedExerciseForDetail(exercise)}
+                      className="w-full bg-white dark:bg-gray-800 p-4 rounded-xl shadow-lg flex items-center justify-between border-l-4 border-red-500 hover:bg-gray-50 dark:hover:bg-gray-700 transition"
+                    >
+                      <span className="text-sm font-semibold text-gray-900 dark:text-white">{exercise}</span>
+                      <ArrowLeft className="w-5 h-5 text-gray-400 transform rotate-180" />
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+            
+            {/* Search Results or Browse by Muscle */}
+            {searchQuery ? (
+              <div>
+                <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-3">
+                  Results ({filteredExercises.length})
+                </h3>
+                {filteredExercises.length === 0 ? (
+                  <p className="text-gray-600 dark:text-gray-400 text-center py-8">No exercises found</p>
+                ) : (
+                  <div className="space-y-2">
+                    {filteredExercises.map((exercise, idx) => (
+                      <button
+                        key={idx}
+                        onClick={() => setSelectedExerciseForDetail(exercise.name)}
+                        className="w-full bg-white dark:bg-gray-800 p-4 rounded-xl shadow-lg flex items-center justify-between border-l-4 border-indigo-500 hover:bg-gray-50 dark:hover:bg-gray-700 transition"
+                      >
+                        <div className="text-left">
+                          <p className="text-sm font-semibold text-gray-900 dark:text-white">{exercise.name}</p>
+                          <p className="text-xs text-gray-600 dark:text-gray-400">
+                            {exercise.muscle} • {exercise.location === 'gym' ? '🏋️ Gym' : '🏠 Home'}
+                          </p>
+                        </div>
+                        <ArrowLeft className="w-5 h-5 text-gray-400 transform rotate-180" />
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div>
+                <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-3">
+                  Browse by Muscle {location && <span className="text-sm font-normal text-indigo-500">({location === 'gym' ? '🏋️ Gym' : '🏠 Home'})</span>}
+                </h3>
+                {/* REFACTORED: Inline expandable muscle groups */}
+                <div className="space-y-3">
+                  {MUSCLE_GROUPS.map((group) => {
+                    const isExpanded = expandedMuscle === group.name;
+                    const exercises = location 
+                      ? group.exercises[location] 
+                      : [...group.exercises.gym, ...group.exercises.home].filter((v, i, a) => a.indexOf(v) === i);
+                    
+                    return (
+                      <div key={group.name} className="bg-white dark:bg-gray-800 rounded-xl shadow-lg border border-gray-200 dark:border-indigo-500/30 overflow-hidden">
+                        <button
+                          onClick={() => setExpandedMuscle(isExpanded ? null : group.name)}
+                          className={`w-full p-4 flex items-center justify-between transition ${isExpanded ? 'bg-indigo-50 dark:bg-indigo-900/30' : ''}`}
+                        >
+                          <div className="flex items-center gap-3">
+                            <div className={`w-12 h-12 rounded-xl ${group.color} flex items-center justify-center text-2xl shadow-lg`}>
+                              {group.icon}
+                            </div>
+                            <div className="text-left">
+                              <p className="font-bold text-gray-900 dark:text-white">{group.name}</p>
+                              <p className="text-xs text-gray-500 dark:text-gray-400">
+                                {exercises.length} exercises
+                              </p>
+                            </div>
+                          </div>
+                          <div className={`transform transition-transform ${isExpanded ? 'rotate-90' : ''}`}>
+                            <ArrowLeft className="w-5 h-5 text-gray-400 transform rotate-180" />
+                          </div>
+                        </button>
+                        
+                        {/* REFACTORED: Inline exercise list - no navigation needed */}
+                        {isExpanded && (
+                          <div className="border-t border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/50">
+                            <div className="p-3 space-y-2 max-h-64 overflow-y-auto">
+                              {exercises.map((ex, idx) => {
+                                const isFav = favorites.includes(ex);
+                                const isGym = group.exercises.gym.includes(ex);
+                                const isHome = group.exercises.home.includes(ex);
+                                
+                                return (
+                                  <button
+                                    key={idx}
+                                    onClick={() => setSelectedExerciseForDetail(ex)}
+                                    className={`w-full p-3 rounded-lg flex items-center justify-between ${
+                                      isFav 
+                                        ? 'bg-red-50 dark:bg-red-900/20 border-l-3 border-red-500' 
+                                        : 'bg-white dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-700'
+                                    } transition`}
+                                  >
+                                    <div className="flex items-center gap-2">
+                                      {isFav && <Heart className="w-4 h-4 text-red-500 fill-current" />}
+                                      <span className="text-sm font-medium text-gray-900 dark:text-white">{ex}</span>
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                      {!location && (
+                                        <span className="text-[10px] text-gray-400">
+                                          {isGym && isHome ? '🏋️🏠' : isGym ? '🏋️' : '🏠'}
+                                        </span>
+                                      )}
+                                      <ArrowLeft className="w-4 h-4 text-gray-300 transform rotate-180" />
+                                    </div>
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
           </div>
         )}
         
-        <div className="grid grid-cols-2 gap-4">
-          {MUSCLE_GROUPS.map((group) => (
-            <button
-              key={group.name}
-              onClick={() => setSelectedMuscle(group.name)}
-              className={`p-5 ${group.color} rounded-xl shadow-2xl border-2 border-white/30 flex flex-col items-center justify-center transform transition duration-300 hover:scale-[1.05] hover:shadow-2xl active:scale-95 h-32`}
-            >
-              <span className="text-4xl mb-2">{group.icon}</span>
-              <span className="text-sm font-semibold">{group.name}</span>
-            </button>
-          ))}
-        </div>
-      </div>
-      </>
-    );
-  }
-
-  // Stage 2: Location Selection (Gym or Home)
-  if (!location) {
-    return (
-      <>
-        {/* Sticky Header */}
-        <div className="sticky top-0 z-40 w-full bg-gradient-to-br from-indigo-50 via-purple-50 to-pink-50 dark:from-gray-900 dark:via-indigo-900/20 dark:to-gray-900 backdrop-blur-md border-b border-indigo-200 dark:border-indigo-500/30 px-4 py-4 shadow-sm">
-          <button onClick={handleBack} className="flex items-center text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 dark:hover:text-indigo-300 transition duration-200 mb-2">
-            <ArrowLeft className="h-4 w-4 mr-2" /> Back to Muscles
-          </button>
-          <h2 className="text-2xl font-bold text-gray-900 dark:text-white">Focus: {selectedMuscle}</h2>
+        {/* PRs TAB - REFACTORED: Render PRHistoryScreen inline */}
+        {exerciseTab === 'prs' && (
+          <PRHistoryScreen
+            onBack={() => setExerciseTab('today')}
+            userData={userData}
+          />
+        )}
+        
         </div>
         
-        <div className="px-4 space-y-6 pt-4 pb-4" {...swipeHandlersLocation}>
-        <p className="text-gray-700 dark:text-white/70">Where will you be training today?</p>
+        {/* Global Modals - REFACTORED: Moved from Stage 3 to main screen */}
+        
+        {/* Workout Statistics Modal */}
+        {showStats && (
+          <WorkoutStatsDashboard
+            onClose={() => setShowStats(false)}
+            userData={userData}
+          />
+        )}
 
-        <div className="grid grid-cols-2 gap-4">
-          <button
-            onClick={() => setLocation('gym')}
-            className="p-6 bg-gradient-to-br from-indigo-500 to-purple-600 dark:bg-indigo-600/60 hover:from-indigo-600 hover:to-purple-700 dark:hover:bg-indigo-700/70 rounded-xl shadow-xl text-white font-semibold transition duration-300 flex flex-col items-center transform hover:scale-[1.05]"
-          >
-            <Dumbbell className="h-8 w-8 mb-2" />
-            Gym Workout
-          </button>
-          <button
-            onClick={() => setLocation('home')}
-            className="p-6 bg-gradient-to-br from-teal-500 to-emerald-600 dark:bg-teal-600/60 hover:from-teal-600 hover:to-emerald-700 dark:hover:bg-teal-700/70 rounded-xl shadow-xl text-white font-semibold transition duration-300 flex flex-col items-center transform hover:scale-[1.05]"
-          >
-            <Home className="h-8 w-8 mb-2" />
-            Home Workout
-          </button>
-        </div>
-      </div>
+        {/* Workout Summary Screen with fade-in animation */}
+        {workoutSummary?.show && (
+          <div className="fixed inset-0 bg-gradient-to-br from-emerald-500 via-teal-600 to-green-700 z-[80] overflow-y-auto animate-fade-in">
+            <style dangerouslySetInnerHTML={{__html: `
+              @keyframes fadeIn {
+                from { opacity: 0; }
+                to { opacity: 1; }
+              }
+              @keyframes fadeOut {
+                from { opacity: 1; }
+                to { opacity: 0; }
+              }
+              .animate-fade-in {
+                animation: fadeIn 0.3s ease-in-out;
+              }
+              .animate-fade-out {
+                animation: fadeOut 0.2s ease-in-out forwards;
+              }
+            `}} />
+            <div style={{ paddingTop: 'var(--safe-area-top)', paddingBottom: 'var(--safe-area-bottom)' }} className="min-h-screen pb-24">
+              {/* Confetti Animation */}
+              <div className="absolute inset-0 overflow-hidden pointer-events-none">
+                {[...Array(20)].map((_, i) => (
+                  <div
+                    key={i}
+                    className="absolute w-3 h-3 rounded-full animate-bounce"
+                    style={{
+                      left: `${Math.random() * 100}%`,
+                      top: `${Math.random() * 50}%`,
+                      backgroundColor: ['#FFD700', '#FF6B6B', '#4ECDC4', '#A78BFA', '#F472B6'][i % 5],
+                      animationDelay: `${Math.random() * 2}s`,
+                      animationDuration: `${1 + Math.random()}s`
+                    }}
+                  />
+                ))}
+              </div>
+
+              <div className="relative px-4 pt-8 space-y-6">
+                {/* Celebration Header */}
+                <div className="text-center">
+                  <div className="text-6xl mb-4">🎉</div>
+                  <h1 className="text-3xl font-bold text-white mb-2">Workout Complete!</h1>
+                  <p className="text-white/80 text-lg">Great job crushing it today!</p>
+                </div>
+
+                {/* Main Stats Card */}
+                <div className="bg-white/95 backdrop-blur-sm rounded-3xl p-6 shadow-2xl">
+                  <div className="grid grid-cols-2 gap-4 mb-6">
+                    <div className="text-center p-4 bg-gradient-to-br from-blue-50 to-indigo-100 rounded-2xl">
+                      <div className="text-3xl mb-1">⏱️</div>
+                      <p className="text-3xl font-bold text-indigo-600">{workoutSummary.duration}</p>
+                      <p className="text-sm text-gray-600">Minutes</p>
+                    </div>
+                    <div className="text-center p-4 bg-gradient-to-br from-orange-50 to-red-100 rounded-2xl">
+                      <div className="text-3xl mb-1">🏋️</div>
+                      <p className="text-3xl font-bold text-orange-600">{workoutSummary.exercises.length}</p>
+                      <p className="text-sm text-gray-600">Exercises</p>
+                    </div>
+                    <div className="text-center p-4 bg-gradient-to-br from-green-50 to-emerald-100 rounded-2xl">
+                      <div className="text-3xl mb-1">📊</div>
+                      <p className="text-3xl font-bold text-emerald-600">{workoutSummary.totalSets}</p>
+                      <p className="text-sm text-gray-600">Total Sets</p>
+                    </div>
+                    <div className="text-center p-4 bg-gradient-to-br from-purple-50 to-pink-100 rounded-2xl">
+                      <div className="text-3xl mb-1">💪</div>
+                      <p className="text-3xl font-bold text-purple-600">{workoutSummary.totalVolume.toLocaleString()}</p>
+                      <p className="text-sm text-gray-600">Volume ({userData?.measurementUnit === 'imperial' ? 'lbs' : 'kg'})</p>
+                    </div>
+                  </div>
+
+                  {/* Estimated Calories */}
+                  <div className="bg-gradient-to-r from-orange-400 to-red-500 rounded-2xl p-4 text-white text-center mb-4">
+                    <div className="flex items-center justify-center gap-2">
+                      <span className="text-2xl">🔥</span>
+                      <span className="text-2xl font-bold">~{Math.round(workoutSummary.duration * 6)} cal</span>
+                    </div>
+                    <p className="text-sm text-white/80">Estimated calories burned</p>
+                  </div>
+                </div>
+
+                {/* New PRs Section */}
+                {workoutSummary.newPRs.length > 0 && (
+                  <div className="bg-gradient-to-br from-yellow-400 to-amber-500 rounded-3xl p-6 shadow-2xl">
+                    <div className="flex items-center gap-3 mb-4">
+                      <span className="text-4xl">🏆</span>
+                      <div>
+                        <h2 className="text-xl font-bold text-white">New Personal Records!</h2>
+                        <p className="text-white/80 text-sm">{workoutSummary.newPRs.length} new PR{workoutSummary.newPRs.length > 1 ? 's' : ''} set today</p>
+                      </div>
+                    </div>
+                    <div className="space-y-2">
+                      {workoutSummary.newPRs.map((pr, idx) => (
+                        <div key={idx} className="bg-white/20 backdrop-blur-sm rounded-xl p-3 flex items-center justify-between">
+                          <span className="text-white font-semibold">{pr.exercise}</span>
+                          <span className="text-white font-bold">{pr.weight}{userData?.measurementUnit === 'imperial' ? 'lbs' : 'kg'} × {pr.reps}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Exercise Breakdown */}
+                <div className="bg-white/95 backdrop-blur-sm rounded-3xl p-6 shadow-2xl">
+                  <h3 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
+                    <span>📝</span> Exercise Breakdown
+                  </h3>
+                  <div className="space-y-3">
+                    {workoutSummary.exercises.map((ex, idx) => (
+                      <div key={idx} className="bg-gray-50 rounded-xl p-4">
+                        <div className="flex items-center justify-between mb-2">
+                          <p className="font-semibold text-gray-900">{ex.exercise}</p>
+                          <span className="text-xs px-2 py-1 bg-indigo-100 text-indigo-600 rounded-full font-medium">
+                            {ex.sets.length} sets
+                          </span>
+                        </div>
+                        <div className="flex flex-wrap gap-2">
+                          {ex.sets.map((set: any, setIdx: number) => (
+                            <span key={setIdx} className="text-xs px-2 py-1 bg-gray-200 text-gray-700 rounded-lg">
+                              {set.weight}{userData?.measurementUnit === 'imperial' ? 'lbs' : 'kg'} × {set.reps}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Action Buttons */}
+                <div className="space-y-3 px-4">
+                  <button
+                    onClick={() => {
+                      // Smooth fade-out before closing
+                      const summaryDiv = document.querySelector('.animate-fade-in');
+                      if (summaryDiv) {
+                        summaryDiv.classList.add('animate-fade-out');
+                        setTimeout(() => setWorkoutSummary(null), 200);
+                      } else {
+                        setWorkoutSummary(null);
+                      }
+                    }}
+                    className="w-full py-4 bg-white rounded-2xl text-emerald-600 font-bold text-lg shadow-xl transition hover:bg-gray-50"
+                  >
+                    Done
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Advanced Timer Modal */}
+        {showAdvancedTimer && (
+          <AdvancedTimerModal 
+            mode={timerMode || 'tabata'}
+            onClose={() => {
+              setShowAdvancedTimer(false);
+              setTimerMode(null);
+            }}
+          />
+        )}
+
+        {/* Warm-up / Cool-down Modal */}
+        {showWarmupCooldown && (
+          <WarmupCooldownModal 
+            mode={showWarmupCooldown}
+            targetMuscles={expandedMuscle ? [expandedMuscle] : currentWorkout.map(ex => {
+              // Extract muscle from logged exercises
+              const exerciseName = ex.exercise || ex.name || '';
+              const muscleGroup = MUSCLE_GROUPS.find(g => 
+                [...g.exercises.gym, ...g.exercises.home].includes(exerciseName)
+              );
+              return muscleGroup?.name || '';
+            }).filter(Boolean)}
+            onClose={() => setShowWarmupCooldown(null)}
+          />
+        )}
       </>
     );
-  }
-
-  // Stage 3: Exercise List
-  const exercises = muscleData && location ? muscleData.exercises[location] : [];
-
-  return (
-    <>
-      {/* Sticky Header */}
-      <div className="sticky top-0 z-40 w-full bg-gradient-to-br from-indigo-50 via-purple-50 to-pink-50 dark:from-gray-900 dark:via-indigo-900/20 dark:to-gray-900 backdrop-blur-md border-b border-indigo-200 dark:border-indigo-500/30 px-4 py-4 shadow-sm">
-        <button onClick={handleBack} className="flex items-center text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 dark:hover:text-indigo-300 transition duration-200 mb-2">
-          <ArrowLeft className="h-4 w-4 mr-2" /> Back to Location
-        </button>
-        <h2 className="text-2xl font-bold text-gray-900 dark:text-white">{muscleData?.name} Exercises ({location?.toUpperCase()})</h2>
-      </div>
-      
-      <div className="px-4 space-y-6 pt-4 pb-4" {...swipeHandlersExerciseList}>
-      <p className="text-gray-700 dark:text-white/70">Top {exercises.length} recommended moves for today's session:</p>
-
-      <div className="space-y-3">
-        {exercises.map((ex, index) => {
-          return (
-            <div key={index} className="relative">
-              <button 
-                onClick={() => {
-                  setSelectedExercise(ex);
-                }}
-                className={`w-full bg-white dark:bg-gray-800 p-4 rounded-xl shadow-xl flex items-center justify-between border-l-4 border-teal-500 hover:bg-gray-50 dark:hover:bg-gray-700 transition duration-200`}
-              >
-                <div className="flex items-center">
-                  <span className="text-xl font-bold mr-4 text-teal-600 dark:text-teal-400">
-                    {index + 1}
-                  </span>
-                  <p className="text-gray-900 dark:text-white font-medium">
-                    {ex}
-                  </p>
-                </div>
-                <Clock className="h-4 w-4 text-indigo-600 dark:text-indigo-400" />
-              </button>
-            </div>
-          );
-        })}
-      </div>
-      
-      <div className="pt-4 text-center">
-         <button 
-           onClick={handleAddToRoutine}
-           className="w-full py-3 bg-gradient-to-r from-teal-500 to-emerald-600 dark:bg-teal-600 hover:from-teal-600 hover:to-emerald-700 dark:hover:bg-teal-700 rounded-xl text-white font-bold transition duration-300 shadow-lg"
-         >
-            Add to Today's Routine
-         </button>
-         {showRoutineConfirm && (
-           <div className="mt-3 p-3 bg-green-100 dark:bg-green-600/20 border-2 border-green-500 dark:border-green-500 rounded-lg text-green-700 dark:text-green-400 text-sm font-semibold">
-             ✓ Exercises successfully added to your temporary routine!
-           </div>
-         )}
-      </div>
-
-      {/* Exercise Detail Modal - Only show when not in logging view */}
-      {selectedExercise && exerciseSubView !== 'log' && (
-        <ExerciseDetailModal 
-          exercise={selectedExercise} 
-          onClose={() => setSelectedExercise(null)}
-          onStartLogging={() => setExerciseSubView('log')}
-        />
-      )}
-    </div>
-    </>
-  );
+  // REFACTORED: Stage 2 and Stage 3 removed - flat navigation now uses Library tab with inline expansion
 };
 
 // Premium Lock Components
+
+// Advanced Timer Modal Component for HIIT, Tabata, EMOM, Custom timers
+const AdvancedTimerModal = ({ 
+  mode, 
+  onClose 
+}: { 
+  mode: 'hiit' | 'tabata' | 'emom' | 'custom';
+  onClose: () => void;
+}) => {
+  // Timer presets for each mode
+  const presets = {
+    tabata: { workTime: 20, restTime: 10, rounds: 8, name: 'Tabata', icon: '🔥', color: 'from-red-500 to-orange-500' },
+    hiit: { workTime: 30, restTime: 30, rounds: 10, name: 'HIIT', icon: '⚡', color: 'from-yellow-500 to-amber-500' },
+    emom: { workTime: 60, restTime: 0, rounds: 10, name: 'EMOM', icon: '⏰', color: 'from-blue-500 to-indigo-500' },
+    custom: { workTime: 45, restTime: 15, rounds: 8, name: 'Custom', icon: '⚙️', color: 'from-purple-500 to-pink-500' }
+  };
+
+  const preset = presets[mode];
+  const [workTime, setWorkTime] = useState(preset.workTime);
+  const [restTime, setRestTime] = useState(preset.restTime);
+  const [totalRounds, setTotalRounds] = useState(preset.rounds);
+  const [currentRound, setCurrentRound] = useState(1);
+  const [timeLeft, setTimeLeft] = useState(preset.workTime);
+  const [isRunning, setIsRunning] = useState(false);
+  const [isPaused, setIsPaused] = useState(false);
+  const [isWorkPhase, setIsWorkPhase] = useState(true);
+  const [isComplete, setIsComplete] = useState(false);
+  const [showSettings, setShowSettings] = useState(mode === 'custom');
+
+  // Calculate total workout time
+  const totalTime = (workTime + restTime) * totalRounds;
+  const totalMinutes = Math.floor(totalTime / 60);
+  const totalSeconds = totalTime % 60;
+
+  // Reset timer when settings change
+  useEffect(() => {
+    if (!isRunning) {
+      setTimeLeft(workTime);
+      setCurrentRound(1);
+      setIsWorkPhase(true);
+      setIsComplete(false);
+    }
+  }, [workTime, restTime, totalRounds]);
+
+  // Timer logic
+  useEffect(() => {
+    let interval: ReturnType<typeof setInterval>;
+    
+    if (isRunning && !isPaused && !isComplete) {
+      interval = setInterval(() => {
+        setTimeLeft(prev => {
+          if (prev <= 1) {
+            // Time's up for current phase
+            if (isWorkPhase) {
+              // Work phase done
+              if (restTime > 0) {
+                // Switch to rest
+                setIsWorkPhase(false);
+                playBeep('rest');
+                return restTime;
+              } else {
+                // No rest (EMOM mode), go to next round
+                if (currentRound >= totalRounds) {
+                  setIsComplete(true);
+                  setIsRunning(false);
+                  playBeep('complete');
+                  return 0;
+                }
+                setCurrentRound(r => r + 1);
+                playBeep('work');
+                return workTime;
+              }
+            } else {
+              // Rest phase done
+              if (currentRound >= totalRounds) {
+                setIsComplete(true);
+                setIsRunning(false);
+                playBeep('complete');
+                return 0;
+              }
+              // Switch to work
+              setCurrentRound(r => r + 1);
+              setIsWorkPhase(true);
+              playBeep('work');
+              return workTime;
+            }
+          }
+          
+          // Countdown beep at 3, 2, 1
+          if (prev <= 4 && prev > 1) {
+            playBeep('countdown');
+          }
+          
+          return prev - 1;
+        });
+      }, 1000);
+    }
+    
+    return () => clearInterval(interval);
+  }, [isRunning, isPaused, isWorkPhase, currentRound, totalRounds, workTime, restTime, isComplete]);
+
+  // Audio and vibration feedback
+  const playBeep = (type: 'work' | 'rest' | 'countdown' | 'complete') => {
+    // Vibration feedback
+    if ('vibrate' in navigator) {
+      if (type === 'work') {
+        navigator.vibrate([200, 100, 200]);
+      } else if (type === 'rest') {
+        navigator.vibrate([100, 50, 100]);
+      } else if (type === 'countdown') {
+        navigator.vibrate(50);
+      } else if (type === 'complete') {
+        navigator.vibrate([200, 100, 200, 100, 400]);
+      }
+    }
+    
+    // Audio feedback using Web Audio API
+    try {
+      const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+      const oscillator = audioContext.createOscillator();
+      const gainNode = audioContext.createGain();
+      
+      oscillator.connect(gainNode);
+      gainNode.connect(audioContext.destination);
+      
+      if (type === 'work') {
+        oscillator.frequency.value = 880; // High pitch for work
+        gainNode.gain.value = 0.3;
+        oscillator.start();
+        oscillator.stop(audioContext.currentTime + 0.3);
+      } else if (type === 'rest') {
+        oscillator.frequency.value = 440; // Lower pitch for rest
+        gainNode.gain.value = 0.3;
+        oscillator.start();
+        oscillator.stop(audioContext.currentTime + 0.3);
+      } else if (type === 'countdown') {
+        oscillator.frequency.value = 660;
+        gainNode.gain.value = 0.2;
+        oscillator.start();
+        oscillator.stop(audioContext.currentTime + 0.1);
+      } else if (type === 'complete') {
+        oscillator.frequency.value = 1320;
+        gainNode.gain.value = 0.4;
+        oscillator.start();
+        oscillator.stop(audioContext.currentTime + 0.5);
+      }
+    } catch (e) {
+      console.log('Audio not supported');
+    }
+  };
+
+  const startTimer = () => {
+    setIsRunning(true);
+    setIsPaused(false);
+    setShowSettings(false);
+    playBeep('work');
+  };
+
+  const pauseTimer = () => {
+    setIsPaused(true);
+  };
+
+  const resumeTimer = () => {
+    setIsPaused(false);
+  };
+
+  const resetTimer = () => {
+    setIsRunning(false);
+    setIsPaused(false);
+    setTimeLeft(workTime);
+    setCurrentRound(1);
+    setIsWorkPhase(true);
+    setIsComplete(false);
+  };
+
+  // Calculate progress for circular timer
+  const maxTime = isWorkPhase ? workTime : restTime;
+  const progress = maxTime > 0 ? ((maxTime - timeLeft) / maxTime) * 100 : 0;
+  const circumference = 2 * Math.PI * 140;
+  const strokeDashoffset = circumference - (progress / 100) * circumference;
+
+  // Format time display
+  const formatTime = (seconds: number) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black z-50 flex flex-col">
+      {/* Header */}
+      <div className={`bg-gradient-to-r ${preset.color} px-4 py-4 pt-12`}>
+        <div className="flex items-center justify-between">
+          <button 
+            onClick={onClose}
+            className="p-2 -ml-2 text-white/80 hover:text-white"
+          >
+            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+          <h1 className="text-xl font-bold text-white flex items-center gap-2">
+            <span>{preset.icon}</span>
+            {preset.name} Timer
+          </h1>
+          <button 
+            onClick={() => setShowSettings(!showSettings)}
+            className="p-2 -mr-2 text-white/80 hover:text-white"
+          >
+            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+            </svg>
+          </button>
+        </div>
+        
+        {/* Round Progress */}
+        <div className="mt-4 flex justify-center gap-1.5">
+          {Array.from({ length: totalRounds }, (_, i) => (
+            <div 
+              key={i}
+              className={`h-2 rounded-full transition-all duration-300 ${
+                i < currentRound - 1 
+                  ? 'bg-white w-6' 
+                  : i === currentRound - 1 
+                    ? 'bg-white/90 w-8' 
+                    : 'bg-white/30 w-4'
+              }`}
+            />
+          ))}
+        </div>
+        <p className="text-center text-white/80 text-sm mt-2">
+          Round {currentRound} of {totalRounds}
+        </p>
+      </div>
+
+      {/* Settings Panel */}
+      {showSettings && !isRunning && (
+        <div className="bg-gray-900 p-4 border-b border-gray-800">
+          <div className="grid grid-cols-3 gap-4">
+            {/* Work Time */}
+            <div>
+              <label className="text-gray-400 text-xs mb-1 block">Work (sec)</label>
+              <div className="flex items-center gap-2">
+                <button 
+                  onClick={() => setWorkTime(Math.max(5, workTime - 5))}
+                  className="w-8 h-8 bg-gray-800 rounded-lg text-white font-bold"
+                >-</button>
+                <span className="text-white font-bold text-lg flex-1 text-center">{workTime}</span>
+                <button 
+                  onClick={() => setWorkTime(Math.min(300, workTime + 5))}
+                  className="w-8 h-8 bg-gray-800 rounded-lg text-white font-bold"
+                >+</button>
+              </div>
+            </div>
+            
+            {/* Rest Time */}
+            <div>
+              <label className="text-gray-400 text-xs mb-1 block">Rest (sec)</label>
+              <div className="flex items-center gap-2">
+                <button 
+                  onClick={() => setRestTime(Math.max(0, restTime - 5))}
+                  className="w-8 h-8 bg-gray-800 rounded-lg text-white font-bold"
+                >-</button>
+                <span className="text-white font-bold text-lg flex-1 text-center">{restTime}</span>
+                <button 
+                  onClick={() => setRestTime(Math.min(300, restTime + 5))}
+                  className="w-8 h-8 bg-gray-800 rounded-lg text-white font-bold"
+                >+</button>
+              </div>
+            </div>
+            
+            {/* Rounds */}
+            <div>
+              <label className="text-gray-400 text-xs mb-1 block">Rounds</label>
+              <div className="flex items-center gap-2">
+                <button 
+                  onClick={() => setTotalRounds(Math.max(1, totalRounds - 1))}
+                  className="w-8 h-8 bg-gray-800 rounded-lg text-white font-bold"
+                >-</button>
+                <span className="text-white font-bold text-lg flex-1 text-center">{totalRounds}</span>
+                <button 
+                  onClick={() => setTotalRounds(Math.min(50, totalRounds + 1))}
+                  className="w-8 h-8 bg-gray-800 rounded-lg text-white font-bold"
+                >+</button>
+              </div>
+            </div>
+          </div>
+          
+          <p className="text-center text-gray-500 text-xs mt-3">
+            Total workout: {totalMinutes}:{totalSeconds.toString().padStart(2, '0')}
+          </p>
+        </div>
+      )}
+
+      {/* Timer Display */}
+      <div className="flex-1 overflow-y-auto px-4 py-6">
+        <div className="min-h-full flex flex-col items-center justify-center">
+        {isComplete ? (
+          /* Completion Screen */
+          <div className="text-center">
+            <div className="text-8xl mb-4">🎉</div>
+            <h2 className="text-3xl font-bold text-white mb-2">Workout Complete!</h2>
+            <p className="text-gray-400 text-lg">
+              {totalRounds} rounds • {totalMinutes}:{totalSeconds.toString().padStart(2, '0')} total
+            </p>
+            <button
+              onClick={resetTimer}
+              className={`mt-8 px-8 py-4 bg-gradient-to-r ${preset.color} rounded-2xl text-white font-bold text-lg shadow-xl`}
+            >
+              🔄 Do It Again
+            </button>
+          </div>
+        ) : (
+          /* Timer Circle */
+          <>
+            <div className="relative">
+              {/* Background circle */}
+              <svg className="w-72 h-72 transform -rotate-90">
+                <circle
+                  cx="144"
+                  cy="144"
+                  r="140"
+                  stroke="currentColor"
+                  strokeWidth="8"
+                  fill="none"
+                  className="text-gray-800"
+                />
+                {/* Progress circle */}
+                <circle
+                  cx="144"
+                  cy="144"
+                  r="140"
+                  stroke="currentColor"
+                  strokeWidth="8"
+                  fill="none"
+                  strokeLinecap="round"
+                  className={isWorkPhase ? 'text-green-500' : 'text-blue-500'}
+                  style={{
+                    strokeDasharray: circumference,
+                    strokeDashoffset: strokeDashoffset,
+                    transition: 'stroke-dashoffset 0.5s linear'
+                  }}
+                />
+              </svg>
+              
+              {/* Time display */}
+              <div className="absolute inset-0 flex flex-col items-center justify-center">
+                <span className={`text-sm font-semibold uppercase tracking-wider mb-2 ${
+                  isWorkPhase ? 'text-green-400' : 'text-blue-400'
+                }`}>
+                  {isWorkPhase ? '💪 WORK' : '😮‍💨 REST'}
+                </span>
+                <span className="text-6xl font-bold text-white tabular-nums">
+                  {formatTime(timeLeft)}
+                </span>
+                {isPaused && (
+                  <span className="text-yellow-400 text-sm font-semibold mt-2 animate-pulse">
+                    PAUSED
+                  </span>
+                )}
+              </div>
+            </div>
+
+            {/* Phase Indicator */}
+            <div className="mt-6 flex gap-4">
+              <div className={`px-4 py-2 rounded-xl ${isWorkPhase ? 'bg-green-500/20 border-2 border-green-500' : 'bg-gray-800'}`}>
+                <span className="text-white font-semibold">Work: {workTime}s</span>
+              </div>
+              {restTime > 0 && (
+                <div className={`px-4 py-2 rounded-xl ${!isWorkPhase ? 'bg-blue-500/20 border-2 border-blue-500' : 'bg-gray-800'}`}>
+                  <span className="text-white font-semibold">Rest: {restTime}s</span>
+                </div>
+              )}
+            </div>
+          </>
+        )}
+        </div>
+        {/* Bottom spacer for scrolling */}
+        <div className="h-24" />
+      </div>
+
+      {/* Control Buttons */}
+      {!isComplete && (
+        <div className="p-6 pb-24 bg-gradient-to-t from-black via-black to-transparent">
+          {!isRunning ? (
+            <button
+              onClick={startTimer}
+              className={`w-full py-5 bg-gradient-to-r ${preset.color} rounded-2xl text-white font-bold text-xl shadow-xl flex items-center justify-center gap-3`}
+            >
+              <svg className="w-8 h-8" fill="currentColor" viewBox="0 0 24 24">
+                <path d="M8 5v14l11-7z" />
+              </svg>
+              START
+            </button>
+          ) : (
+            <div className="flex gap-4">
+              {isPaused ? (
+                <button
+                  onClick={resumeTimer}
+                  className="flex-1 py-5 bg-green-500 rounded-2xl text-white font-bold text-xl shadow-xl flex items-center justify-center gap-2"
+                >
+                  <svg className="w-7 h-7" fill="currentColor" viewBox="0 0 24 24">
+                    <path d="M8 5v14l11-7z" />
+                  </svg>
+                  RESUME
+                </button>
+              ) : (
+                <button
+                  onClick={pauseTimer}
+                  className="flex-1 py-5 bg-yellow-500 rounded-2xl text-white font-bold text-xl shadow-xl flex items-center justify-center gap-2"
+                >
+                  <svg className="w-7 h-7" fill="currentColor" viewBox="0 0 24 24">
+                    <path d="M6 4h4v16H6V4zm8 0h4v16h-4V4z" />
+                  </svg>
+                  PAUSE
+                </button>
+              )}
+              <button
+                onClick={resetTimer}
+                className="py-5 px-6 bg-gray-800 rounded-2xl text-white font-bold text-xl shadow-xl"
+              >
+                <svg className="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                </svg>
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+};
+
+// Warm-up & Cool-down Modal Component
+const WarmupCooldownModal = ({
+  mode,
+  targetMuscles,
+  onClose
+}: {
+  mode: 'warmup' | 'cooldown';
+  targetMuscles: string[];
+  onClose: () => void;
+}) => {
+  // Smart warmup/cooldown generation based on target muscles
+  // Uses MUSCLE_GROUPS.warmups for dynamic exercise selection
+  
+  const [viewMode, setViewMode] = useState<'checklist' | 'guided'>('checklist'); // New: checklist or guided mode
+  const [completedItems, setCompletedItems] = useState<Set<string>>(new Set());
+  
+  // Comprehensive stretching exercises database
+  const stretchExercises = {
+    warmup: {
+      general: [
+        { name: 'Jumping Jacks', duration: 30, icon: '⭐', description: 'Get blood flowing with full body movement' },
+        { name: 'High Knees', duration: 30, icon: '🏃', description: 'Drive knees up alternately' },
+        { name: 'Arm Circles', duration: 20, icon: '🔄', description: 'Small to large circles, both directions' },
+        { name: 'Hip Circles', duration: 20, icon: '💫', description: 'Rotate hips in circular motion' },
+        { name: 'Torso Twists', duration: 20, icon: '🌀', description: 'Rotate upper body side to side' },
+      ],
+      'Chest': [
+        { name: 'Arm Swings', duration: 30, icon: '💪', description: 'Horizontal arm swings across body' },
+        { name: 'Wall Push-ups', duration: 30, icon: '🧱', description: 'Light push-ups against wall' },
+        { name: 'Chest Opener', duration: 20, icon: '🔓', description: 'Clasp hands behind, open chest' },
+      ],
+      'Back': [
+        { name: 'Cat-Cow Stretch', duration: 30, icon: '🐱', description: 'Alternate arching and rounding spine' },
+        { name: 'Arm Reaches', duration: 20, icon: '🙋', description: 'Reach arms overhead alternately' },
+        { name: 'Trunk Rotations', duration: 30, icon: '🔄', description: 'Rotate torso while standing' },
+      ],
+      'Shoulders': [
+        { name: 'Shoulder Rolls', duration: 30, icon: '🔄', description: 'Roll shoulders forward and back' },
+        { name: 'Arm Circles', duration: 30, icon: '⭕', description: 'Small to large circles' },
+        { name: 'Cross-body Arm Swings', duration: 20, icon: '✖️', description: 'Swing arms across body' },
+      ],
+      'Arms': [
+        { name: 'Wrist Circles', duration: 20, icon: '🔄', description: 'Rotate wrists both directions' },
+        { name: 'Arm Shakes', duration: 15, icon: '👋', description: 'Shake arms loosely' },
+        { name: 'Tricep Reaches', duration: 20, icon: '🙆', description: 'Reach behind head alternately' },
+      ],
+      'Core': [
+        { name: 'Standing Side Bends', duration: 30, icon: '↔️', description: 'Bend side to side' },
+        { name: 'Standing Knee Raises', duration: 30, icon: '🦵', description: 'Bring knees to chest alternately' },
+        { name: 'Torso Twists', duration: 30, icon: '🌀', description: 'Rotate upper body side to side' },
+      ],
+      'Legs': [
+        { name: 'Leg Swings', duration: 30, icon: '🦿', description: 'Swing legs front to back' },
+        { name: 'Walking Lunges', duration: 30, icon: '🚶', description: 'Dynamic lunge steps' },
+        { name: 'Bodyweight Squats', duration: 30, icon: '🏋️', description: 'Light tempo squats' },
+        { name: 'High Knees', duration: 30, icon: '🏃', description: 'Drive knees up alternately' },
+      ],
+    },
+    cooldown: {
+      general: [
+        { name: 'Deep Breathing', duration: 60, icon: '🧘', description: 'Slow, deep breaths to lower heart rate' },
+        { name: 'Gentle Walking', duration: 60, icon: '🚶', description: 'Slow pace to cool down gradually' },
+      ],
+      'Chest': [
+        { name: 'Doorway Chest Stretch', duration: 30, icon: '🚪', description: 'Hold arm against doorway, lean forward' },
+        { name: 'Chest Opener', duration: 30, icon: '🔓', description: 'Clasp hands behind, lift and hold' },
+        { name: 'Lying Chest Stretch', duration: 30, icon: '🛏️', description: 'Lie on foam roller, arms out wide' },
+      ],
+      'Back': [
+        { name: 'Child\'s Pose', duration: 45, icon: '🧒', description: 'Kneel, reach arms forward, relax' },
+        { name: 'Cat-Cow Hold', duration: 30, icon: '🐱', description: 'Slowly transition and hold each position' },
+        { name: 'Lying Knee-to-Chest', duration: 30, icon: '🦵', description: 'Pull knees to chest while lying down' },
+        { name: 'Seated Spinal Twist', duration: 30, icon: '🔄', description: 'Sit and rotate torso, hold each side' },
+      ],
+      'Shoulders': [
+        { name: 'Cross-body Shoulder Stretch', duration: 30, icon: '↔️', description: 'Pull arm across body, hold' },
+        { name: 'Behind-back Shoulder Stretch', duration: 30, icon: '🔙', description: 'Reach behind back, clasp hands' },
+        { name: 'Neck Rolls', duration: 30, icon: '🔄', description: 'Slowly roll head in circles' },
+      ],
+      'Arms': [
+        { name: 'Tricep Stretch', duration: 30, icon: '💪', description: 'Reach behind head, hold elbow' },
+        { name: 'Bicep Wall Stretch', duration: 30, icon: '🧱', description: 'Place palm on wall, rotate away' },
+        { name: 'Wrist Flexor Stretch', duration: 20, icon: '🤚', description: 'Extend arm, pull fingers back' },
+        { name: 'Wrist Extensor Stretch', duration: 20, icon: '✋', description: 'Extend arm, pull fingers down' },
+      ],
+      'Core': [
+        { name: 'Cobra Stretch', duration: 30, icon: '🐍', description: 'Lie face down, push up with arms' },
+        { name: 'Lying Spinal Twist', duration: 30, icon: '🔄', description: 'Lie down, drop knees to each side' },
+        { name: 'Standing Side Stretch', duration: 30, icon: '↔️', description: 'Reach overhead, lean to each side' },
+      ],
+      'Legs': [
+        { name: 'Standing Quad Stretch', duration: 30, icon: '🦵', description: 'Pull heel to glute, hold' },
+        { name: 'Standing Hamstring Stretch', duration: 30, icon: '🦿', description: 'Prop foot up, lean forward' },
+        { name: 'Calf Stretch', duration: 30, icon: '🏃', description: 'Step back, press heel down' },
+        { name: 'Pigeon Pose', duration: 45, icon: '🐦', description: 'Hip flexor and glute stretch' },
+        { name: 'Seated Forward Fold', duration: 45, icon: '🧘', description: 'Sit with legs extended, reach for toes' },
+        { name: 'Butterfly Stretch', duration: 30, icon: '🦋', description: 'Sit with feet together, press knees down' },
+      ],
+    }
+  };
+
+  const [currentExerciseIndex, setCurrentExerciseIndex] = useState(0);
+  const [timeLeft, setTimeLeft] = useState(0);
+  const [isRunning, setIsRunning] = useState(false);
+  const [isComplete, setIsComplete] = useState(false);
+  const [routine, setRoutine] = useState<any[]>([]);
+
+  // SMART GENERATION: Build routine based on target muscles with upper/lower body logic
+  useEffect(() => {
+    const exercises = stretchExercises[mode];
+    const generatedRoutine: any[] = [];
+    
+    // Determine workout type (upper, lower, full body) from target muscles
+    const upperMuscles = ['Chest', 'Back', 'Shoulders', 'Arms'];
+    const lowerMuscles = ['Legs'];
+    const coreMuscles = ['Core'];
+    
+    const hasUpper = targetMuscles.some(m => upperMuscles.includes(m));
+    const hasLower = targetMuscles.some(m => lowerMuscles.includes(m));
+    const hasCore = targetMuscles.some(m => coreMuscles.includes(m));
+    
+    // Always add general exercises first
+    generatedRoutine.push(...exercises.general.slice(0, 2));
+    
+    // SMART LOGIC: Generate based on workout type
+    if (targetMuscles.length === 0) {
+      // Full body default: 2 upper + 2 lower
+      if (exercises['Chest']) generatedRoutine.push(exercises['Chest'][0]);
+      if (exercises['Back']) generatedRoutine.push(exercises['Back'][0]);
+      if (exercises['Legs']) generatedRoutine.push(...(exercises['Legs'] as any[]).slice(0, 2));
+    } else if (hasUpper && hasLower) {
+      // Full body: 2 upper + 2 lower
+      const upperExercises: any[] = [];
+      const lowerExercises: any[] = [];
+      
+      targetMuscles.forEach(muscle => {
+        const muscleExercises = exercises[muscle as keyof typeof exercises];
+        if (Array.isArray(muscleExercises)) {
+          if (upperMuscles.includes(muscle)) {
+            upperExercises.push(...muscleExercises.slice(0, 1));
+          } else if (lowerMuscles.includes(muscle)) {
+            lowerExercises.push(...muscleExercises.slice(0, 2));
+          }
+        }
+      });
+      
+      generatedRoutine.push(...upperExercises.slice(0, 2), ...lowerExercises.slice(0, 2));
+    } else if (hasUpper) {
+      // Upper body focus
+      targetMuscles.forEach(muscle => {
+        if (upperMuscles.includes(muscle)) {
+          const muscleExercises = exercises[muscle as keyof typeof exercises];
+          if (Array.isArray(muscleExercises)) {
+            generatedRoutine.push(...muscleExercises.slice(0, 2));
+          }
+        }
+      });
+    } else if (hasLower) {
+      // Lower body focus
+      const legExercises = exercises['Legs'];
+      if (Array.isArray(legExercises)) {
+        generatedRoutine.push(...legExercises.slice(0, 3));
+      }
+    }
+    
+    // Add core if targeted or for full body
+    if (hasCore || (hasUpper && hasLower)) {
+      const coreExercises = exercises['Core'];
+      if (Array.isArray(coreExercises)) {
+        generatedRoutine.push(coreExercises[0]);
+      }
+    }
+    
+    setRoutine(generatedRoutine);
+    if (generatedRoutine.length > 0) {
+      setTimeLeft(generatedRoutine[0].duration);
+    }
+  }, [mode, targetMuscles]);
+
+  // Toggle item completion in checklist mode
+  const toggleItem = (itemName: string) => {
+    setCompletedItems(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(itemName)) {
+        newSet.delete(itemName);
+      } else {
+        newSet.add(itemName);
+      }
+      return newSet;
+    });
+  };
+
+  // Check if all items are completed
+  const allCompleted = routine.length > 0 && completedItems.size >= routine.length;
+
+  // Timer logic for guided mode
+  useEffect(() => {
+    let interval: ReturnType<typeof setInterval>;
+    
+    if (isRunning && !isComplete && routine.length > 0) {
+      interval = setInterval(() => {
+        setTimeLeft(prev => {
+          if (prev <= 1) {
+            // Move to next exercise
+            if (currentExerciseIndex < routine.length - 1) {
+              const nextIndex = currentExerciseIndex + 1;
+              setCurrentExerciseIndex(nextIndex);
+              playNotification();
+              return routine[nextIndex].duration;
+            } else {
+              // Routine complete
+              setIsComplete(true);
+              setIsRunning(false);
+              playComplete();
+              return 0;
+            }
+          }
+          
+          // Countdown beep at 3
+          if (prev === 4) {
+            playBeep();
+          }
+          
+          return prev - 1;
+        });
+      }, 1000);
+    }
+    
+    return () => clearInterval(interval);
+  }, [isRunning, isComplete, currentExerciseIndex, routine]);
+
+  const playBeep = () => {
+    if ('vibrate' in navigator) navigator.vibrate(50);
+    try {
+      const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.frequency.value = 660;
+      gain.gain.value = 0.2;
+      osc.start();
+      osc.stop(ctx.currentTime + 0.1);
+    } catch(e) {}
+  };
+
+  const playNotification = () => {
+    if ('vibrate' in navigator) navigator.vibrate([100, 50, 100]);
+    try {
+      const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.frequency.value = 880;
+      gain.gain.value = 0.3;
+      osc.start();
+      osc.stop(ctx.currentTime + 0.2);
+    } catch(e) {}
+  };
+
+  const playComplete = () => {
+    if ('vibrate' in navigator) navigator.vibrate([200, 100, 200, 100, 400]);
+    try {
+      const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.frequency.value = 1320;
+      gain.gain.value = 0.4;
+      osc.start();
+      osc.stop(ctx.currentTime + 0.5);
+    } catch(e) {}
+  };
+
+  const startRoutine = () => {
+    setIsRunning(true);
+    playNotification();
+  };
+
+  const skipExercise = () => {
+    if (currentExerciseIndex < routine.length - 1) {
+      const nextIndex = currentExerciseIndex + 1;
+      setCurrentExerciseIndex(nextIndex);
+      setTimeLeft(routine[nextIndex].duration);
+    } else {
+      setIsComplete(true);
+      setIsRunning(false);
+    }
+  };
+
+  const resetRoutine = () => {
+    setCurrentExerciseIndex(0);
+    setTimeLeft(routine[0]?.duration || 0);
+    setIsRunning(false);
+    setIsComplete(false);
+  };
+
+  const currentExercise = routine[currentExerciseIndex];
+  const totalDuration = routine.reduce((sum, ex) => sum + ex.duration, 0);
+  const completedDuration = routine.slice(0, currentExerciseIndex).reduce((sum, ex) => sum + ex.duration, 0) + (currentExercise ? currentExercise.duration - timeLeft : 0);
+  const overallProgress = totalDuration > 0 ? (completedDuration / totalDuration) * 100 : 0;
+
+  const isWarmup = mode === 'warmup';
+  const gradientClass = isWarmup ? 'from-orange-500 to-red-500' : 'from-blue-500 to-indigo-500';
+  const checklistProgress = routine.length > 0 ? (completedItems.size / routine.length) * 100 : 0;
+
+  return (
+    <div className="fixed inset-0 bg-black z-50 flex flex-col">
+      {/* Header */}
+      <div className={`bg-gradient-to-r ${gradientClass} px-4 py-4 pt-12`}>
+        <div className="flex items-center justify-between">
+          <button onClick={onClose} className="p-2 -ml-2 text-white/80 hover:text-white">
+            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+          <h1 className="text-xl font-bold text-white flex items-center gap-2">
+            <span>{isWarmup ? '🔥' : '❄️'}</span>
+            {isWarmup ? 'Warm-up' : 'Cool-down'} Routine
+          </h1>
+          <div className="w-10" />
+        </div>
+        
+        {/* Mode Toggle */}
+        <div className="mt-3 flex justify-center">
+          <div className="inline-flex bg-white/20 rounded-full p-0.5">
+            <button
+              onClick={() => setViewMode('checklist')}
+              className={`px-4 py-1.5 rounded-full text-sm font-medium transition-all ${
+                viewMode === 'checklist' ? 'bg-white text-gray-900' : 'text-white/80'
+              }`}
+            >
+              ✓ Checklist
+            </button>
+            <button
+              onClick={() => setViewMode('guided')}
+              className={`px-4 py-1.5 rounded-full text-sm font-medium transition-all ${
+                viewMode === 'guided' ? 'bg-white text-gray-900' : 'text-white/80'
+              }`}
+            >
+              ⏱️ Guided
+            </button>
+          </div>
+        </div>
+        
+        {/* Progress Bar */}
+        <div className="mt-3">
+          <div className="flex justify-between text-white/80 text-xs mb-1">
+            {viewMode === 'checklist' ? (
+              <>
+                <span>{completedItems.size} of {routine.length} complete</span>
+                <span>{Math.floor(checklistProgress)}%</span>
+              </>
+            ) : (
+              <>
+                <span>Exercise {currentExerciseIndex + 1} of {routine.length}</span>
+                <span>{Math.floor(overallProgress)}% complete</span>
+              </>
+            )}
+          </div>
+          <div className="h-2 bg-white/20 rounded-full overflow-hidden">
+            <div 
+              className="h-full bg-white transition-all duration-300"
+              style={{ width: `${viewMode === 'checklist' ? checklistProgress : overallProgress}%` }}
+            />
+          </div>
+        </div>
+      </div>
+
+      {/* Main Content */}
+      <div className="flex-1 overflow-y-auto px-4 py-6">
+        {/* CHECKLIST MODE */}
+        {viewMode === 'checklist' && !allCompleted && (
+          <div className="space-y-3">
+            <p className="text-gray-400 text-center text-sm mb-4">
+              Tap each exercise as you complete it
+            </p>
+            {routine.map((exercise, idx) => {
+              const isChecked = completedItems.has(exercise.name);
+              return (
+                <button
+                  key={idx}
+                  onClick={() => toggleItem(exercise.name)}
+                  className={`w-full p-4 rounded-xl flex items-center gap-4 transition-all ${
+                    isChecked 
+                      ? 'bg-green-500/20 border-2 border-green-500' 
+                      : 'bg-gray-800/70 border-2 border-gray-700'
+                  }`}
+                >
+                  {/* Checkbox */}
+                  <div className={`w-7 h-7 rounded-full flex items-center justify-center border-2 transition-all ${
+                    isChecked 
+                      ? 'bg-green-500 border-green-500' 
+                      : 'border-gray-500'
+                  }`}>
+                    {isChecked && (
+                      <svg className="w-4 h-4 text-white" fill="currentColor" viewBox="0 0 20 20">
+                        <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                      </svg>
+                    )}
+                  </div>
+                  
+                  {/* Exercise Info */}
+                  <span className="text-2xl">{exercise.icon}</span>
+                  <div className="flex-1 text-left">
+                    <div className={`font-semibold ${isChecked ? 'text-green-400 line-through' : 'text-white'}`}>
+                      {exercise.name}
+                    </div>
+                    <div className="text-gray-500 text-sm">{exercise.duration}s • {exercise.description}</div>
+                  </div>
+                </button>
+              );
+            })}
+            {/* Bottom spacer */}
+            <div className="h-32" />
+          </div>
+        )}
+
+        {/* CHECKLIST COMPLETE */}
+        {viewMode === 'checklist' && allCompleted && (
+          <div className="min-h-full flex flex-col items-center justify-center text-center">
+            <div className="text-8xl mb-4">{isWarmup ? '💪' : '😌'}</div>
+            <h2 className="text-3xl font-bold text-white mb-2">
+              {isWarmup ? 'All Warmed Up!' : 'Great Recovery!'}
+            </h2>
+            <p className="text-gray-400 text-lg mb-2">
+              {routine.length} exercises completed
+            </p>
+            <p className="text-gray-500 text-sm">
+              {isWarmup ? 'Your muscles are ready for action!' : 'Your body will thank you tomorrow!'}
+            </p>
+          </div>
+        )}
+
+        {/* GUIDED MODE */}
+        {viewMode === 'guided' && (
+          <div className="min-h-full flex flex-col items-center justify-center">
+          {isComplete ? (
+            /* Completion Screen */
+            <div className="text-center">
+              <div className="text-8xl mb-4">{isWarmup ? '💪' : '😌'}</div>
+              <h2 className="text-3xl font-bold text-white mb-2">
+                {isWarmup ? 'Ready to Train!' : 'Great Recovery!'}
+              </h2>
+              <p className="text-gray-400 text-lg mb-2">
+                {routine.length} stretches • {Math.floor(totalDuration / 60)}:{(totalDuration % 60).toString().padStart(2, '0')} total
+              </p>
+              <p className="text-gray-500 text-sm">
+                {isWarmup ? 'Your muscles are warm and ready!' : 'Your muscles will thank you tomorrow!'}
+              </p>
+              <div className="flex gap-4 mt-8">
+                <button
+                  onClick={resetRoutine}
+                  className="px-6 py-4 bg-gray-800 rounded-2xl text-white font-bold shadow-xl"
+                >
+                  🔄 Repeat
+                </button>
+                <button
+                  onClick={onClose}
+                  className={`px-8 py-4 bg-gradient-to-r ${gradientClass} rounded-2xl text-white font-bold shadow-xl`}
+                >
+                  ✓ Done
+                </button>
+              </div>
+            </div>
+          ) : currentExercise ? (
+            /* Current Exercise Display */
+            <>
+              <div className="text-center mb-8">
+                <span className="text-7xl mb-4 block">{currentExercise.icon}</span>
+                <h2 className="text-2xl font-bold text-white mb-2">{currentExercise.name}</h2>
+                <p className="text-gray-400">{currentExercise.description}</p>
+              </div>
+
+              {/* Timer Display */}
+              <div className="relative mb-8">
+                <svg className="w-48 h-48 transform -rotate-90">
+                  <circle
+                    cx="96" cy="96" r="88"
+                    stroke="currentColor" strokeWidth="8" fill="none"
+                    className="text-gray-800"
+                  />
+                  <circle
+                    cx="96" cy="96" r="88"
+                    stroke="currentColor" strokeWidth="8" fill="none" strokeLinecap="round"
+                    className={isWarmup ? 'text-orange-500' : 'text-blue-500'}
+                    style={{
+                      strokeDasharray: 2 * Math.PI * 88,
+                      strokeDashoffset: 2 * Math.PI * 88 * (1 - timeLeft / currentExercise.duration),
+                      transition: 'stroke-dashoffset 0.5s linear'
+                    }}
+                  />
+                </svg>
+                <div className="absolute inset-0 flex flex-col items-center justify-center">
+                  <span className="text-5xl font-bold text-white tabular-nums">{timeLeft}</span>
+                  <span className="text-gray-400 text-sm">seconds</span>
+                </div>
+              </div>
+
+              {/* Up Next */}
+              {currentExerciseIndex < routine.length - 1 && (
+                <div className="bg-gray-800/50 rounded-xl p-3 flex items-center gap-3">
+                  <span className="text-gray-500 text-xs">NEXT:</span>
+                  <span className="text-xl">{routine[currentExerciseIndex + 1].icon}</span>
+                  <span className="text-white font-medium">{routine[currentExerciseIndex + 1].name}</span>
+                </div>
+              )}
+            </>
+          ) : (
+            <div className="text-center text-gray-400">Loading routine...</div>
+          )}
+          </div>
+        )}
+        {/* Bottom spacer for scrolling */}
+        <div className="h-24" />
+      </div>
+
+      {/* Control Buttons */}
+      <div className="p-6 pb-24 bg-gradient-to-t from-black via-black to-transparent">
+        {/* CHECKLIST MODE BUTTONS */}
+        {viewMode === 'checklist' && (
+          allCompleted ? (
+            <button
+              onClick={onClose}
+              className={`w-full py-5 bg-gradient-to-r from-green-500 to-emerald-500 rounded-2xl text-white font-bold text-xl shadow-xl flex items-center justify-center gap-3`}
+            >
+              <span className="text-2xl">🏋️</span>
+              {isWarmup ? 'READY TO LIFT!' : 'FINISH WORKOUT'}
+            </button>
+          ) : (
+            <div className="text-center">
+              <p className="text-gray-500 text-sm">
+                Complete all {routine.length} exercises to continue
+              </p>
+            </div>
+          )
+        )}
+
+        {/* GUIDED MODE BUTTONS */}
+        {viewMode === 'guided' && !isComplete && currentExercise && (
+          !isRunning ? (
+            <button
+              onClick={startRoutine}
+              className={`w-full py-5 bg-gradient-to-r ${gradientClass} rounded-2xl text-white font-bold text-xl shadow-xl flex items-center justify-center gap-3`}
+            >
+              <svg className="w-8 h-8" fill="currentColor" viewBox="0 0 24 24">
+                <path d="M8 5v14l11-7z" />
+              </svg>
+              START {isWarmup ? 'WARM-UP' : 'COOL-DOWN'}
+            </button>
+          ) : (
+            <div className="flex gap-4">
+              <button
+                onClick={skipExercise}
+                className="flex-1 py-5 bg-gray-700 rounded-2xl text-white font-bold text-xl shadow-xl flex items-center justify-center gap-2"
+              >
+                ⏭️ Skip
+              </button>
+              <button
+                onClick={resetRoutine}
+                className="py-5 px-6 bg-gray-800 rounded-2xl text-white font-bold text-xl shadow-xl"
+              >
+                <svg className="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                </svg>
+              </button>
+            </div>
+          )
+        )}
+      </div>
+    </div>
+  );
+};
+
+// Workout Statistics Dashboard Component
+const WorkoutStatsDashboard = ({ 
+  onClose,
+  userData 
+}: { 
+  onClose: () => void;
+  userData: any;
+}) => {
+  const [stats, setStats] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+  const [timeRange, setTimeRange] = useState<'week' | 'month'>('week');
+  const [topExercises, setTopExercises] = useState<any[]>([]);
+  const [volumeByDay, setVolumeByDay] = useState<any[]>([]);
+  useEscapeKey(onClose);
+  
+  // Swipe handler for back navigation
+  const swipeHandlers = useSwipe(onClose);
+
+  useEffect(() => {
+    const loadStats = async () => {
+      const user = auth.currentUser;
+      if (!user) return;
+
+      try {
+        const days = timeRange === 'week' ? 7 : 30;
+        const startDate = new Date();
+        startDate.setDate(startDate.getDate() - days);
+        const startTimestamp = startDate.getTime();
+
+        // Query using timestamp (our new data structure)
+        const workoutsQuery = query(
+          collection(db, 'workoutHistory'),
+          where('userId', '==', user.uid),
+          where('timestamp', '>=', startTimestamp),
+          orderBy('timestamp', 'desc')
+        );
+        const snapshot = await getDocs(workoutsQuery);
+        
+        let totalVolume = 0;
+        let totalWorkouts = 0;
+        let totalSets = 0;
+        const muscleGroups: Record<string, number> = {};
+        const exerciseNames = new Set<string>();
+        const workoutDates = new Set<string>();
+        const exerciseVolumes: Record<string, number> = {};
+        const volumesByDate: Record<string, number> = {};
+        
+        snapshot.docs.forEach(doc => {
+          const data = doc.data();
+          totalWorkouts++;
+          
+          // Use date field (format: YYYY-MM-DD)
+          const workoutDate = data.date || new Date(data.timestamp).toISOString().split('T')[0];
+          workoutDates.add(workoutDate);
+          
+          // Process exercises array (new structure)
+          if (data.exercises && Array.isArray(data.exercises)) {
+            data.exercises.forEach((exercise: any) => {
+              const exerciseName = exercise.exercise || exercise.name || 'Unknown';
+              exerciseNames.add(exerciseName);
+              
+              // Calculate volume from sets
+              if (exercise.sets && Array.isArray(exercise.sets)) {
+                exercise.sets.forEach((set: any) => {
+                  const setVolume = (set.weight || 0) * (set.reps || 0);
+                  totalVolume += setVolume;
+                  exerciseVolumes[exerciseName] = (exerciseVolumes[exerciseName] || 0) + setVolume;
+                  volumesByDate[workoutDate] = (volumesByDate[workoutDate] || 0) + setVolume;
+                  totalSets++;
+                });
+              }
+              
+              // Count muscle groups
+              const exerciseLower = exerciseName.toLowerCase();
+              if (exerciseLower.includes('chest') || exerciseLower.includes('bench') || exerciseLower.includes('push up') || exerciseLower.includes('fly')) {
+                muscleGroups['Chest'] = (muscleGroups['Chest'] || 0) + 1;
+              } else if (exerciseLower.includes('back') || exerciseLower.includes('row') || exerciseLower.includes('pull') || exerciseLower.includes('lat') || exerciseLower.includes('deadlift')) {
+                muscleGroups['Back'] = (muscleGroups['Back'] || 0) + 1;
+              } else if (exerciseLower.includes('leg') || exerciseLower.includes('squat') || exerciseLower.includes('lunge') || exerciseLower.includes('quad') || exerciseLower.includes('hamstring') || exerciseLower.includes('calf')) {
+                muscleGroups['Legs'] = (muscleGroups['Legs'] || 0) + 1;
+              } else if (exerciseLower.includes('shoulder') || exerciseLower.includes('delt') || exerciseLower.includes('press') || exerciseLower.includes('raise')) {
+                muscleGroups['Shoulders'] = (muscleGroups['Shoulders'] || 0) + 1;
+              } else if (exerciseLower.includes('arm') || exerciseLower.includes('bicep') || exerciseLower.includes('tricep') || exerciseLower.includes('curl')) {
+                muscleGroups['Arms'] = (muscleGroups['Arms'] || 0) + 1;
+              } else if (exerciseLower.includes('ab') || exerciseLower.includes('core') || exerciseLower.includes('plank') || exerciseLower.includes('crunch')) {
+                muscleGroups['Abs'] = (muscleGroups['Abs'] || 0) + 1;
+              }
+            });
+          }
+        });
+
+        // Calculate streak
+        let streak = 0;
+        const sortedDates = Array.from(workoutDates).sort().reverse();
+        const today = new Date().toISOString().split('T')[0];
+        if (sortedDates[0] === today || sortedDates[0] === new Date(Date.now() - 86400000).toISOString().split('T')[0]) {
+          streak = 1;
+          for (let i = 1; i < sortedDates.length; i++) {
+            const prevDate = new Date(sortedDates[i - 1]);
+            const currDate = new Date(sortedDates[i]);
+            const diffDays = Math.floor((prevDate.getTime() - currDate.getTime()) / (1000 * 60 * 60 * 24));
+            if (diffDays === 1) {
+              streak++;
+            } else {
+              break;
+            }
+          }
+        }
+
+        // Get top exercises by volume
+        const sortedExercises = Object.entries(exerciseVolumes)
+          .sort(([, a]: any, [, b]: any) => b - a)
+          .slice(0, 5)
+          .map(([name, volume]) => ({ name, volume }));
+        
+        setTopExercises(sortedExercises);
+
+        // Prepare volume by day for chart
+        const volumeData = Object.entries(volumesByDate)
+          .sort(([a], [b]) => a.localeCompare(b))
+          .map(([date, volume]) => ({
+            date: new Date(date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+            volume
+          }));
+        
+        setVolumeByDay(volumeData);
+
+        setStats({
+          totalVolume,
+          totalWorkouts,
+          totalSets,
+          uniqueExercises: exerciseNames.size,
+          muscleGroups,
+          streak,
+          avgWorkoutLength: totalWorkouts > 0 ? Math.round(totalSets / totalWorkouts) : 0,
+          avgExercisesPerWorkout: totalWorkouts > 0 ? Math.round(exerciseNames.size / totalWorkouts) : 0
+        });
+      } catch (error) {
+        console.error('Error loading stats:', error);
+        toast.error('Failed to load statistics');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadStats();
+  }, [timeRange]);
+
+  const useMetric = userData?.measurementUnit !== 'imperial';
+  const weightUnit = useMetric ? 'kg' : 'lbs';
+
+  const maxVolume = Math.max(...volumeByDay.map(d => d.volume as number), 1);
+
+  return (
+    <div className="fixed inset-0 bg-gradient-to-br from-gray-50 to-gray-100 dark:from-gray-900 dark:to-gray-800 z-[70] overflow-y-auto" {...swipeHandlers}>
+      <div style={{ paddingTop: 'var(--safe-area-top)', paddingBottom: 'var(--safe-area-bottom)' }} className="min-h-screen pb-24">
+        {/* Header */}
+        <div className="sticky top-0 z-40 bg-gradient-to-br from-indigo-500 via-purple-500 to-pink-500 backdrop-blur-md px-4 py-4 shadow-lg">
+          <button onClick={onClose} className="flex items-center text-white mb-2">
+            <ArrowLeft className="h-5 w-5 mr-2" /> Back
+          </button>
+          <h1 className="text-2xl font-bold text-white">📊 Workout Statistics</h1>
+          <p className="text-white/80 text-sm">Your training analytics</p>
+        </div>
+
+        <div className="px-4 pt-4 space-y-4">
+          {/* Time Range Selector */}
+          <div className="flex gap-2">
+            <button
+              onClick={() => setTimeRange('week')}
+              className={`flex-1 py-3 rounded-xl font-semibold transition shadow-lg ${
+                timeRange === 'week'
+                  ? 'bg-gradient-to-r from-indigo-500 to-purple-600 text-white'
+                  : 'bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'
+              }`}
+            >
+              This Week
+            </button>
+            <button
+              onClick={() => setTimeRange('month')}
+              className={`flex-1 py-3 rounded-xl font-semibold transition shadow-lg ${
+                timeRange === 'month'
+                  ? 'bg-gradient-to-r from-indigo-500 to-purple-600 text-white'
+                  : 'bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'
+              }`}
+            >
+              This Month
+            </button>
+          </div>
+
+          {loading ? (
+            <div className="text-center py-12">
+              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-500 mx-auto"></div>
+              <p className="text-gray-600 dark:text-gray-400 mt-4">Loading statistics...</p>
+            </div>
+          ) : stats ? (
+            <>
+              {/* Main Stats Grid */}
+              <div className="grid grid-cols-2 gap-3">
+                <div className="bg-gradient-to-br from-orange-400 to-red-500 rounded-xl p-4 text-white shadow-xl">
+                  <div className="text-3xl mb-1">🔥</div>
+                  <p className="text-3xl font-bold">{stats.streak}</p>
+                  <p className="text-white/90 text-sm">Day Streak</p>
+                </div>
+                <div className="bg-gradient-to-br from-blue-400 to-indigo-600 rounded-xl p-4 text-white shadow-xl">
+                  <div className="text-3xl mb-1">🏋️</div>
+                  <p className="text-3xl font-bold">{stats.totalWorkouts}</p>
+                  <p className="text-white/90 text-sm">Workouts</p>
+                </div>
+                <div className="bg-gradient-to-br from-green-400 to-emerald-600 rounded-xl p-4 text-white shadow-xl">
+                  <div className="text-3xl mb-1">💪</div>
+                  <p className="text-3xl font-bold">{stats.totalVolume.toLocaleString()}</p>
+                  <p className="text-white/90 text-sm">Volume ({weightUnit})</p>
+                </div>
+                <div className="bg-gradient-to-br from-purple-400 to-pink-600 rounded-xl p-4 text-white shadow-xl">
+                  <div className="text-3xl mb-1">📝</div>
+                  <p className="text-3xl font-bold">{stats.uniqueExercises}</p>
+                  <p className="text-white/90 text-sm">Exercises</p>
+                </div>
+              </div>
+
+              {/* Volume Over Time Chart */}
+              {volumeByDay.length > 0 && (
+                <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-xl border border-gray-200 dark:border-indigo-500/30">
+                  <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
+                    <TrendingUp className="w-5 h-5 text-indigo-500" />
+                    <span>Volume Over Time</span>
+                  </h3>
+                  <div className="space-y-3">
+                    {volumeByDay.map((day, idx) => (
+                      <div key={idx}>
+                        <div className="flex items-center justify-between mb-1">
+                          <span className="text-xs text-gray-600 dark:text-gray-400 font-medium">{day.date}</span>
+                          <span className="text-xs text-indigo-600 dark:text-indigo-400 font-bold">{day.volume.toLocaleString()} {weightUnit}</span>
+                        </div>
+                        <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-3">
+                          <div
+                            className="bg-gradient-to-r from-indigo-400 to-purple-500 h-3 rounded-full transition-all duration-500"
+                            style={{ width: `${(day.volume / maxVolume) * 100}%` }}
+                          ></div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Top Exercises by Volume */}
+              {topExercises.length > 0 && (
+                <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-xl border border-gray-200 dark:border-indigo-500/30">
+                  <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
+                    <Award className="w-5 h-5 text-yellow-500" />
+                    <span>Top Exercises</span>
+                  </h3>
+                  <div className="space-y-3">
+                    {topExercises.map((exercise, idx) => (
+                      <div key={idx} className="flex items-center gap-3">
+                        <div className={`flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold ${
+                          idx === 0 ? 'bg-yellow-400 text-yellow-900' :
+                          idx === 1 ? 'bg-gray-300 text-gray-700' :
+                          idx === 2 ? 'bg-orange-300 text-orange-900' :
+                          'bg-indigo-100 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400'
+                        }`}>
+                          {idx + 1}
+                        </div>
+                        <div className="flex-1">
+                          <p className="text-sm font-semibold text-gray-900 dark:text-white">{exercise.name}</p>
+                          <p className="text-xs text-gray-600 dark:text-gray-400">{exercise.volume.toLocaleString()} {weightUnit} total</p>
+                        </div>
+                        {idx === 0 && <Trophy className="w-5 h-5 text-yellow-500" />}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Muscle Group Breakdown */}
+              <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-xl border border-gray-200 dark:border-indigo-500/30">
+                <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
+                  <Target className="w-5 h-5 text-indigo-500" />
+                  <span>Muscle Groups Trained</span>
+                </h3>
+                {Object.keys(stats.muscleGroups).length > 0 ? (
+                  <div className="space-y-3">
+                    {Object.entries(stats.muscleGroups)
+                      .sort(([, a]: any, [, b]: any) => b - a)
+                      .map(([muscle, count]: any) => (
+                        <div key={muscle}>
+                          <div className="flex items-center justify-between mb-1">
+                            <span className="text-sm font-medium text-gray-700 dark:text-gray-300">{muscle}</span>
+                            <span className="text-sm font-bold text-indigo-600 dark:text-indigo-400">{count} workouts</span>
+                          </div>
+                          <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2">
+                            <div
+                              className="bg-gradient-to-r from-teal-400 to-emerald-500 h-2 rounded-full"
+                              style={{ width: `${(count / stats.totalWorkouts) * 100}%` }}
+                            ></div>
+                          </div>
+                        </div>
+                      ))}
+                  </div>
+                ) : (
+                  <p className="text-gray-600 dark:text-gray-400 text-sm text-center py-4">No muscle groups tracked yet</p>
+                )}
+              </div>
+
+              {/* Additional Stats */}
+              <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-xl border border-gray-200 dark:border-indigo-500/30">
+                <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-4">Additional Metrics</h3>
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between py-2 border-b border-gray-200 dark:border-gray-700">
+                    <span className="text-sm text-gray-600 dark:text-gray-400">Total Sets</span>
+                    <span className="text-lg font-bold text-gray-900 dark:text-white">{stats.totalSets}</span>
+                  </div>
+                  <div className="flex items-center justify-between py-2">
+                    <span className="text-sm text-gray-600 dark:text-gray-400">Avg Sets/Workout</span>
+                    <span className="text-lg font-bold text-gray-900 dark:text-white">{stats.avgWorkoutLength}</span>
+                  </div>
+                </div>
+              </div>
+            </>
+          ) : (
+            <div className="text-center py-12">
+              <Dumbbell className="w-12 h-12 text-gray-400 dark:text-gray-600 mx-auto mb-4" />
+              <p className="text-gray-600 dark:text-gray-400">No workout data available</p>
+              <p className="text-gray-500 dark:text-gray-500 text-sm mt-2">Start logging workouts to see your stats!</p>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// Rest Timer Component for workouts
+const RestTimer = ({ 
+  duration, 
+  onComplete, 
+  onSkip,
+  exerciseName 
+}: { 
+  duration: number; 
+  onComplete: () => void;
+  onSkip: () => void;
+  exerciseName: string;
+}) => {
+  const [timeLeft, setTimeLeft] = useState(duration);
+  const [isPaused, setIsPaused] = useState(false);
+  const [isCompleted, setIsCompleted] = useState(false);
+  
+  useEscapeKey(onSkip);
+
+  // Timer countdown - runs once on mount
+  useEffect(() => {
+    if (isCompleted || isPaused) return;
+
+    const timer = setInterval(() => {
+      setTimeLeft(prev => {
+        if (prev <= 1) {
+          clearInterval(timer);
+          setIsCompleted(true);
+          
+          // Play completion sound
+          try {
+            const audio = new Audio('data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACBhYqFbF1fdJivrJBhNjVgodDbq2EcBj+a2/LDciUFLIHO8tiJNwgZaLvt559NEAxQp+PwtmMcBjiR1/LMeSwFJHfH8N2QQAoUXrTp66hVFApGn+DyvmwhBSuBzvLZiTUIGmm98OScTRALUKfj8LZjHAU5kdfy0HssBS');
+            audio.play().catch(() => {});
+          } catch (e) {
+            // Silently fail
+          }
+          
+          // Vibrate if available
+          if ('vibrate' in navigator) {
+            navigator.vibrate([200, 100, 200]);
+          }
+          
+          // Call completion
+          setTimeout(() => onComplete(), 300);
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+
+    return () => clearInterval(timer);
+  }, [isPaused, isCompleted, onComplete]); // NOT timeLeft!
+
+  const formatTime = (seconds: number) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
+  };
+
+  const progress = Math.min(100, Math.max(0, ((duration - timeLeft) / duration) * 100));
+  const isAlmostDone = timeLeft <= 10 && timeLeft > 0;
+
+  return (
+    <div 
+      className="fixed inset-0 bg-black/90 flex items-center justify-center z-[70] p-4"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="rest-timer-title"
+    >
+      <div className="bg-gradient-to-br from-indigo-900 via-purple-900 to-indigo-900 rounded-3xl p-8 max-w-md w-full shadow-2xl border-2 border-indigo-500/50">
+        {/* Header */}
+        <div className="text-center mb-8">
+          <h3 id="rest-timer-title" className="text-2xl font-bold text-white mb-2">Rest Timer</h3>
+          <p className="text-indigo-300 text-sm">{exerciseName}</p>
+        </div>
+
+        {/* Circular Progress */}
+        <div className="relative flex items-center justify-center mb-8">
+          <svg className="transform -rotate-90 w-64 h-64">
+            <circle
+              cx="128"
+              cy="128"
+              r="120"
+              stroke="currentColor"
+              strokeWidth="8"
+              fill="transparent"
+              className="text-indigo-800"
+            />
+            <circle
+              cx="128"
+              cy="128"
+              r="120"
+              stroke="currentColor"
+              strokeWidth="8"
+              fill="transparent"
+              strokeDasharray={2 * Math.PI * 120}
+              strokeDashoffset={2 * Math.PI * 120 * (1 - progress / 100)}
+              className={isAlmostDone ? "text-green-400" : "text-teal-400"}
+              style={{ transition: 'stroke-dashoffset 1s linear' }}
+            />
+          </svg>
+          <div className="absolute flex flex-col items-center">
+            <span className={`text-6xl font-bold ${isAlmostDone ? 'text-green-400 animate-pulse' : 'text-white'}`}>
+              {formatTime(timeLeft)}
+            </span>
+            <span className="text-indigo-300 text-sm mt-2">
+              {timeLeft > 0 ? 'seconds left' : 'Ready!'}
+            </span>
+          </div>
+        </div>
+
+        {/* Controls */}
+        <div className="flex gap-3">
+          <button
+            onClick={() => setIsPaused(!isPaused)}
+            className="flex-1 py-3 bg-white/10 hover:bg-white/20 rounded-xl text-white font-semibold transition border border-white/20"
+          >
+            {isPaused ? '▶️ Resume' : '⏸️ Pause'}
+          </button>
+          <button
+            onClick={onSkip}
+            className="flex-1 py-3 bg-gradient-to-r from-teal-500 to-emerald-600 hover:from-teal-600 hover:to-emerald-700 rounded-xl text-white font-bold transition shadow-lg"
+          >
+            Skip Rest ⏭️
+          </button>
+        </div>
+
+        {/* Quick adjust buttons */}
+        <div className="mt-4 flex gap-2 justify-center">
+          <button
+            onClick={() => setTimeLeft(Math.max(0, timeLeft - 15))}
+            className="px-4 py-2 bg-white/10 hover:bg-white/20 rounded-lg text-white text-sm font-medium transition border border-white/20"
+          >
+            -15s
+          </button>
+          <button
+            onClick={() => setTimeLeft(timeLeft + 15)}
+            className="px-4 py-2 bg-white/10 hover:bg-white/20 rounded-lg text-white text-sm font-medium transition border border-white/20"
+          >
+            +15s
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// ==========================================
+// REST TIMER OVERLAY - Full Screen Modal for Focus Mode
+// ==========================================
+const RestTimerOverlay = ({ 
+  duration, 
+  onComplete, 
+  onSkip,
+  onExtend: _onExtend,
+  nextExercise,
+  timerKey // Unique key to force remount and reset timer
+}: { 
+  duration: number; 
+  onComplete: () => void;
+  onSkip: () => void;
+  onExtend: (seconds: number) => void;
+  nextExercise?: string;
+  timerKey?: string | number;
+}) => {
+  const [timeLeft, setTimeLeft] = useState(duration);
+  const [totalDuration, setTotalDuration] = useState(duration); // Track total for progress
+  const [isCompleted, setIsCompleted] = useState(false);
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  
+  useEscapeKey(onSkip);
+
+  // Reset timer when duration or key changes (for remounting)
+  useEffect(() => {
+    setTimeLeft(duration);
+    setTotalDuration(duration);
+    setIsCompleted(false);
+  }, [duration, timerKey]);
+
+  // Handle +30 seconds extension
+  const handleExtendTime = useCallback(() => {
+    setTimeLeft(prev => prev + 30);
+    setTotalDuration(prev => prev + 30);
+  }, []);
+
+  // Timer countdown logic - runs once on mount and manages its own lifecycle
+  useEffect(() => {
+    // Don't start if already completed
+    if (isCompleted) return;
+
+    // Create interval that counts down every second
+    const intervalId = setInterval(() => {
+      setTimeLeft(prev => {
+        if (prev <= 1) {
+          // Timer complete - clear interval and trigger completion
+          clearInterval(intervalId);
+          setIsCompleted(true);
+          
+          // Play completion sound
+          try {
+            const audio = new Audio('data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACBhYqFbF1fdJivrJBhNjVgodDbq2EcBj+a2/LDciUFLIHO8tiJNwgZaLvt559NEAxQp+PwtmMcBjiR1/LMeSwFJHfH8N2QQAoUXrTp66hVFApGn+DyvmwhBSuBzvLZiTUIGmm98OScTRALUKfj8LZjHAU5kdfy0HssBS');
+            audio.play().catch(() => {});
+          } catch (e) {
+            // Silently fail audio
+          }
+          
+          // Vibrate if available
+          if ('vibrate' in navigator) {
+            navigator.vibrate([200, 100, 200]);
+          }
+          
+          // Call onComplete after brief delay
+          setTimeout(() => {
+            onComplete();
+          }, 300);
+          
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+
+    // Store ref for cleanup
+    timerRef.current = intervalId;
+
+    // Cleanup on unmount
+    return () => {
+      clearInterval(intervalId);
+      timerRef.current = null;
+    };
+  }, [onComplete, isCompleted]); // Only re-run if these change, NOT timeLeft
+
+  const formatTime = (seconds: number) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
+  };
+
+  // Use totalDuration for progress calculation so +30 extension works correctly
+  const progress = Math.min(100, Math.max(0, ((totalDuration - timeLeft) / totalDuration) * 100));
+  const isAlmostDone = timeLeft <= 10 && timeLeft > 0;
+
+  return (
+    <div 
+      className="fixed inset-0 bg-black/95 backdrop-blur-lg flex flex-col items-center justify-center z-[70]"
+      style={{ paddingTop: 'env(safe-area-inset-top, 0px)', paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}
+      role="dialog"
+      aria-modal="true"
+      aria-label="Rest Timer"
+    >
+      {/* Animated Background Pulse */}
+      <div className={`absolute inset-0 bg-gradient-to-br from-indigo-900/50 to-purple-900/50 ${isAlmostDone ? 'animate-pulse' : ''}`} />
+      
+      {/* Content */}
+      <div className="relative z-10 flex flex-col items-center px-8">
+        {/* Rest Label */}
+        <p className="text-indigo-300 text-xl font-medium mb-4">REST</p>
+        
+        {/* Big Countdown */}
+        <div className={`text-9xl font-bold mb-8 transition-colors duration-300 ${isAlmostDone ? 'text-green-400 animate-pulse' : 'text-white'}`}>
+          {formatTime(timeLeft)}
+        </div>
+        
+        {/* Circular Progress Ring */}
+        <div className="relative w-48 h-48 mb-8">
+          <svg className="transform -rotate-90 w-full h-full">
+            <circle
+              cx="96"
+              cy="96"
+              r="88"
+              stroke="currentColor"
+              strokeWidth="8"
+              fill="transparent"
+              className="text-white/10"
+            />
+            <circle
+              cx="96"
+              cy="96"
+              r="88"
+              stroke="currentColor"
+              strokeWidth="8"
+              fill="transparent"
+              strokeDasharray={2 * Math.PI * 88}
+              strokeDashoffset={2 * Math.PI * 88 * (1 - progress / 100)}
+              strokeLinecap="round"
+              className={isAlmostDone ? "text-green-400" : "text-indigo-400"}
+              style={{ transition: 'stroke-dashoffset 1s linear' }}
+            />
+          </svg>
+          <div className="absolute inset-0 flex items-center justify-center">
+            <p className="text-white/60 text-sm">
+              {timeLeft > 0 ? 'seconds left' : 'Ready!'}
+            </p>
+          </div>
+        </div>
+        
+        {/* Next Exercise Preview */}
+        {nextExercise && (
+          <div className="bg-white/10 rounded-2xl px-6 py-3 mb-8 border border-white/20">
+            <p className="text-white/60 text-sm text-center">Up Next</p>
+            <p className="text-white font-bold text-lg text-center">{nextExercise}</p>
+          </div>
+        )}
+        
+        {/* Action Buttons */}
+        <div className="flex gap-4 w-full max-w-sm">
+          <button
+            onClick={handleExtendTime}
+            className="flex-1 py-4 bg-white/10 hover:bg-white/20 rounded-2xl text-white font-semibold transition border border-white/20"
+          >
+            +30 sec
+          </button>
+          <button
+            onClick={onSkip}
+            className="flex-1 py-4 bg-gradient-to-r from-teal-500 to-emerald-600 hover:from-teal-600 hover:to-emerald-700 rounded-2xl text-white font-bold transition shadow-2xl"
+          >
+            Skip Rest
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// PR Celebration Modal Component
+const PRCelebrationModal = ({ 
+  exercise, 
+  newPR, 
+  oldPR, 
+  onClose 
+}: { 
+  exercise: string; 
+  newPR: { weight: number; reps: number; estimatedMax: number };
+  oldPR?: { weight: number; reps: number; estimatedMax: number };
+  onClose: () => void;
+}) => {
+  useEscapeKey(onClose);
+
+  useEffect(() => {
+    // Auto-close after 5 seconds
+    const timer = setTimeout(onClose, 5000);
+    return () => clearTimeout(timer);
+  }, [onClose]);
+
+  const improvement = oldPR 
+    ? ((newPR.estimatedMax - oldPR.estimatedMax) / oldPR.estimatedMax * 100).toFixed(1)
+    : null;
+
+  return (
+    <div 
+      className="fixed inset-0 bg-black/90 flex items-center justify-center z-[80] p-4"
+      onClick={onClose}
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="pr-celebration-title"
+    >
+      <motion.div
+        className="bg-gradient-to-br from-yellow-400 via-amber-500 to-orange-500 rounded-3xl p-8 max-w-md w-full shadow-2xl border-4 border-yellow-300"
+        onClick={(e) => e.stopPropagation()}
+        initial={{ scale: 0, rotate: -180 }}
+        animate={{ scale: 1, rotate: 0 }}
+        exit={{ scale: 0, rotate: 180 }}
+        transition={{ type: 'spring', duration: 0.6, bounce: 0.5 }}
+      >
+        {/* Trophy Animation */}
+        <motion.div 
+          className="flex justify-center mb-6"
+          animate={{ 
+            scale: [1, 1.2, 1],
+            rotate: [0, 10, -10, 0]
+          }}
+          transition={{ 
+            duration: 0.5, 
+            repeat: 3,
+            repeatDelay: 0.2
+          }}
+        >
+          <div className="text-8xl">🏆</div>
+        </motion.div>
+
+        {/* Title */}
+        <h2 id="pr-celebration-title" className="text-4xl font-bold text-center text-white mb-3 drop-shadow-lg">
+          NEW PR!
+        </h2>
+        
+        {/* Exercise Name */}
+        <p className="text-center text-white/90 font-semibold text-xl mb-6">
+          {exercise}
+        </p>
+
+        {/* PR Details */}
+        <div className="bg-white/20 backdrop-blur-sm rounded-2xl p-6 mb-6 space-y-3">
+          <div className="text-center">
+            <p className="text-white/80 text-sm mb-1">Your New Record</p>
+            <p className="text-3xl font-bold text-white">
+              {newPR.weight}kg × {newPR.reps}
+            </p>
+            <p className="text-white/70 text-sm mt-2">
+              Est. 1RM: {newPR.estimatedMax.toFixed(1)}kg
+            </p>
+          </div>
+
+          {oldPR && improvement && (
+            <div className="pt-3 border-t border-white/30">
+              <div className="flex items-center justify-center gap-2">
+                <span className="text-2xl">📈</span>
+                <div className="text-center">
+                  <p className="text-white/80 text-sm">Improvement</p>
+                  <p className="text-2xl font-bold text-white">+{improvement}%</p>
+                </div>
+              </div>
+              <p className="text-center text-white/70 text-xs mt-2">
+                Previous best: {oldPR.weight}kg × {oldPR.reps}
+              </p>
+            </div>
+          )}
+        </div>
+
+        {/* Motivational Message */}
+        <div className="bg-white/20 backdrop-blur-sm rounded-xl p-4 mb-4">
+          <p className="text-center text-white font-medium text-sm">
+            💪 Keep crushing it! You're getting stronger every day!
+          </p>
+        </div>
+
+        {/* Close Button */}
+        <button
+          onClick={onClose}
+          className="w-full py-3 bg-white hover:bg-white/90 rounded-xl text-amber-600 font-bold transition shadow-lg"
+        >
+          Continue Workout
+        </button>
+      </motion.div>
+    </div>
+  );
+};
 
 // Premium Lock Overlay - Shows when user tries to access premium content
 const PremiumLockOverlay = ({ featureName, onUpgrade }: { featureName: string; onUpgrade: () => void }) => {
@@ -6118,6 +12632,9 @@ const HealthProfileScreen = ({ userData, onBack }: { userData: any; onBack: () =
   const heightCm = Math.round(heightInches * 2.54);
   const bmi = ((userData.weight / (heightInches * heightInches)) * 703).toFixed(1);
   
+  // Swipe handler for back navigation
+  const swipeHandlers = useSwipe(onBack);
+  
   const getBMICategory = (bmi: number) => {
     if (bmi < 18.5) return { text: 'Underweight', color: 'text-blue-400' };
     if (bmi < 25) return { text: 'Normal', color: 'text-green-400' };
@@ -6128,7 +12645,7 @@ const HealthProfileScreen = ({ userData, onBack }: { userData: any; onBack: () =
   const bmiCategory = getBMICategory(parseFloat(bmi));
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="p-6 space-y-6 pb-24" {...swipeHandlers}>
       <div className="flex items-center space-x-3 border-b border-indigo-300 dark:border-indigo-500/50 pb-3">
         <button onClick={onBack} className="text-gray-900 dark:text-white hover:text-indigo-600 dark:hover:text-indigo-400">
           <ArrowLeft className="w-6 h-6" />
@@ -6195,6 +12712,11 @@ const HealthProfileScreen = ({ userData, onBack }: { userData: any; onBack: () =
 const WorkoutHistoryScreen = ({ onBack }: { onBack: () => void }) => {
   const [workoutHistory, setWorkoutHistory] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [expandedWorkout, setExpandedWorkout] = useState<string | null>(null);
+  const [filterDays, setFilterDays] = useState<7 | 30 | 90>(30);
+  
+  // Swipe handler for back navigation
+  const swipeHandlers = useSwipe(onBack);
 
   useEffect(() => {
     const fetchWorkoutHistory = async () => {
@@ -6212,16 +12734,20 @@ const WorkoutHistoryScreen = ({ onBack }: { onBack: () => void }) => {
         
         const querySnapshot = await getDocs(q);
         
-        // Filter and sort client-side
-        const thirtyDaysAgo = Date.now() - (30 * 24 * 60 * 60 * 1000);
+        // Sort with proper date handling
         const workouts = querySnapshot.docs
-          .map(doc => ({
-            id: doc.id,
-            ...doc.data()
-          }))
-          .filter((workout: any) => workout.timestamp >= thirtyDaysAgo)
+          .map(doc => {
+            const data = doc.data();
+            return {
+              id: doc.id,
+              ...data,
+              // Ensure we have a valid timestamp
+              timestamp: data.timestamp || new Date(data.timestampISO || data.date).getTime()
+            };
+          })
           .sort((a: any, b: any) => b.timestamp - a.timestamp);
         
+        console.log(`Loaded ${workouts.length} total workouts`);
         setWorkoutHistory(workouts);
       } catch (error) {
         console.error('Error fetching workout history:', error);
@@ -6234,9 +12760,24 @@ const WorkoutHistoryScreen = ({ onBack }: { onBack: () => void }) => {
     fetchWorkoutHistory();
   }, []);
 
+  // Filter workouts based on selected time range
+  const filteredHistory = workoutHistory.filter((workout: any) => {
+    const daysAgo = Date.now() - (filterDays * 24 * 60 * 60 * 1000);
+    return workout.timestamp >= daysAgo;
+  });
+
+  // Calculate stats (with null safety)
+  const totalVolume = filteredHistory.reduce((sum, w) => {
+    return sum + ((w.exercises || []).reduce((eSum: number, ex: any) => {
+      return eSum + ((ex.sets || []).reduce((sSum: number, s: any) => sSum + ((s.weight || 0) * (s.reps || 0)), 0));
+    }, 0));
+  }, 0);
+
+  const totalDuration = filteredHistory.reduce((sum, w) => sum + (w.duration_minutes || 0), 0);
+
   if (loading) {
     return (
-      <div className="p-6 space-y-6">
+      <div className="p-6 space-y-6 pb-24">
         <div className="flex items-center space-x-3 border-b border-indigo-300 dark:border-indigo-500/50 pb-3">
           <button onClick={onBack} className="text-gray-900 dark:text-white hover:text-indigo-600 dark:hover:text-indigo-400">
             <ArrowLeft className="w-6 h-6" />
@@ -6251,7 +12792,7 @@ const WorkoutHistoryScreen = ({ onBack }: { onBack: () => void }) => {
   }
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="p-6 space-y-6 pb-24" {...swipeHandlers}>
       <div className="flex items-center space-x-3 border-b border-indigo-300 dark:border-indigo-500/50 pb-3">
         <button onClick={onBack} className="text-gray-900 dark:text-white hover:text-indigo-600 dark:hover:text-indigo-400">
           <ArrowLeft className="w-6 h-6" />
@@ -6259,66 +12800,228 @@ const WorkoutHistoryScreen = ({ onBack }: { onBack: () => void }) => {
         <h2 className="text-3xl font-bold text-gray-900 dark:text-white">Workout History</h2>
       </div>
 
-      {workoutHistory.length > 0 && (
-        <div className="bg-gradient-to-r from-indigo-300 via-purple-300 to-pink-300 dark:from-indigo-900/40 dark:to-purple-900/40 p-4 rounded-xl border-2 border-indigo-400 dark:border-indigo-500/30 shadow-xl">
-          <div className="flex justify-between items-center">
-            <div>
-              <p className="text-sm font-semibold text-indigo-900 dark:text-white">Total Workouts</p>
-              <p className="text-2xl font-bold text-indigo-700 dark:text-indigo-300">{workoutHistory.length}</p>
+      {/* Time Range Filter */}
+      <div className="flex gap-2">
+        {[
+          { days: 7, label: '7 Days' },
+          { days: 30, label: '30 Days' },
+          { days: 90, label: '90 Days' }
+        ].map(({ days, label }) => (
+          <button
+            key={days}
+            onClick={() => setFilterDays(days as any)}
+            className={`flex-1 py-2 px-3 rounded-xl text-sm font-semibold transition ${
+              filterDays === days
+                ? 'bg-indigo-500 text-white shadow-lg'
+                : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 border border-gray-200 dark:border-gray-700'
+            }`}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {/* Stats Overview */}
+      {filteredHistory.length > 0 && (
+        <div className="grid grid-cols-2 gap-3">
+          <div className="bg-gradient-to-br from-indigo-400 to-purple-500 p-4 rounded-xl shadow-lg">
+            <div className="flex items-center gap-2 mb-1">
+              <span className="text-2xl">🏋️</span>
+              <span className="text-white/80 text-xs">Workouts</span>
             </div>
-            <div className="text-4xl">🏆</div>
+            <p className="text-2xl font-bold text-white">{filteredHistory.length}</p>
+          </div>
+          <div className="bg-gradient-to-br from-emerald-400 to-teal-500 p-4 rounded-xl shadow-lg">
+            <div className="flex items-center gap-2 mb-1">
+              <span className="text-2xl">⏱️</span>
+              <span className="text-white/80 text-xs">Total Time</span>
+            </div>
+            <p className="text-2xl font-bold text-white">{Math.floor(totalDuration / 60)}h {totalDuration % 60}m</p>
+          </div>
+          <div className="bg-gradient-to-br from-orange-400 to-red-500 p-4 rounded-xl shadow-lg">
+            <div className="flex items-center gap-2 mb-1">
+              <span className="text-2xl">💪</span>
+              <span className="text-white/80 text-xs">Total Volume</span>
+            </div>
+            <p className="text-2xl font-bold text-white">{(totalVolume / 1000).toFixed(1)}k lbs</p>
+          </div>
+          <div className="bg-gradient-to-br from-pink-400 to-rose-500 p-4 rounded-xl shadow-lg">
+            <div className="flex items-center gap-2 mb-1">
+              <span className="text-2xl">📊</span>
+              <span className="text-white/80 text-xs">Avg/Workout</span>
+            </div>
+            <p className="text-2xl font-bold text-white">{filteredHistory.length > 0 ? Math.round(totalDuration / filteredHistory.length) : 0}m</p>
           </div>
         </div>
       )}
 
       <div className="space-y-3">
-        {workoutHistory.length === 0 ? (
-          <div className="bg-white dark:bg-gray-800 p-8 rounded-xl text-center shadow-lg border-2 border-gray-200 dark:border-transparent">
-            <Clock className="w-12 h-12 text-gray-400 dark:text-gray-600 mx-auto mb-3" />
-            <p className="text-gray-600 dark:text-white/60">No workout history yet</p>
-            <p className="text-gray-500 dark:text-white/40 text-sm mt-2">Start tracking your workouts!</p>
+        {filteredHistory.length === 0 ? (
+          <div className="bg-gradient-to-br from-indigo-50 to-purple-50 dark:from-gray-800 dark:to-gray-800 p-8 rounded-xl text-center shadow-lg border-2 border-indigo-200 dark:border-indigo-500/30">
+            <div className="w-16 h-16 bg-indigo-100 dark:bg-indigo-900/30 rounded-full flex items-center justify-center mx-auto mb-4">
+              <Dumbbell className="w-8 h-8 text-indigo-500 dark:text-indigo-400" />
+            </div>
+            <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-2">No Workouts Yet</h3>
+            <p className="text-gray-600 dark:text-gray-300 text-sm mb-4">
+              {workoutHistory.length > 0 
+                ? `No workouts in the last ${filterDays} days. Try a longer time range!`
+                : 'Complete your first workout to see your progress here!'}
+            </p>
+            <div className="flex items-center justify-center gap-2 text-indigo-600 dark:text-indigo-400 text-sm font-medium">
+              <span>💪</span>
+              <span>Head to the Workouts tab to get started</span>
+            </div>
           </div>
         ) : (
-          workoutHistory.map((workout) => (
-            <div key={workout.id} className="bg-white dark:bg-gray-800 p-5 rounded-xl border-2 border-gray-200 dark:border-gray-700 hover:border-indigo-400 dark:hover:border-indigo-500/50 transition shadow-md">
-              <div className="flex justify-between items-start mb-3">
-                <div>
-                  <h3 className="text-gray-900 dark:text-white font-bold text-lg">{workout.date}</h3>
-                  <p className="text-gray-600 dark:text-white/60 text-sm mt-1">
-                    {typeof workout.timestamp === 'number' 
-                      ? new Date(workout.timestamp).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })
-                      : new Date(workout.timestamp).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })
-                    }
-                  </p>
-                </div>
-                <div className="text-right">
-                  <p className="text-indigo-600 dark:text-indigo-400 font-semibold">{workout.duration_minutes} min</p>
-                  <p className="text-gray-600 dark:text-white/60 text-sm mt-1">
-                    {workout.totalExercises} exercise{workout.totalExercises !== 1 ? 's' : ''} • {workout.totalSets} sets
-                  </p>
-                </div>
-              </div>
-
-              {/* Exercise List */}
-              <div className="space-y-2 mt-3 pt-3 border-t border-gray-200 dark:border-gray-700">
-                {workout.exercises.map((exercise: any, idx: number) => (
-                  <div key={idx} className="bg-gray-50 dark:bg-gray-700/50 p-3 rounded-lg">
-                    <div className="flex justify-between items-center">
-                      <p className="text-gray-900 dark:text-white font-semibold">{exercise.exercise}</p>
-                      <p className="text-teal-600 dark:text-teal-400 text-sm font-medium">{exercise.sets.length} sets</p>
+          filteredHistory.map((workout) => {
+            const isExpanded = expandedWorkout === workout.id;
+            const workoutVolume = (workout.exercises || []).reduce((sum: number, ex: any) => {
+              return sum + ((ex.sets || []).reduce((sSum: number, s: any) => sSum + ((s.weight || 0) * (s.reps || 0)), 0));
+            }, 0);
+            
+            return (
+              <div 
+                key={workout.id} 
+                className={`bg-white dark:bg-gray-800 rounded-xl border-2 transition-all duration-300 shadow-md overflow-hidden ${
+                  isExpanded 
+                    ? 'border-indigo-400 dark:border-indigo-500' 
+                    : 'border-gray-200 dark:border-gray-700 hover:border-indigo-300 dark:hover:border-indigo-500/50'
+                }`}
+              >
+                {/* Workout Header - Always Visible */}
+                <button 
+                  onClick={() => setExpandedWorkout(isExpanded ? null : workout.id)}
+                  className="w-full p-4 text-left"
+                >
+                  <div className="flex justify-between items-start">
+                    <div className="flex items-center gap-3">
+                      <div className={`w-12 h-12 rounded-xl flex items-center justify-center ${
+                        isExpanded 
+                          ? 'bg-indigo-500 text-white' 
+                          : 'bg-indigo-100 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400'
+                      }`}>
+                        <Dumbbell className="w-6 h-6" />
+                      </div>
+                      <div>
+                        <h3 className="text-gray-900 dark:text-white font-bold">{workout.date}</h3>
+                        <p className="text-gray-500 dark:text-gray-400 text-sm">
+                          {typeof workout.timestamp === 'number' 
+                            ? new Date(workout.timestamp).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })
+                            : ''
+                          }
+                        </p>
+                      </div>
                     </div>
-                    <div className="mt-2 flex flex-wrap gap-2">
-                      {exercise.sets.map((set: any, setIdx: number) => (
-                        <span key={setIdx} className="text-xs bg-white dark:bg-gray-600 px-2 py-1 rounded-full text-gray-700 dark:text-white/80">
-                          {set.reps} × {set.weight}lbs
-                        </span>
-                      ))}
+                    <div className="flex items-center gap-3">
+                      <div className="text-right">
+                        <p className="text-indigo-600 dark:text-indigo-400 font-bold">{workout.duration_minutes}m</p>
+                        <p className="text-gray-500 dark:text-gray-400 text-xs">
+                          {workout.totalExercises} ex • {workout.totalSets} sets
+                        </p>
+                      </div>
+                      <svg 
+                        className={`w-5 h-5 text-gray-400 transition-transform duration-300 ${isExpanded ? 'rotate-180' : ''}`}
+                        fill="none" stroke="currentColor" viewBox="0 0 24 24"
+                      >
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                      </svg>
                     </div>
                   </div>
-                ))}
+                  
+                  {/* Quick Stats Bar */}
+                  <div className="flex gap-4 mt-3 pt-3 border-t border-gray-100 dark:border-gray-700">
+                    <div className="flex items-center gap-1.5 text-xs">
+                      <span className="text-orange-500">🔥</span>
+                      <span className="text-gray-600 dark:text-gray-400">~{Math.round(workout.duration_minutes * 5)} cal</span>
+                    </div>
+                    <div className="flex items-center gap-1.5 text-xs">
+                      <span className="text-blue-500">💪</span>
+                      <span className="text-gray-600 dark:text-gray-400">{workoutVolume.toLocaleString()} lbs</span>
+                    </div>
+                    <div className="flex items-center gap-1.5 text-xs">
+                      <span className="text-green-500">✓</span>
+                      <span className="text-gray-600 dark:text-gray-400">{workout.totalSets} sets</span>
+                    </div>
+                  </div>
+                </button>
+
+                {/* Expanded Content */}
+                {isExpanded && (
+                  <div className="px-4 pb-4 space-y-3 animate-in slide-in-from-top-2 duration-200">
+                    {/* Workout Summary */}
+                    <div className="bg-gradient-to-r from-indigo-50 to-purple-50 dark:from-indigo-900/20 dark:to-purple-900/20 p-3 rounded-xl">
+                      <div className="grid grid-cols-3 gap-3 text-center">
+                        <div>
+                          <p className="text-xs text-gray-500 dark:text-gray-400">Duration</p>
+                          <p className="text-lg font-bold text-gray-900 dark:text-white">{workout.duration_minutes}m</p>
+                        </div>
+                        <div>
+                          <p className="text-xs text-gray-500 dark:text-gray-400">Volume</p>
+                          <p className="text-lg font-bold text-gray-900 dark:text-white">{(workoutVolume / 1000).toFixed(1)}k</p>
+                        </div>
+                        <div>
+                          <p className="text-xs text-gray-500 dark:text-gray-400">Est. Calories</p>
+                          <p className="text-lg font-bold text-gray-900 dark:text-white">~{Math.round(workout.duration_minutes * 5)}</p>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Exercise List */}
+                    <div className="space-y-2">
+                      <h4 className="text-sm font-semibold text-gray-700 dark:text-gray-300 flex items-center gap-2">
+                        <span>📋</span> Exercises Performed
+                      </h4>
+                      {(workout.exercises || []).map((exercise: any, idx: number) => {
+                        const exerciseVolume = (exercise.sets || []).reduce((sum: number, s: any) => sum + ((s.weight || 0) * (s.reps || 0)), 0);
+                        const bestSet = (exercise.sets || []).reduce((best: any, s: any) => 
+                          ((s.weight || 0) > (best?.weight || 0)) ? s : best, null);
+                        
+                        return (
+                          <div key={idx} className="bg-gray-50 dark:bg-gray-700/50 p-3 rounded-xl">
+                            <div className="flex justify-between items-center mb-2">
+                              <div className="flex items-center gap-2">
+                                <span className="text-lg">💪</span>
+                                <p className="text-gray-900 dark:text-white font-semibold">{exercise.exercise}</p>
+                              </div>
+                              <span className="text-xs px-2 py-1 bg-indigo-100 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 rounded-full font-medium">
+                                {(exercise.sets || []).length} sets
+                              </span>
+                            </div>
+                            
+                            {/* Sets Grid */}
+                            <div className="grid grid-cols-4 gap-1.5 mb-2">
+                              {(exercise.sets || []).map((set: any, setIdx: number) => (
+                                <div 
+                                  key={setIdx} 
+                                  className={`text-center py-1.5 px-2 rounded-lg text-xs ${
+                                    set.weight === bestSet?.weight 
+                                      ? 'bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-400 font-bold'
+                                      : 'bg-white dark:bg-gray-600 text-gray-700 dark:text-white/80'
+                                  }`}
+                                >
+                                  <span className="font-semibold">{set.weight}</span>
+                                  <span className="text-gray-500 dark:text-gray-400">×</span>
+                                  <span>{set.reps}</span>
+                                </div>
+                              ))}
+                            </div>
+                            
+                            {/* Exercise Stats */}
+                            <div className="flex gap-3 text-xs text-gray-500 dark:text-gray-400 pt-2 border-t border-gray-200 dark:border-gray-600">
+                              <span>Volume: <span className="text-gray-700 dark:text-gray-300 font-medium">{exerciseVolume.toLocaleString()} lbs</span></span>
+                              {bestSet && (
+                                <span>Best: <span className="text-yellow-600 dark:text-yellow-400 font-medium">{bestSet.weight}×{bestSet.reps}</span></span>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
               </div>
-            </div>
-          ))
+            );
+          })
         )}
       </div>
     </div>
@@ -6329,6 +13032,9 @@ const WorkoutHistoryScreen = ({ onBack }: { onBack: () => void }) => {
 const ManageGoalsScreen = ({ userData, onBack }: { userData: any; onBack: () => void }) => {
   const [targetWeight, setTargetWeight] = useState(userData.targetWeight);
   const [isSaving, setIsSaving] = useState(false);
+  
+  // Swipe handler for back navigation
+  const swipeHandlers = useSwipe(onBack);
 
   const handleSaveGoal = async () => {
     setIsSaving(true);
@@ -6349,7 +13055,7 @@ const ManageGoalsScreen = ({ userData, onBack }: { userData: any; onBack: () => 
   };
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="p-6 space-y-6 pb-24" {...swipeHandlers}>
       <div className="flex items-center space-x-3 border-b border-indigo-300 dark:border-indigo-500/50 pb-3">
         <button onClick={onBack} className="text-gray-900 dark:text-white hover:text-indigo-600 dark:hover:text-indigo-400">
           <ArrowLeft className="w-6 h-6" />
@@ -6425,6 +13131,9 @@ const AppPreferencesScreen = ({ onBack, userData }: { onBack: () => void; userDa
   const [darkMode, setDarkMode] = useState(userData?.appPreferences?.darkMode ?? true);
   const [units, setUnits] = useState<'metric' | 'imperial'>(userData?.appPreferences?.units || 'metric');
   const [isSaving, setIsSaving] = useState(false);
+  
+  // Swipe handler for back navigation
+  const swipeHandlers = useSwipe(onBack);
 
   const handleSavePreferences = async (key: string, value: any) => {
     setIsSaving(true);
@@ -6469,7 +13178,7 @@ const AppPreferencesScreen = ({ onBack, userData }: { onBack: () => void; userDa
   };
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="p-6 space-y-6 pb-24" {...swipeHandlers}>
       <div className="flex items-center space-x-3 border-b border-indigo-300 dark:border-indigo-500/50 pb-3">
         <button onClick={onBack} className="text-gray-900 dark:text-white hover:text-indigo-600 dark:hover:text-indigo-400">
           <ArrowLeft className="w-6 h-6" />
@@ -6479,54 +13188,54 @@ const AppPreferencesScreen = ({ onBack, userData }: { onBack: () => void; userDa
 
       <div className="space-y-4">
         {/* Notifications */}
-        <div className="bg-white dark:bg-gray-800 p-4 rounded-xl border-2 border-gray-200 dark:border-gray-700 shadow-lg">
+        <div className="bg-white dark:bg-gray-800 p-4 rounded-xl border-2 border-gray-200 dark:border-gray-700 shadow-lg" style={{ height: 'auto' }}>
           <div className="flex justify-between items-center">
             <div>
               <h3 className="text-gray-900 dark:text-white font-semibold">Notifications</h3>
-              <p className="text-gray-600 dark:text-white/60 text-sm">Receive workout reminders</p>
+              <p className="text-gray-600 dark:text-white/80 text-sm">Receive workout reminders</p>
             </div>
             <button
               onClick={handleToggleNotifications}
               disabled={isSaving}
-              className={`w-14 h-8 rounded-full transition relative shadow-inner ${notifications ? 'bg-indigo-600' : 'bg-gray-300 dark:bg-gray-600'}`}
+              className={`w-12 h-6 rounded-md transition relative shadow-inner border-2 ${notifications ? 'bg-indigo-600 border-indigo-700' : 'bg-gray-300 dark:bg-gray-600 border-gray-400 dark:border-gray-500'}`}
             >
-              <div className={`w-6 h-6 bg-white rounded-full shadow-md transform transition ${notifications ? 'translate-x-7' : 'translate-x-1'}`} />
+              <div className={`w-4 h-4 bg-white rounded-sm shadow-md transform transition absolute top-0.5 ${notifications ? 'right-0.5' : 'left-0.5'}`} />
             </button>
           </div>
         </div>
 
         {/* Dark Mode */}
-        <div className="bg-white dark:bg-gray-800 p-4 rounded-xl border-2 border-gray-200 dark:border-gray-700 shadow-lg">
+        <div className="bg-white dark:bg-gray-800 p-4 rounded-xl border-2 border-gray-200 dark:border-gray-700 shadow-lg" style={{ height: 'auto' }}>
           <div className="flex justify-between items-center">
             <div>
               <h3 className="text-gray-900 dark:text-white font-semibold">Dark Mode</h3>
-              <p className="text-gray-600 dark:text-white/60 text-sm">Use dark theme</p>
+              <p className="text-gray-600 dark:text-white/80 text-sm">Use dark theme</p>
             </div>
             <button
               onClick={handleToggleDarkMode}
               disabled={isSaving}
-              className={`w-14 h-8 rounded-full transition relative shadow-inner ${darkMode ? 'bg-gray-700' : 'bg-indigo-500'}`}
+              className={`w-12 h-6 rounded-md transition relative shadow-inner border-2 ${darkMode ? 'bg-gray-700 border-gray-800' : 'bg-indigo-500 border-indigo-600'}`}
             >
-              <div className={`w-6 h-6 bg-white rounded-full shadow-md transform transition ${darkMode ? 'translate-x-7' : 'translate-x-1'}`} />
+              <div className={`w-4 h-4 bg-white rounded-sm shadow-md transform transition absolute top-0.5 ${darkMode ? 'right-0.5' : 'left-0.5'}`} />
             </button>
           </div>
         </div>
 
         {/* Units */}
-        <div className="bg-white dark:bg-gray-800 p-4 rounded-xl border-2 border-gray-200 dark:border-gray-700 shadow-lg">
+        <div className="bg-white dark:bg-gray-800 p-4 rounded-xl border-2 border-gray-200 dark:border-gray-700 shadow-lg" style={{ height: 'auto' }}>
           <h3 className="text-gray-900 dark:text-white font-semibold mb-3">Measurement Units</h3>
           <div className="flex gap-3">
             <button
               onClick={() => handleChangeUnits('metric')}
               disabled={isSaving}
-              className={`flex-1 py-2 rounded-lg font-semibold transition shadow-md ${units === 'metric' ? 'bg-indigo-600 text-white' : 'bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-white/60'}`}
+              className={`flex-1 py-2.5 px-4 rounded-lg font-semibold transition shadow-md text-sm ${units === 'metric' ? 'bg-indigo-600 text-white' : 'bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-white/80'}`}
             >
               Metric (kg, cm)
             </button>
             <button
               onClick={() => handleChangeUnits('imperial')}
               disabled={isSaving}
-              className={`flex-1 py-2 rounded-lg font-semibold transition shadow-md ${units === 'imperial' ? 'bg-indigo-600 text-white' : 'bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-white/60'}`}
+              className={`flex-1 py-2.5 px-4 rounded-lg font-semibold transition shadow-md text-sm ${units === 'imperial' ? 'bg-indigo-600 text-white' : 'bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-white/80'}`}
             >
               Imperial (lb, in)
             </button>
@@ -6665,8 +13374,8 @@ const AccountScreen = ({ onLogout, userData: propUserData, onNavigateToSettings 
 
     return (
         <>
-            {/* Sticky Header */}
-            <div className="sticky top-0 z-40 w-full bg-gradient-to-br from-indigo-50 via-purple-50 to-pink-50 dark:from-gray-900 dark:via-indigo-900/20 dark:to-gray-900 backdrop-blur-md border-b border-indigo-200 dark:border-indigo-500/30 px-4 py-4 shadow-sm">
+            {/* Sticky Header with Safe Area */}
+            <div style={{ paddingTop: 'var(--safe-area-top)' }} className="sticky top-0 z-40 w-full bg-gradient-to-br from-indigo-50 via-purple-50 to-pink-50 dark:from-gray-900 dark:via-indigo-900/20 dark:to-gray-900 backdrop-blur-md border-b border-indigo-200 dark:border-indigo-500/30 px-4 py-4 shadow-sm">
               <div className="flex justify-between items-center">
                 <h2 className="text-3xl font-bold text-gray-900 dark:text-white">My Account</h2>
                 <button
@@ -6679,7 +13388,7 @@ const AccountScreen = ({ onLogout, userData: propUserData, onNavigateToSettings 
               </div>
             </div>
             
-            <div className="p-6 space-y-8">
+            <div className="p-6 space-y-8 pb-24">
             
             {/* Profile Summary Card */}
             <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-2xl border-2 border-indigo-200 dark:border-gray-700">
@@ -6720,6 +13429,9 @@ const AccountScreen = ({ onLogout, userData: propUserData, onNavigateToSettings 
                 </div>
             </div>
 
+            {/* Achievement Badges */}
+            <AchievementBadges userId={auth.currentUser?.uid || ''} />
+
             {/* Settings and Options */}
             <div className="space-y-3">
                 <SettingItem icon={Heart} label="Health Profile" onClick={() => onNavigateToSettings('health')} />
@@ -6739,46 +13451,18 @@ const AccountScreen = ({ onLogout, userData: propUserData, onNavigateToSettings 
             {/* Delete Account Button */}
             <button 
               onClick={() => setShowDeleteConfirm(true)}
-              className="w-full py-3 text-white bg-red-600 dark:bg-red-700 hover:bg-red-700 dark:hover:bg-red-800 transition duration-200 rounded-xl font-semibold shadow-lg"
+              className="w-full py-3 text-white bg-red-600 dark:bg-red-700 hover:bg-red-700 dark:hover:bg-red-800 transition duration-200 rounded-xl font-semibold shadow-lg flex items-center justify-center gap-2"
             >
-                🗑️ Delete Account
+                <Trash2 className="w-5 h-5" /> Delete Account
             </button>
 
             {/* Delete Account Confirmation Modal */}
             {showDeleteConfirm && (
-              <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4" onClick={() => setShowDeleteConfirm(false)}>
-                <div className="bg-white dark:bg-gray-800 rounded-2xl p-6 max-w-md w-full shadow-2xl border border-gray-300 dark:border-red-500/30" onClick={(e) => e.stopPropagation()}>
-                  <h3 className="text-2xl font-bold text-red-600 dark:text-red-400 mb-4">⚠️ Delete Account?</h3>
-                  <p className="text-gray-700 dark:text-white/80 mb-6">
-                    This action is <strong>permanent</strong> and cannot be undone. All your data including:
-                  </p>
-                  <ul className="list-disc list-inside text-gray-600 dark:text-white/70 mb-6 space-y-2">
-                    <li>Profile information</li>
-                    <li>Workout history</li>
-                    <li>Progress tracking</li>
-                    <li>Diet plans</li>
-                  </ul>
-                  <p className="text-gray-700 dark:text-white/80 mb-6">
-                    will be <strong>permanently deleted</strong>.
-                  </p>
-                  <div className="flex gap-3">
-                    <button
-                      onClick={() => setShowDeleteConfirm(false)}
-                      disabled={deleteLoading}
-                      className="flex-1 py-3 bg-gray-200 dark:bg-gray-700 text-gray-900 dark:text-white hover:bg-gray-300 dark:hover:bg-gray-600 rounded-xl font-semibold transition disabled:opacity-50"
-                    >
-                      Cancel
-                    </button>
-                    <button
-                      onClick={handleDeleteAccount}
-                      disabled={deleteLoading}
-                      className="flex-1 py-3 bg-red-600 hover:bg-red-700 text-white rounded-xl font-semibold transition disabled:opacity-50"
-                    >
-                      {deleteLoading ? 'Deleting...' : 'Delete Forever'}
-                    </button>
-                  </div>
-                </div>
-              </div>
+              <DeleteAccountModal
+                onClose={() => setShowDeleteConfirm(false)}
+                onDelete={handleDeleteAccount}
+                isLoading={deleteLoading}
+              />
             )}
 
             {/* Edit Profile Modal */}
@@ -6800,9 +13484,276 @@ const SettingItem = ({ icon: Icon, label, onClick }: { icon: React.ElementType, 
             <Icon className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
             <span className="text-gray-900 dark:text-white font-medium">{label}</span>
         </div>
-        <ArrowLeft className="w-4 h-4 text-gray-400 dark:text-white/50 transform rotate-180" />
+        <ArrowLeft className="w-4 h-4 text-gray-400 dark:text-white/70 transform rotate-180" />
     </div>
 );
+
+// Achievement Badges Component
+const AchievementBadges = ({ userId }: { userId: string }) => {
+  const [achievements, setAchievements] = useState<{ [key: string]: boolean }>({});
+  const [showAll, setShowAll] = useState(false);
+
+  // Define all possible achievements
+  const allBadges = [
+    { id: 'first_workout', icon: '🎯', name: 'First Steps', description: 'Complete your first workout', tier: 'bronze' },
+    { id: 'workout_3', icon: '🔥', name: 'Getting Warmed Up', description: 'Complete 3 workouts', tier: 'bronze' },
+    { id: 'workout_7', icon: '⚡', name: 'Week Warrior', description: 'Complete 7 workouts', tier: 'silver' },
+    { id: 'workout_30', icon: '💪', name: 'Monthly Master', description: 'Complete 30 workouts', tier: 'gold' },
+    { id: 'workout_100', icon: '🏆', name: 'Century Club', description: 'Complete 100 workouts', tier: 'platinum' },
+    { id: 'streak_3', icon: '🔗', name: 'Chain Starter', description: '3-day workout streak', tier: 'bronze' },
+    { id: 'streak_7', icon: '📅', name: 'Week Streak', description: '7-day workout streak', tier: 'silver' },
+    { id: 'streak_30', icon: '🗓️', name: 'Monthly Streak', description: '30-day workout streak', tier: 'gold' },
+    { id: 'volume_10k', icon: '🏋️', name: 'Heavy Lifter', description: 'Lift 10,000 lbs total', tier: 'bronze' },
+    { id: 'volume_100k', icon: '💎', name: 'Iron Will', description: 'Lift 100,000 lbs total', tier: 'silver' },
+    { id: 'volume_1m', icon: '👑', name: 'Legendary Lifter', description: 'Lift 1,000,000 lbs total', tier: 'platinum' },
+    { id: 'early_bird', icon: '🌅', name: 'Early Bird', description: 'Complete a workout before 7 AM', tier: 'bronze' },
+    { id: 'night_owl', icon: '🌙', name: 'Night Owl', description: 'Complete a workout after 9 PM', tier: 'bronze' },
+    { id: 'all_muscles', icon: '🎖️', name: 'Full Body', description: 'Train all muscle groups in a week', tier: 'silver' },
+    { id: 'pr_1', icon: '📈', name: 'New Heights', description: 'Set your first PR', tier: 'bronze' },
+    { id: 'pr_10', icon: '🚀', name: 'PR Machine', description: 'Set 10 PRs', tier: 'silver' },
+    { id: 'pr_50', icon: '⭐', name: 'Record Breaker', description: 'Set 50 PRs', tier: 'gold' },
+  ];
+
+  const tierColors: { [key: string]: string } = {
+    bronze: 'from-amber-600 to-orange-700',
+    silver: 'from-gray-300 to-gray-500',
+    gold: 'from-yellow-400 to-amber-500',
+    platinum: 'from-cyan-300 to-blue-400'
+  };
+
+  // Fetch and calculate achievements
+  useEffect(() => {
+    const fetchAchievements = async () => {
+      if (!userId) return;
+
+      try {
+        // Fetch workout history
+        const workoutQuery = query(
+          collection(db, 'workoutHistory'),
+          where('userId', '==', userId)
+        );
+        const workoutSnap = await getDocs(workoutQuery);
+        const workouts = workoutSnap.docs.map(d => d.data());
+
+        // Fetch PRs
+        const prQuery = query(
+          collection(db, 'personalRecords'),
+          where('userId', '==', userId)
+        );
+        const prSnap = await getDocs(prQuery);
+        const prCount = prSnap.docs.length;
+
+        // Calculate achievements
+        const earned: { [key: string]: boolean } = {};
+        const workoutCount = workouts.length;
+        
+        // Workout count badges
+        earned['first_workout'] = workoutCount >= 1;
+        earned['workout_3'] = workoutCount >= 3;
+        earned['workout_7'] = workoutCount >= 7;
+        earned['workout_30'] = workoutCount >= 30;
+        earned['workout_100'] = workoutCount >= 100;
+
+        // Calculate total volume
+        const totalVolume = workouts.reduce((sum, w) => {
+          return sum + ((w.exercises || []).reduce((eSum: number, ex: any) => {
+            return eSum + ((ex.sets || []).reduce((sSum: number, s: any) => sSum + ((s.weight || 0) * (s.reps || 0)), 0));
+          }, 0));
+        }, 0);
+
+        earned['volume_10k'] = totalVolume >= 10000;
+        earned['volume_100k'] = totalVolume >= 100000;
+        earned['volume_1m'] = totalVolume >= 1000000;
+
+        // PR badges
+        earned['pr_1'] = prCount >= 1;
+        earned['pr_10'] = prCount >= 10;
+        earned['pr_50'] = prCount >= 50;
+
+        // Time-based badges
+        workouts.forEach((w: any) => {
+          const hour = new Date(w.timestamp).getHours();
+          if (hour < 7) earned['early_bird'] = true;
+          if (hour >= 21) earned['night_owl'] = true;
+        });
+
+        // Calculate streaks (simplified)
+        if (workoutCount >= 3) {
+          const sortedDates = workouts
+            .map((w: any) => new Date(w.timestamp).toDateString())
+            .filter((v, i, a) => a.indexOf(v) === i) // unique dates
+            .sort((a, b) => new Date(b).getTime() - new Date(a).getTime());
+          
+          let maxStreak = 1;
+          let currentStreak = 1;
+          for (let i = 1; i < sortedDates.length; i++) {
+            const diff = (new Date(sortedDates[i-1]).getTime() - new Date(sortedDates[i]).getTime()) / (1000 * 60 * 60 * 24);
+            if (diff <= 1.5) {
+              currentStreak++;
+              maxStreak = Math.max(maxStreak, currentStreak);
+            } else {
+              currentStreak = 1;
+            }
+          }
+          
+          earned['streak_3'] = maxStreak >= 3;
+          earned['streak_7'] = maxStreak >= 7;
+          earned['streak_30'] = maxStreak >= 30;
+        }
+
+        // Check all muscles in a week
+        const oneWeekAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
+        const weekWorkouts = workouts.filter((w: any) => w.timestamp >= oneWeekAgo);
+        const musclesTrained = new Set<string>();
+        weekWorkouts.forEach((w: any) => {
+          (w.exercises || []).forEach((ex: any) => {
+            MUSCLE_GROUPS.forEach(mg => {
+              if ([...mg.exercises.gym, ...mg.exercises.home].includes(ex.exercise)) {
+                musclesTrained.add(mg.name);
+              }
+            });
+          });
+        });
+        earned['all_muscles'] = musclesTrained.size >= 6;
+
+        setAchievements(earned);
+      } catch (error) {
+        console.error('Error fetching achievements:', error);
+      }
+    };
+
+    fetchAchievements();
+  }, [userId]);
+
+  const earnedBadges = allBadges.filter(b => achievements[b.id]);
+  const displayBadges = showAll ? allBadges : earnedBadges.slice(0, 6);
+
+  return (
+    <div className="bg-white dark:bg-gray-800 p-4 rounded-xl shadow-lg border-2 border-gray-200 dark:border-gray-700">
+      <div className="flex items-center justify-between mb-4">
+        <h3 className="text-lg font-bold text-gray-900 dark:text-white flex items-center gap-2">
+          🏅 Achievements
+        </h3>
+        <span className="text-sm text-indigo-600 dark:text-indigo-400 font-semibold">
+          {earnedBadges.length}/{allBadges.length}
+        </span>
+      </div>
+
+      {earnedBadges.length === 0 ? (
+        <div className="text-center py-4">
+          <span className="text-4xl mb-2 block">🎯</span>
+          <p className="text-gray-500 dark:text-gray-400 text-sm">Complete workouts to unlock badges!</p>
+        </div>
+      ) : (
+        <>
+          <div className="grid grid-cols-3 gap-2">
+            {displayBadges.map(badge => {
+              const isEarned = achievements[badge.id];
+              return (
+                <div
+                  key={badge.id}
+                  className={`relative p-3 rounded-xl text-center transition ${
+                    isEarned 
+                      ? `bg-gradient-to-br ${tierColors[badge.tier]} shadow-lg` 
+                      : 'bg-gray-100 dark:bg-gray-700/50 opacity-50'
+                  }`}
+                >
+                  <span className={`text-2xl ${!isEarned && 'grayscale opacity-50'}`}>{badge.icon}</span>
+                  <p className={`text-[10px] font-semibold mt-1 ${isEarned ? 'text-white' : 'text-gray-500 dark:text-gray-400'}`}>
+                    {badge.name}
+                  </p>
+                  {isEarned && (
+                    <div className="absolute -top-1 -right-1 w-4 h-4 bg-white rounded-full flex items-center justify-center shadow-lg">
+                      <span className="text-green-500 text-xs">✓</span>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+
+          <button
+            onClick={() => setShowAll(!showAll)}
+            className="w-full mt-3 py-2 text-sm text-indigo-600 dark:text-indigo-400 font-semibold hover:bg-indigo-50 dark:hover:bg-indigo-900/20 rounded-lg transition"
+          >
+            {showAll ? 'Show Less' : `View All ${allBadges.length} Badges`}
+          </button>
+        </>
+      )}
+    </div>
+  );
+};
+
+// Delete Account Confirmation Modal
+const DeleteAccountModal = ({
+  onClose,
+  onDelete,
+  isLoading
+}: {
+  onClose: () => void;
+  onDelete: () => void;
+  isLoading: boolean;
+}) => {
+  useEscapeKey(onClose, !isLoading);
+
+  return (
+    <div 
+      className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4" 
+      onClick={isLoading ? undefined : onClose}
+      role="alertdialog"
+      aria-modal="true"
+      aria-labelledby="delete-account-title"
+      aria-describedby="delete-account-desc"
+    >
+      <div 
+        className="bg-white dark:bg-gray-800 rounded-2xl p-6 max-w-md w-full shadow-2xl border border-gray-300 dark:border-red-500/30" 
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex justify-between items-center mb-4">
+          <h3 id="delete-account-title" className="text-2xl font-bold text-red-600 dark:text-red-400">⚠️ Delete Account?</h3>
+          <button 
+            onClick={onClose}
+            disabled={isLoading}
+            className="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-white transition disabled:opacity-50"
+            aria-label="Close delete confirmation"
+          >
+            <X className="h-6 w-6" />
+          </button>
+        </div>
+        <div id="delete-account-desc">
+          <p className="text-gray-700 dark:text-white/80 mb-6">
+            This action is <strong>permanent</strong> and cannot be undone. All your data including:
+          </p>
+          <ul className="list-disc list-inside text-gray-600 dark:text-white/70 mb-6 space-y-2">
+            <li>Profile information</li>
+            <li>Workout history</li>
+            <li>Progress tracking</li>
+            <li>Diet plans</li>
+          </ul>
+          <p className="text-gray-700 dark:text-white/80 mb-6">
+            will be <strong>permanently deleted</strong>.
+          </p>
+        </div>
+        <div className="flex gap-3">
+          <button
+            onClick={onClose}
+            disabled={isLoading}
+            className="flex-1 py-3 bg-gray-200 dark:bg-gray-700 text-gray-900 dark:text-white hover:bg-gray-300 dark:hover:bg-gray-600 rounded-xl font-semibold transition disabled:opacity-50"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={onDelete}
+            disabled={isLoading}
+            className="flex-1 py-3 bg-red-600 hover:bg-red-700 text-white rounded-xl font-semibold transition disabled:opacity-50"
+          >
+            {isLoading ? 'Deleting...' : 'Delete Forever'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
 
 
 // --- Main App Component ---
@@ -6820,15 +13771,61 @@ const App = () => {
   const [showPlanModal, setShowPlanModal] = useState(false);
   const [activeSettingsScreen, setActiveSettingsScreen] = useState<'health' | 'history' | 'goals' | 'preferences' | null>(null);
   
+  // Ref for main scroll container
+  const mainScrollRef = useRef<HTMLElement>(null);
+  
+  // Scroll to top when tab changes
+  useEffect(() => {
+    if (mainScrollRef.current) {
+      mainScrollRef.current.scrollTo({ top: 0, behavior: 'auto' });
+    }
+  }, [activeTab]);
+  
   // Premium Subscription State
   const [isPremium, setIsPremium] = useState(false); // Changed from true - now requires actual subscription
   // @ts-ignore - premiumExpiry used for future subscription management features
   const [premiumExpiry, setPremiumExpiry] = useState<number | null>(null);
   
+  // Active Workout Persistence Hook - manages localStorage sync and resume
+  const {
+    activeWorkout,
+    showResumePrompt,
+    pendingWorkout,
+    resumeWorkout,
+    discardPendingWorkout,
+    addExerciseToWorkout: _addExerciseToPersistence,
+    addSetToExercise: _addSetToPersistence,
+    finishWorkout: _finishPersistentWorkout,
+    startWorkout: _startPersistentWorkout,
+    getElapsedTime: _getElapsedTime
+  } = useActiveWorkout();
+  
   // Exercise Logging State
   const [exerciseSubView, setExerciseSubView] = useState<'list' | 'details' | 'log'>('list');
-  const [currentWorkout, setCurrentWorkout] = useState<Array<{ exercise: string; sets: Array<{ reps: number; weight: number }> }>>([]);
+  const [exerciseTab, setExerciseTab] = useState<'today' | 'programs' | 'library' | 'prs'>('today');
+  const [selectedExerciseForDetail, setSelectedExerciseForDetail] = useState<string | null>(null);
+  const [guidedWorkoutMode, setGuidedWorkoutMode] = useState(false);
+  const [currentWorkout, setCurrentWorkout] = useState<Array<{ exercise?: string; name?: string; sets: Array<{ reps: number; weight: number }> }>>([]);
   const [workoutStartTime, setWorkoutStartTime] = useState<number | null>(null);
+  const [workoutSummary, setWorkoutSummary] = useState<{
+    show: boolean;
+    duration: number;
+    exercises: any[];
+    totalSets: number;
+    totalVolume: number;
+    newPRs: { exercise: string; weight: number; reps: number }[];
+  } | null>(null);
+  
+  // Sync activeWorkout from hook to local state when resuming
+  useEffect(() => {
+    if (activeWorkout && activeWorkout.exercises.length > 0) {
+      setCurrentWorkout(activeWorkout.exercises.map(e => ({
+        exercise: e.exercise,
+        sets: e.sets.map(s => ({ reps: s.reps, weight: s.weight }))
+      })));
+      setWorkoutStartTime(activeWorkout.startTime);
+    }
+  }, [activeWorkout]);
   
   // Helper function to get current day (1=Monday, 7=Sunday) based on timezone
   const getCurrentDayOfWeek = () => {
@@ -6897,19 +13894,51 @@ const App = () => {
     initializeMealPlan();
   }, [user?.uid]);
   
-  // Load logged meals from Firebase
+  // Load logged meals from Firebase with smart date detection
   useEffect(() => {
     const loadLoggedMeals = async () => {
       if (!user?.uid) return;
       
       try {
+        const today = new Date().toISOString().split('T')[0];
+        const lastMealDate = localStorage.getItem('lastMealCheckDate');
+        
+        // Update last check date
+        if (lastMealDate !== today) {
+          console.log('New day detected for meals! Last check:', lastMealDate, 'Today:', today);
+          localStorage.setItem('lastMealCheckDate', today);
+        }
+        
         const userDocRef = doc(db, 'users', user.uid);
         const userDoc = await getDoc(userDocRef);
         
         if (userDoc.exists()) {
           const data = userDoc.data();
           if (data.loggedMeals) {
-            setLoggedMeals(data.loggedMeals);
+            // Clean up old meal data (older than 90 days)
+            const ninetyDaysAgo = new Date();
+            ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90);
+            const cutoffDate = ninetyDaysAgo.toISOString().split('T')[0];
+            
+            const cleanedMeals: Record<string, any[]> = {};
+            let needsCleanup = false;
+            
+            Object.keys(data.loggedMeals).forEach(date => {
+              if (date >= cutoffDate) {
+                cleanedMeals[date] = data.loggedMeals[date];
+              } else {
+                needsCleanup = true;
+                console.log('Removing old meal data for date:', date);
+              }
+            });
+            
+            setLoggedMeals(cleanedMeals);
+            
+            // Update Firebase if cleanup occurred
+            if (needsCleanup) {
+              await updateDoc(userDocRef, { loggedMeals: cleanedMeals });
+              console.log('Cleaned up old meal data from database');
+            }
           }
         }
       } catch (error) {
@@ -6925,14 +13954,20 @@ const App = () => {
     if (!user?.uid) return;
     
     const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD format
+    const now = new Date();
     const logEntry = {
       ...mealData,
       mealType,
-      loggedAt: Date.now(),
-      date: today
+      loggedAt: now.getTime(),
+      loggedAtISO: now.toISOString(),
+      date: today,
+      timeOfDay: now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })
     };
 
     try {
+      // Update localStorage date tracker
+      localStorage.setItem('lastMealCheckDate', today);
+      
       const newLoggedMeals = { ...loggedMeals };
       if (!newLoggedMeals[today]) {
         newLoggedMeals[today] = [];
@@ -7265,7 +14300,7 @@ const App = () => {
     let loadingTimeout: number | null = null;
     
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
-      console.log('Auth state changed:', firebaseUser ? `User: ${firebaseUser.uid}, Verified: ${firebaseUser.emailVerified}` : 'No user');
+      log('Auth state changed:', firebaseUser ? `User: ${firebaseUser.uid}, Verified: ${firebaseUser.emailVerified}` : 'No user');
       setUser(firebaseUser);
       setIsAuthenticated(!!firebaseUser);
       
@@ -7273,20 +14308,36 @@ const App = () => {
         // Only fetch user data if email is verified
         // If not verified, they'll see the verification screen and won't need the data yet
         if (!firebaseUser.emailVerified) {
-          console.log('User not verified, skipping data fetch');
+          log('User not verified, skipping data fetch');
           setLoading(false);
           if (loadingTimeout) clearTimeout(loadingTimeout);
           return;
         }
         
-        console.log('User verified, fetching user data...');
+        log('User verified, fetching user data...');
         
-        // Set a timeout to stop loading after 5 seconds if nothing works
+        // PERFORMANCE: Try to use cached data first for instant load
+        const cachedData = localStorage.getItem('userData');
+        if (cachedData) {
+          try {
+            const parsedCache = JSON.parse(cachedData);
+            // Use cached data immediately for fast initial render
+            setUserData(parsedCache);
+            setLoading(false);
+            log('Using cached user data for instant load');
+          } catch (e) {
+            // Invalid cache, will fetch fresh
+          }
+        }
+        
+        // Set a shorter timeout (3 seconds) since we have cache fallback
         loadingTimeout = setTimeout(() => {
-          console.warn('Loading timeout - forcing loading to stop');
+          warn('Loading timeout - forcing loading to stop');
           setLoading(false);
-          toast.error('Failed to load profile. Please refresh or contact support.');
-        }, 5000);
+          if (!cachedData) {
+            toast.error('Slow connection. Some data may not be loaded.');
+          }
+        }, 3000);
         
         // Set up real-time listener for user data from Firestore
         const userDocRef = doc(db, 'users', firebaseUser.uid);
@@ -7325,14 +14376,14 @@ const App = () => {
             if (loadingTimeout) clearTimeout(loadingTimeout);
           } else {
             // User data doesn't exist - this is first verified login
-            console.log('User document does not exist - checking for temp data...');
+            log('User document does not exist - checking for temp data...');
             
             // Check if we have temporary profile data from signup
             const tempData = localStorage.getItem('tempUserData');
             if (tempData) {
               try {
                 const profileData = JSON.parse(tempData);
-                console.log('Found temp profile data, creating Firestore document...');
+                log('Found temp profile data, creating Firestore document...');
                 
                 // Create user document in Firestore with device session
                 const userData = {
@@ -7350,7 +14401,7 @@ const App = () => {
                 };
                 
                 await setDoc(userDocRef, userData);
-                console.log('User document created successfully on first verified login');
+                log('User document created successfully on first verified login');
                 
                 // Clean up temp data
                 localStorage.removeItem('tempUserData');
@@ -7368,7 +14419,7 @@ const App = () => {
                 if (loadingTimeout) clearTimeout(loadingTimeout);
               }
             } else {
-              console.warn('No temp data found - user needs to complete profile');
+              warn('No temp data found - user needs to complete profile');
               // Don't load cached data - user needs to see ProfileCompletionScreen
               setUserData(null);
               setLoading(false);
@@ -7385,11 +14436,11 @@ const App = () => {
         unsubscribeSnapshot = onSnapshot(userDocRef, (docSnap) => {
           if (docSnap.exists()) {
             const data = docSnap.data();
-            console.log('Snapshot received user data:', data);
+            log('Snapshot received user data:', data);
             
             // Check if device ID has changed (user logged in on another device)
             if (data.activeDeviceId && data.activeDeviceId !== deviceId) {
-              console.warn('Device ID changed - user logged in on another device');
+              warn('Device ID changed - user logged in on another device');
               toast.error('Your account was logged in on another device. Logging out...');
               signOut(auth);
               localStorage.removeItem('userData');
@@ -7404,7 +14455,7 @@ const App = () => {
             setLoading(false);
             if (loadingTimeout) clearTimeout(loadingTimeout);
           } else {
-            console.log('User document does not exist - showing profile completion screen');
+            log('User document does not exist - showing profile completion screen');
             // Don't use cached data - let Auth Guard show ProfileCompletionScreen
             setUserData(null);
             setLoading(false);
@@ -7418,7 +14469,7 @@ const App = () => {
           if (loadingTimeout) clearTimeout(loadingTimeout);
         });
       } else {
-        console.log('No user, clearing all data');
+        log('No user, clearing all data');
         setUserData(null);
         // Clear all app-related localStorage
         localStorage.removeItem('userData');
@@ -7452,28 +14503,78 @@ const App = () => {
         }
 
         // Priority 2: Close Modals if open
-        if (selectedExercise || showPlanModal) {
-          setSelectedExercise(null);
+        if (showPlanModal) {
           setShowPlanModal(false);
-          return; // Stop execution here
+          return;
         }
 
-        // Priority 3: Handle Exercise Finder Navigation
+        // Priority 3: Handle Exercise Tab Navigation (hierarchical)
         if (activeTab === 'exercise') {
-          if (exerciseSubView === 'log') {
-            setExerciseSubView('list'); // Go back from logging to list
-            return;
-          } else if (location) {
-            setLocation(null); // Go back to Location Select
-            return;
-          } else if (selectedMuscle) {
-            setSelectedMuscle(null); // Go back to Muscle Grid
-            return;
-          } else {
-            // If at root of Exercise tab, go to Home tab
-            setActiveTab('home');
+          // Priority 3a: Close workout summary if showing
+          if (workoutSummary?.show) {
+            setWorkoutSummary(null);
             return;
           }
+          
+          // Priority 3b: Exit guided workout mode (Focus Mode)
+          if (guidedWorkoutMode) {
+            // Show confirmation if workout in progress
+            if (currentWorkout.length > 0 && currentWorkout.some(ex => ex.sets && ex.sets.length > 0)) {
+              const confirmed = confirm('Quit workout? Your progress will be lost.');
+              if (confirmed) {
+                // Clear localStorage to match in-app quit behavior
+                localStorage.removeItem('AURA_FOCUS_MODE');
+                localStorage.removeItem('aura_active_workout');
+                setGuidedWorkoutMode(false);
+                setExerciseSubView('list');
+                setCurrentWorkout([]);
+                setWorkoutStartTime(null);
+              }
+            } else {
+              // Clear localStorage even if no sets logged
+              localStorage.removeItem('AURA_FOCUS_MODE');
+              localStorage.removeItem('aura_active_workout');
+              setGuidedWorkoutMode(false);
+              setExerciseSubView('list');
+              setCurrentWorkout([]);
+              setWorkoutStartTime(null);
+            }
+            return;
+          }
+          
+          // Priority 3c: Close exercise detail modal
+          if (selectedExerciseForDetail) {
+            setSelectedExerciseForDetail(null);
+            return;
+          }
+          
+          // Priority 3d: Exit single exercise logging
+          if (exerciseSubView === 'log') {
+            setExerciseSubView('list');
+            return;
+          }
+          
+          // Priority 3e: Navigate from sub-tabs back to Today (will handle program detail internally via handleBack)
+          if (exerciseTab !== 'today') {
+            setExerciseTab('today');
+            return;
+          }
+          
+          // Priority 3f: Clear location filter
+          if (location) {
+            setLocation(null);
+            return;
+          }
+          
+          // Priority 3g: Clear muscle filter
+          if (selectedMuscle) {
+            setSelectedMuscle(null);
+            return;
+          }
+          
+          // Priority 3g: Go to Home tab
+          setActiveTab('home');
+          return;
         }
 
         // Priority 4: Handle Diet Plan Navigation
@@ -7500,7 +14601,7 @@ const App = () => {
         backButtonListener.remove();
       }
     };
-  }, [activeTab, selectedMuscle, location, goal, selectedExercise, showPlanModal, activeSettingsScreen, exerciseSubView]);
+  }, [activeTab, selectedMuscle, location, goal, showPlanModal, activeSettingsScreen, exerciseSubView, guidedWorkoutMode, selectedExerciseForDetail, exerciseTab, currentWorkout]);
 
   const handleLogin = () => {
     setIsAuthenticated(true);
@@ -7511,79 +14612,326 @@ const App = () => {
     setActiveTab('home');
   };
 
-  // Finish Workout Function - Save to Firestore
-  const finishWorkout = async () => {
-    if (currentWorkout.length === 0) {
-      toast.error('No exercises to save');
+  // ==========================================
+  // FINISH WORKOUT - COMPLETE TRANSACTION WORKFLOW
+  // ==========================================
+  // This function handles the entire workout completion process:
+  // 1. Validate workout data
+  // 2. Calculate metrics
+  // 3. Save to Firebase
+  // 4. Advance program (if applicable)
+  // 5. Clear all state and localStorage
+  // 6. Show summary UI
+  // ==========================================
+  const finishWorkout = async (passedWorkout?: Array<{ name?: string; exercise?: string; sets: Array<{ reps: number; weight: number }> }>) => {
+    console.log('=== FINISH WORKOUT TRANSACTION STARTED ===');
+    
+    // ==========================================
+    // STEP 1: STATE CHECK - Ensure workout data exists
+    // ==========================================
+    const workoutData = passedWorkout || currentWorkout;
+    
+    if (!workoutData || workoutData.length === 0) {
+      console.error('Attempted to finish workout, but no workout data available.');
+      toast.error('No workout to save');
+      return;
+    }
+    
+    // Filter out exercises with no sets
+    const workoutToSave = workoutData.filter(ex => ex.sets && ex.sets.length > 0);
+    
+    if (workoutToSave.length === 0) {
+      console.error('Attempted to finish workout, but no exercises have logged sets.');
+      toast.error('No exercises with sets to save. Log at least one set!');
       return;
     }
 
     const user = auth.currentUser;
     if (!user) {
-      toast.error('Not authenticated');
+      console.error('Attempted to finish workout, but user is not authenticated.');
+      toast.error('Not authenticated. Please log in and try again.');
       return;
     }
 
     try {
+      // ==========================================
+      // STEP 2: CALCULATE WORKOUT METRICS
+      // ==========================================
       const endTime = Date.now();
-      const durationMs = workoutStartTime ? endTime - workoutStartTime : 0;
-      const durationMinutes = Math.floor(durationMs / 60000);
+      const startTime = workoutStartTime || endTime; // Fallback to endTime if no start time
+      const durationMs = endTime - startTime;
+      const durationMinutes = Math.max(1, Math.floor(durationMs / 60000)); // Minimum 1 minute
 
-      // Save workout to Firestore
-      const currentTimestamp = Date.now();
-      await addDoc(collection(db, 'workoutHistory'), {
-        userId: user.uid,
-        timestamp: currentTimestamp,
-        exercises: currentWorkout,
-        duration_ms: durationMs,
-        duration_minutes: durationMinutes,
-        date: new Date().toLocaleDateString(),
-        totalExercises: currentWorkout.length,
-        totalSets: currentWorkout.reduce((sum, ex) => sum + ex.sets.length, 0)
+      // Calculate total volume and sets
+      let totalVolume = 0;
+      let totalSets = 0;
+      let totalReps = 0;
+      
+      workoutToSave.forEach(ex => {
+        ex.sets.forEach(set => {
+          totalVolume += (set.weight || 0) * (set.reps || 0);
+          totalSets++;
+          totalReps += set.reps || 0;
+        });
       });
 
-      // Clean up old workout records (older than 30 days)
-      const thirtyDaysAgo = Date.now() - (30 * 24 * 60 * 60 * 1000);
+      // Calculate estimated calories burned (rough estimate: 5-8 cal/min for strength training)
+      const caloriesBurned = Math.round(durationMinutes * 6);
+
+      console.log('Workout Metrics Calculated:', {
+        exercises: workoutToSave.length,
+        sets: totalSets,
+        reps: totalReps,
+        volume: totalVolume,
+        duration: durationMinutes,
+        calories: caloriesBurned
+      });
+
+      // ==========================================
+      // STEP 3: CHECK FOR NEW PERSONAL RECORDS
+      // ==========================================
+      const newPRs: { exercise: string; weight: number; reps: number }[] = [];
       
       try {
+        const prsQuery = query(
+          collection(db, 'personalRecords'),
+          where('userId', '==', user.uid)
+        );
+        const prsSnapshot = await getDocs(prsQuery);
+        const existingPRs: Record<string, { weight: number; reps: number; docId: string }> = {};
+        
+        prsSnapshot.docs.forEach(docSnapshot => {
+          const data = docSnapshot.data();
+          existingPRs[data.exercise] = { 
+            weight: data.weight, 
+            reps: data.reps,
+            docId: docSnapshot.id 
+          };
+        });
+
+        // Check each exercise for new PRs and update if found
+        for (const ex of workoutToSave) {
+          if (!ex.sets || ex.sets.length === 0) continue;
+          
+          const bestSet = ex.sets.reduce((best, set) => {
+            const current1RM = (set.weight || 0) * (1 + (set.reps || 0) / 30);
+            const best1RM = (best.weight || 0) * (1 + (best.reps || 0) / 30);
+            return current1RM > best1RM ? set : best;
+          }, ex.sets[0]);
+
+          const exerciseName = (ex as any).name || ex.exercise || 'Unknown Exercise';
+          const existingPR = existingPRs[exerciseName];
+          const new1RM = (bestSet.weight || 0) * (1 + (bestSet.reps || 0) / 30);
+          const existing1RM = existingPR ? (existingPR.weight || 0) * (1 + (existingPR.reps || 0) / 30) : 0;
+
+          if (new1RM > existing1RM && bestSet.weight > 0) {
+            newPRs.push({ exercise: exerciseName, weight: bestSet.weight, reps: bestSet.reps });
+            
+            // Update or create PR in Firestore
+            try {
+              if (existingPR?.docId) {
+                await updateDoc(doc(db, 'personalRecords', existingPR.docId), {
+                  weight: bestSet.weight,
+                  reps: bestSet.reps,
+                  date: new Date().toISOString(),
+                  estimated1RM: new1RM
+                });
+              } else {
+                await addDoc(collection(db, 'personalRecords'), {
+                  userId: user.uid,
+                  exercise: exerciseName,
+                  weight: bestSet.weight,
+                  reps: bestSet.reps,
+                  date: new Date().toISOString(),
+                  estimated1RM: new1RM
+                });
+              }
+            } catch (prError) {
+              console.error('Error saving PR:', prError);
+              // Continue even if PR save fails
+            }
+          }
+        }
+        
+        if (newPRs.length > 0) {
+          console.log('New PRs detected:', newPRs);
+        }
+      } catch (prError) {
+        console.error('Error checking PRs:', prError);
+        // Continue even if PR check fails
+      }
+
+      // ==========================================
+      // STEP 4: SAVE WORKOUT TO FIREBASE (CORE ACTION)
+      // ==========================================
+      const workoutHistoryEntry = {
+        userId: user.uid,
+        timestamp: endTime,
+        exercises: workoutToSave.map(ex => ({
+          exercise: ex.exercise || (ex as any).name || 'Unknown Exercise',
+          name: (ex as any).name || ex.exercise || 'Unknown Exercise',
+          sets: ex.sets.map(s => ({ 
+            reps: s.reps || 0, 
+            weight: s.weight || 0 
+          }))
+        })),
+        duration_ms: durationMs,
+        duration_minutes: durationMinutes,
+        date: new Date().toISOString().split('T')[0],
+        dateFormatted: new Date().toLocaleDateString(),
+        totalExercises: workoutToSave.length,
+        totalSets: totalSets,
+        totalReps: totalReps,
+        totalVolume: totalVolume,
+        caloriesBurned: caloriesBurned,
+        completedAt: new Date().toISOString(),
+        startedAt: workoutStartTime ? new Date(workoutStartTime).toISOString() : new Date().toISOString()
+      };
+
+      await addDoc(collection(db, 'workoutHistory'), workoutHistoryEntry);
+      console.log('✅ Workout saved to Firebase successfully');
+
+      // ==========================================
+      // STEP 5: PROGRAM ADVANCEMENT (If on a program)
+      // ==========================================
+      if (userData?.activeProgram?.programId) {
+        try {
+          const program = WORKOUT_PROGRAMS.find(p => p.id === userData.activeProgram.programId);
+          if (program) {
+            const programCurrentDay = userData.activeProgram.currentDay || 1;
+            const programCurrentWeek = userData.activeProgram.currentWeek || 1;
+            
+            let nextDay = programCurrentDay + 1;
+            let nextWeek = programCurrentWeek;
+            
+            // Check if we've completed the week
+            if (nextDay > program.daysPerWeek) {
+              nextDay = 1;
+              nextWeek = programCurrentWeek + 1;
+            }
+            
+            // Calculate days completed
+            const daysCompleted = ((programCurrentWeek - 1) * program.daysPerWeek) + programCurrentDay;
+            
+            // Update Firestore
+            const userRef = doc(db, 'users', user.uid);
+            await updateDoc(userRef, {
+              'activeProgram.currentDay': nextDay,
+              'activeProgram.currentWeek': nextWeek,
+              'activeProgram.daysCompleted': daysCompleted,
+              'activeProgram.lastWorkoutDate': new Date().toISOString().split('T')[0]
+            });
+            
+            // Update local userData state for immediate UI reflection
+            setUserData((prev: any) => ({
+              ...prev,
+              activeProgram: {
+                ...prev?.activeProgram,
+                currentDay: nextDay,
+                currentWeek: nextWeek,
+                daysCompleted: daysCompleted,
+                lastWorkoutDate: new Date().toISOString().split('T')[0]
+              }
+            }));
+            
+            console.log(`✅ Program advanced: Day ${programCurrentDay} → ${nextDay}, Week ${programCurrentWeek} → ${nextWeek}`);
+          }
+        } catch (progError) {
+          console.error('Error advancing program:', progError);
+          toast.error('Workout saved, but failed to update program progress.');
+          // Don't fail the workout save if program advancement fails
+        }
+      }
+
+      // ==========================================
+      // STEP 6: CLEANUP - Clear ALL state and localStorage
+      // ==========================================
+      // Clear localStorage entries BEFORE clearing state
+      localStorage.removeItem('AURA_FOCUS_MODE');
+      localStorage.removeItem('AURA_WORKOUT_STORE');
+      localStorage.removeItem('aura_active_workout');
+      
+      console.log('✅ localStorage cleared');
+
+      // ==========================================
+      // STEP 7: SHOW WORKOUT SUMMARY FIRST (UI Transition)
+      // ==========================================
+      // Show summary BEFORE clearing guided mode to prevent jarring transition
+      setWorkoutSummary({
+        show: true,
+        duration: durationMinutes,
+        exercises: [...workoutToSave],
+        totalSets: totalSets,
+        totalVolume: totalVolume,
+        newPRs: newPRs
+      });
+
+      // ==========================================
+      // STEP 8: RESET ALL WORKOUT STATE (batched for smooth transition)
+      // ==========================================
+      // Use setTimeout to allow summary modal to render first, then cleanup state
+      setTimeout(() => {
+        setCurrentWorkout([]);
+        setWorkoutStartTime(null);
+        setGuidedWorkoutMode(false);
+        setExerciseSubView('list');
+      }, 50); // 50ms delay for smooth transition
+      
+      console.log('✅ Workout state reset');
+
+      // ==========================================
+      // STEP 9: SUCCESS NOTIFICATION
+      // ==========================================
+      const successMessage = newPRs.length > 0 
+        ? `Workout complete! 🎉 ${newPRs.length} new PR${newPRs.length > 1 ? 's' : ''}!`
+        : 'Workout saved successfully! 💪';
+      
+      toast.success(successMessage);
+      console.log('=== FINISH WORKOUT TRANSACTION COMPLETED ===');
+
+      // ==========================================
+      // OPTIONAL: Cleanup old workout records (background task)
+      // ==========================================
+      try {
+        const thirtyDaysAgo = Date.now() - (30 * 24 * 60 * 60 * 1000);
         const allWorkoutsQuery = query(
           collection(db, 'workoutHistory'),
           where('userId', '==', user.uid)
         );
         
         const allWorkoutsSnapshot = await getDocs(allWorkoutsQuery);
-        
-        // Filter old workouts client-side
-        const oldWorkouts = allWorkoutsSnapshot.docs.filter(doc => {
-          const data = doc.data();
+        const oldWorkouts = allWorkoutsSnapshot.docs.filter(docSnapshot => {
+          const data = docSnapshot.data();
           return data.timestamp < thirtyDaysAgo;
         });
         
-        // Delete old workouts
         if (oldWorkouts.length > 0) {
-          const deletePromises = oldWorkouts.map(doc => deleteDoc(doc.ref));
+          const deletePromises = oldWorkouts.map(docSnapshot => deleteDoc(docSnapshot.ref));
           await Promise.all(deletePromises);
-          console.log(`Deleted ${oldWorkouts.length} old workout records`);
+          console.log(`Cleaned up ${oldWorkouts.length} old workout records`);
         }
       } catch (cleanupError) {
-        // Don't fail workout save if cleanup fails
         console.error('Error cleaning up old workouts:', cleanupError);
+        // Silent fail - cleanup is not critical
       }
 
-      // Clear current workout
-      setCurrentWorkout([]);
-      setWorkoutStartTime(null);
-      
-      toast.success(`🎉 Workout completed! ${durationMinutes} minutes, ${currentWorkout.length} exercises logged!`);
-      
-      // Return to exercise list
-      setExerciseSubView('list');
-      setSelectedExercise(null);
-      setSelectedMuscle(null);
-      setLocation(null);
     } catch (error) {
-      console.error('Error saving workout:', error);
+      console.error('=== FINISH WORKOUT TRANSACTION FAILED ===', error);
       toast.error('Failed to save workout. Please try again.');
+      
+      // Even on error, try to preserve the workout data in localStorage for recovery
+      try {
+        const recoveryData = {
+          exercises: workoutToSave,
+          startTime: workoutStartTime,
+          lastUpdated: Date.now(),
+          failedAt: new Date().toISOString()
+        };
+        localStorage.setItem('AURA_WORKOUT_RECOVERY', JSON.stringify(recoveryData));
+        console.log('Workout data saved to recovery storage');
+      } catch (recoveryError) {
+        console.error('Failed to save recovery data:', recoveryError);
+      }
     }
   };
 
@@ -7710,10 +15058,20 @@ const App = () => {
           setSelectedExercise={setSelectedExercise}
           exerciseSubView={exerciseSubView}
           setExerciseSubView={setExerciseSubView}
+          exerciseTab={exerciseTab}
+          setExerciseTab={setExerciseTab}
+          selectedExerciseForDetail={selectedExerciseForDetail}
+          setSelectedExerciseForDetail={setSelectedExerciseForDetail}
+          guidedWorkoutMode={guidedWorkoutMode}
+          setGuidedWorkoutMode={setGuidedWorkoutMode}
           currentWorkout={currentWorkout}
           setCurrentWorkout={setCurrentWorkout}
           finishWorkout={finishWorkout}
           userData={userData}
+          workoutStartTime={workoutStartTime}
+          setWorkoutStartTime={setWorkoutStartTime}
+          workoutSummary={workoutSummary}
+          setWorkoutSummary={setWorkoutSummary}
         />;
       case 'account':
         return <AccountScreen onLogout={handleLogout} userData={userData} onNavigateToSettings={setActiveSettingsScreen} />;
@@ -7724,33 +15082,111 @@ const App = () => {
 
   return (
     // Premium Mobile Container: Theme-aware Background
-    <div className="min-h-screen bg-gradient-to-br from-indigo-50 via-purple-50 to-pink-50 dark:from-gray-900 dark:via-indigo-900/20 dark:to-gray-900 flex justify-center text-gray-900 dark:text-white transition-colors duration-200" style={{ paddingTop: 'max(env(safe-area-inset-top), 0px)', paddingLeft: 'env(safe-area-inset-left)', paddingRight: 'env(safe-area-inset-right)' }}>
+    <div className="min-h-screen bg-gradient-to-br from-indigo-50 via-purple-50 to-pink-50 dark:from-gray-900 dark:via-indigo-900/20 dark:to-gray-900 flex justify-center text-gray-900 dark:text-white transition-colors duration-200" style={{ paddingLeft: 'env(safe-area-inset-left)', paddingRight: 'env(safe-area-inset-right)' }}>
       <Toaster 
         position="top-center"
         containerStyle={{
           top: 60,
         }}
         toastOptions={{
-          duration: 3000,
+          duration: 4000,
           style: {
             background: userData?.appPreferences?.darkMode === false ? '#ffffff' : '#1f2937',
             color: userData?.appPreferences?.darkMode === false ? '#111827' : '#fff',
             border: `1px solid ${userData?.appPreferences?.darkMode === false ? '#e5e7eb' : '#4f46e5'}`,
+            maxWidth: '90vw',
           },
           success: {
             iconTheme: {
               primary: '#10b981',
-              secondary: userData?.appPreferences?.darkMode === false ? '#111827' : '#fff',
+              secondary: userData?.appPreferences?.darkMode === false ? '#ffffff' : '#1f2937',
             },
           },
           error: {
             iconTheme: {
               primary: '#ef4444',
-              secondary: userData?.appPreferences?.darkMode === false ? '#111827' : '#fff',
+              secondary: userData?.appPreferences?.darkMode === false ? '#ffffff' : '#1f2937',
             },
           },
         }}
       />
+      
+      {/* Resume Workout Prompt - shown when there's a pending workout from localStorage */}
+      {showResumePrompt && pendingWorkout && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 backdrop-blur-sm">
+          <div className="bg-gray-900 border-2 border-indigo-500 rounded-2xl p-6 mx-4 max-w-sm w-full shadow-2xl">
+            <div className="text-center mb-6">
+              <div className="w-16 h-16 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-full flex items-center justify-center mx-auto mb-4">
+                <Dumbbell className="w-8 h-8 text-white" />
+              </div>
+              <h2 className="text-xl font-bold text-white mb-2">Resume Workout?</h2>
+              <p className="text-gray-400 text-sm">
+                You have an unfinished workout from earlier
+              </p>
+            </div>
+            
+            {/* Workout Summary */}
+            <div className="bg-gray-800 rounded-xl p-4 mb-6">
+              <div className="flex justify-between text-sm mb-2">
+                <span className="text-gray-400">Exercises</span>
+                <span className="text-white font-semibold">{pendingWorkout.exercises.length}</span>
+              </div>
+              <div className="flex justify-between text-sm mb-2">
+                <span className="text-gray-400">Total Sets</span>
+                <span className="text-white font-semibold">
+                  {pendingWorkout.exercises.reduce((sum, e) => sum + e.sets.length, 0)}
+                </span>
+              </div>
+              <div className="flex justify-between text-sm">
+                <span className="text-gray-400">Time Elapsed</span>
+                <span className="text-white font-semibold">
+                  {Math.floor((Date.now() - pendingWorkout.startTime) / 1000 / 60)} min
+                </span>
+              </div>
+              
+              {/* Exercise List */}
+              <div className="mt-3 pt-3 border-t border-gray-700">
+                <p className="text-xs text-gray-500 mb-2">Exercises:</p>
+                <div className="flex flex-wrap gap-1">
+                  {pendingWorkout.exercises.slice(0, 4).map((e, i) => (
+                    <span key={i} className="text-xs bg-gray-700 text-gray-300 px-2 py-0.5 rounded-full">
+                      {e.exercise.split(' ').slice(0, 2).join(' ')}
+                    </span>
+                  ))}
+                  {pendingWorkout.exercises.length > 4 && (
+                    <span className="text-xs bg-indigo-600 text-white px-2 py-0.5 rounded-full">
+                      +{pendingWorkout.exercises.length - 4} more
+                    </span>
+                  )}
+                </div>
+              </div>
+            </div>
+            
+            {/* Action Buttons */}
+            <div className="flex gap-3">
+              <button
+                onClick={() => {
+                  discardPendingWorkout();
+                  toast.success('Previous workout discarded');
+                }}
+                className="flex-1 py-3 bg-gray-700 hover:bg-gray-600 rounded-xl text-white font-semibold transition-colors"
+              >
+                Discard
+              </button>
+              <button
+                onClick={() => {
+                  resumeWorkout();
+                  setActiveTab('exercise');
+                  toast.success('Workout resumed!');
+                }}
+                className="flex-1 py-3 bg-gradient-to-r from-indigo-500 to-purple-600 hover:from-indigo-600 hover:to-purple-700 rounded-xl text-white font-semibold transition-colors"
+              >
+                Resume
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       
       {/* Quick Start Floating Action Button */}
       {isAuthenticated && activeTab === 'home' && (
@@ -7767,17 +15203,18 @@ const App = () => {
       )}
       
       {/* CRITICAL: Single Scroll Container Pattern */}
-      <div className="fixed inset-0 flex flex-col w-full max-w-md mx-auto bg-white/70 dark:bg-gray-900 shadow-2xl transition-colors duration-200 backdrop-blur-sm overflow-hidden" style={{ paddingTop: 'env(safe-area-inset-top)' }}>
+      <div className="fixed inset-0 flex flex-col w-full max-w-md mx-auto bg-white/70 dark:bg-gray-900 shadow-2xl transition-colors duration-200 backdrop-blur-sm overflow-hidden" style={{ paddingTop: 'var(--safe-area-top)' }}>
         
         {/* --- SECTION A: MAIN SCROLLABLE AREA --- */}
         {/* This is the ONLY element with overflow-y-auto */}
         <main 
+          ref={mainScrollRef}
           className="flex-1 overflow-y-auto w-full relative"
           id="main-scroll-container"
           style={{ overscrollBehavior: 'none', WebkitOverflowScrolling: 'touch' }}
         >
           {/* Padding bottom prevents content from being hidden behind fixed nav */}
-          <div className="min-h-full" style={{ paddingBottom: 'calc(clamp(64px, 15vh, 80px) + max(env(safe-area-inset-bottom), 12px))' }}>
+          <div className="min-h-full" style={{ paddingBottom: 'calc(80px + var(--safe-area-bottom))' }}>
             {renderContent()}
           </div>
         </main>
@@ -7785,8 +15222,8 @@ const App = () => {
         {/* --- SECTION B: FIXED BOTTOM NAVIGATION --- */}
         {/* Completely outside scrolling context */}
         <nav className="block w-full z-50 bg-white dark:bg-gray-800 border-t-2 border-gray-300 dark:border-indigo-400 shadow-2xl transition-colors duration-200">
-          <div style={{ paddingBottom: 'max(env(safe-area-inset-bottom), 8px)' }}>
-            <ul className="flex justify-around items-center px-2" style={{ height: 'clamp(64px, 15vh, 72px)' }}>
+          <div style={{ paddingBottom: 'var(--safe-area-bottom)' }}>
+            <ul className="flex justify-around items-center px-2" style={{ height: '72px' }}>
               <NavItem icon={Home} label="Home" active={activeTab === 'home'} onClick={() => { setActiveTab('home'); setActiveSettingsScreen(null); }} />
               <NavItem icon={Soup} label="Diet Plan" active={activeTab === 'diet'} onClick={() => { setActiveTab('diet'); setActiveSettingsScreen(null); }} />
               <NavItem icon={Dumbbell} label="Exercises" active={activeTab === 'exercise'} onClick={() => { setActiveTab('exercise'); setActiveSettingsScreen(null); }} />

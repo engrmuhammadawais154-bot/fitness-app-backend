@@ -38,6 +38,13 @@ export interface Meal {
   cookingSkill: 'beginner' | 'intermediate' | 'advanced';
   budget: 'low' | 'medium' | 'high';
   dietTags: string[]; // vegetarian, vegan, halal, keto, etc.
+  allergens?: string[]; // Common allergens: dairy, eggs, nuts, soy, gluten, shellfish, fish
+  substitutions?: {
+    ingredient: string;
+    alternatives: string[];
+    note?: string;
+  }[];
+  proteinOptions?: string[]; // e.g., ['chicken', 'turkey', 'tofu'] for flexibility
 }
 
 export interface ShoppingListItem {

@@ -16,6 +16,8 @@ import com.getcapacitor.annotation.CapacitorPlugin
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.delay
+import android.util.Log
 import java.time.Instant
 
 @CapacitorPlugin(name = "HealthConnect")
@@ -185,16 +187,35 @@ class HealthConnectPlugin : Plugin() {
                     return@launch
                 }
 
-                // CRITICAL FIX: Verify permissions BEFORE reading data
-                val granted = client.permissionController.getGrantedPermissions()
-                if (!granted.containsAll(permissions)) {
-                    // Permissions not granted - return success:false to show Connect button
+                // --- RETRY LOGIC START ---
+                // Try 3 times to see if permissions are ready (Health Connect service may be waking up)
+                var attempts = 0
+                var permissionsReady = false
+                
+                while (attempts < 3 && !permissionsReady) {
+                    val granted = client.permissionController.getGrantedPermissions()
+                    if (granted.containsAll(permissions)) {
+                        Log.d("HealthConnect", "Permissions ready on attempt ${attempts + 1}")
+                        permissionsReady = true
+                    } else {
+                        attempts++
+                        Log.w("HealthConnect", "Permissions not ready, attempt $attempts/3")
+                        if (attempts < 3) {
+                            // Wait 500ms before trying again
+                            delay(500)
+                        }
+                    }
+                }
+
+                if (!permissionsReady) {
+                    Log.e("HealthConnect", "Permissions not granted after $attempts attempts")
                     val ret = JSObject()
                     ret.put("success", false)
-                    ret.put("error", "Permissions not granted")
+                    ret.put("error", "Permissions not granted after retries")
                     call.resolve(ret)
                     return@launch
                 }
+                // --- RETRY LOGIC END ---
 
                 // Get today's date range
                 val startOfDay = Instant.now().atZone(java.time.ZoneId.systemDefault())
