@@ -2829,10 +2829,11 @@ const HomeScreen = ({
         <div className="flex gap-2">
           <button
             onClick={addWaterGlass}
-            className="flex-1 bg-white/20 hover:bg-white/30 backdrop-blur-sm text-white font-semibold py-3 px-4 rounded-xl transition flex items-center justify-center gap-2"
+            disabled={waterIntake >= 50}
+            className="flex-1 bg-white/20 hover:bg-white/30 backdrop-blur-sm text-white font-semibold py-3 px-4 rounded-xl transition flex items-center justify-center gap-2 disabled:opacity-30 disabled:cursor-not-allowed disabled:hover:bg-white/20"
           >
             <span className="text-xl">+</span>
-            <span>Add Glass</span>
+            <span>{waterIntake >= 50 ? 'Max Reached' : 'Add Glass'}</span>
           </button>
           <button
             onClick={removeWaterGlass}
@@ -3965,6 +3966,22 @@ const ActiveWorkoutSession = ({
   const [lastWorkoutForExercise, setLastWorkoutForExercise] = useState<any>(null);
   const [gifLoading, setGifLoading] = useState(true);
   
+  // Check if this is a bodyweight/home exercise (no weights needed)
+  const isBodyweightExercise = useMemo(() => {
+    for (const group of MUSCLE_GROUPS) {
+      if (group.exercises.home.some(ex => 
+        ex.toLowerCase() === currentExerciseName.toLowerCase() ||
+        currentExerciseName.toLowerCase().includes(ex.toLowerCase()) ||
+        ex.toLowerCase().includes(currentExerciseName.toLowerCase())
+      )) {
+        return true;
+      }
+    }
+    // Also check for common bodyweight exercise keywords
+    const bodyweightKeywords = ['push-up', 'pushup', 'pull-up', 'pullup', 'plank', 'bodyweight', 'dip', 'lunge', 'squat', 'crunch', 'burpee', 'mountain climber', 'flutter', 'leg raise', 'v-up', 'dead bug', 'bird dog', 'superman', 'glute bridge'];
+    return bodyweightKeywords.some(kw => currentExerciseName.toLowerCase().includes(kw));
+  }, [currentExerciseName]);
+  
   // Cycle through tips every 4 seconds
   useEffect(() => {
     if (!exerciseTips?.tips?.length) return;
@@ -4173,14 +4190,72 @@ const ActiveWorkoutSession = ({
     setShowQuitConfirm(true);
   }, [viewMode, isResting]);
   
-  // Handle quit confirmation
-  const handleQuit = useCallback(() => {
+  // Handle quit confirmation - Save incomplete workout to history
+  const handleQuit = useCallback(async () => {
+    try {
+      // Check if there are any logged sets to save
+      const exercisesWithSets = exercises.filter(ex => ex.sets && ex.sets.length > 0);
+      
+      if (exercisesWithSets.length > 0) {
+        const user = auth.currentUser;
+        if (user) {
+          const now = new Date();
+          const totalSets = exercisesWithSets.reduce((sum, ex) => sum + ex.sets.length, 0);
+          const totalVolume = exercisesWithSets.reduce((sum, ex) => 
+            sum + ex.sets.reduce((setSum, s) => setSum + (s.weight * s.reps), 0), 0
+          );
+          const duration = workoutStartTime ? Math.floor((Date.now() - workoutStartTime) / 1000) : 0;
+          
+          // Save each exercise individually to workoutHistory (for exercise history/PRs)
+          for (const ex of exercisesWithSets) {
+            const exerciseName = ex.exercise || ex.name || 'Unknown Exercise';
+            const bestSet = ex.sets.reduce((best, set) => 
+              (set.weight * set.reps > best.weight * best.reps) ? set : best, ex.sets[0]
+            );
+            
+            await addDoc(collection(db, 'workoutHistory'), {
+              userId: user.uid,
+              exercise: exerciseName,
+              sets: ex.sets.map(s => ({ reps: s.reps, weight: s.weight, type: 'normal' })),
+              timestamp: now.getTime(),
+              date: now.toISOString().split('T')[0],
+              bestSet,
+              incomplete: true // Mark as from incomplete workout
+            });
+          }
+          
+          // Save workout session to workoutSessions (for session history)
+          await addDoc(collection(db, 'workoutSessions'), {
+            userId: user.uid,
+            exercises: exercisesWithSets.map(ex => ({
+              name: ex.exercise || ex.name,
+              sets: ex.sets
+            })),
+            totalSets,
+            totalVolume,
+            duration,
+            timestamp: now.getTime(),
+            date: now.toISOString().split('T')[0],
+            status: 'incomplete', // Mark as incomplete
+            completedExercises: exercisesWithSets.length,
+            totalExercises: exercises.length
+          });
+          
+          swipeableToast.success(`Saved ${exercisesWithSets.length} exercise(s) to history`);
+          console.log('Incomplete workout saved:', exercisesWithSets.length, 'exercises');
+        }
+      }
+    } catch (error) {
+      console.error('Error saving incomplete workout:', error);
+      // Don't block quit even if save fails
+    }
+    
     // Clear all localStorage entries related to workout
     localStorage.removeItem('AURA_FOCUS_MODE');
     localStorage.removeItem('aura_active_workout');
     localStorage.removeItem('AURA_WORKOUT_STORE');
     onQuit();
-  }, [onQuit]);
+  }, [exercises, workoutStartTime, onQuit]);
   
   if (!currentExercise) return null;
   
@@ -4242,8 +4317,8 @@ const ActiveWorkoutSession = ({
             </div>
           )}
           
-          {/* Exercise GIF/Visual with Loading State */}
-          <div className="relative w-full max-w-[420px] aspect-square bg-white/5 rounded-3xl overflow-hidden mb-4 shadow-2xl border-2 border-white/10">
+          {/* Exercise GIF/Visual with Loading State - Larger container for better visibility */}
+          <div className="relative w-full max-w-[320px] sm:max-w-[380px] min-h-[200px] sm:min-h-[280px] bg-white/5 rounded-2xl overflow-hidden mb-4 shadow-2xl border-2 border-white/10 flex items-center justify-center">
             {gifLoading && EXERCISE_IMAGES[currentExerciseName] && (
               <div className="absolute inset-0 flex items-center justify-center bg-white/5">
                 <div className="w-12 h-12 border-4 border-white/20 border-t-white rounded-full animate-spin" />
@@ -4253,7 +4328,8 @@ const ActiveWorkoutSession = ({
               <img 
                 src={EXERCISE_IMAGES[currentExerciseName]} 
                 alt={currentExerciseName}
-                className={`w-full h-full object-contain p-2 transition-opacity duration-300 ${gifLoading ? 'opacity-0' : 'opacity-100'}`}
+                className={`w-full h-full object-contain p-1 transition-opacity duration-300 ${gifLoading ? 'opacity-0' : 'opacity-100'}`}
+                style={{ maxHeight: '280px' }}
                 onLoad={() => setGifLoading(false)}
                 onError={(e) => {
                   setGifLoading(false);
@@ -4262,8 +4338,8 @@ const ActiveWorkoutSession = ({
                 }}
               />
             ) : (
-              <div className="w-full h-full flex items-center justify-center">
-                <Dumbbell className="w-24 h-24 text-white/40" />
+              <div className="w-full h-full flex items-center justify-center min-h-[200px]">
+                <Dumbbell className="w-20 h-20 text-white/40" />
               </div>
             )}
           </div>
@@ -4306,10 +4382,13 @@ const ActiveWorkoutSession = ({
             </div>
             <p className="text-white text-xl font-bold text-center">
               {recommendation.sets} Sets × {recommendation.reps} Reps
-              {recommendation.weight && (
+              {recommendation.weight && !isBodyweightExercise && (
                 <span className="text-indigo-300"> @ {recommendation.weight}{weightUnit}</span>
               )}
             </p>
+            {isBodyweightExercise && (
+              <p className="text-green-400 text-xs text-center mt-1">🏠 Bodyweight Exercise</p>
+            )}
           </div>
           
           {/* Current Progress */}
@@ -4320,13 +4399,16 @@ const ActiveWorkoutSession = ({
                   ✓ {currentExercise.sets.length}/{recommendation.sets} Sets Logged
                 </p>
                 <span className="text-green-300 text-xs">
-                  {currentExercise.sets.reduce((sum, s) => sum + s.weight * s.reps, 0).toLocaleString()} {weightUnit} volume
+                  {isBodyweightExercise 
+                    ? `${currentExercise.sets.reduce((sum, s) => sum + s.reps, 0)} total reps`
+                    : `${currentExercise.sets.reduce((sum, s) => sum + s.weight * s.reps, 0).toLocaleString()} ${weightUnit} volume`
+                  }
                 </span>
               </div>
               <div className="flex gap-2 flex-wrap">
                 {currentExercise.sets.map((set, idx) => (
                   <span key={idx} className="px-2 py-1 bg-green-500/30 rounded text-green-300 text-xs font-medium">
-                    {set.weight}{weightUnit} × {set.reps}
+                    {isBodyweightExercise ? `${set.reps} reps` : `${set.weight}${weightUnit} × ${set.reps}`}
                   </span>
                 ))}
               </div>
@@ -4374,13 +4456,29 @@ const ActiveWorkoutSession = ({
             </>
           )}
           
-          {/* Exit Button */}
-          <button
-            onClick={handleBack}
-            className="w-full py-3 text-white/40 hover:text-white/60 text-sm font-medium transition-colors"
-          >
-            Exit Workout
-          </button>
+          {/* Quick Actions Row */}
+          <div className="flex gap-3">
+            {/* Exit Button */}
+            <button
+              onClick={handleBack}
+              className="flex-1 py-3 text-white/40 hover:text-white/60 text-sm font-medium transition-colors"
+            >
+              Exit Workout
+            </button>
+            
+            {/* Instant Finish Button - Complete workout immediately */}
+            {completedCount > 0 && (
+              <button
+                onClick={() => {
+                  // Mark any remaining exercises with 0 sets and finish
+                  handleFinishWorkout();
+                }}
+                className="flex-1 py-3 bg-green-500/20 hover:bg-green-500/30 border border-green-500/40 rounded-xl text-green-400 text-sm font-medium transition-colors"
+              >
+                ✓ Finish Now
+              </button>
+            )}
+          </div>
         </div>
         
         {/* REST TIMER OVERLAY - Full Screen Modal */}
@@ -4404,22 +4502,59 @@ const ActiveWorkoutSession = ({
         {showQuitConfirm && (
           <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center p-6 z-[60]" style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}>
             <div className="bg-gray-800 rounded-3xl p-6 max-w-sm w-full shadow-2xl">
-              <h3 className="text-2xl font-bold text-white mb-2">Quit Workout?</h3>
-              <p className="text-white/60 mb-6">
-                Your current session will be saved to History as incomplete.
+              <h3 className="text-2xl font-bold text-white mb-2">Exit Workout?</h3>
+              <p className="text-white/60 mb-4">
+                Choose how you'd like to exit:
               </p>
-              <div className="flex gap-3">
+              
+              {/* Progress indicator */}
+              {completedCount > 0 && (
+                <div className="bg-green-500/10 border border-green-500/30 rounded-xl px-3 py-2 mb-4">
+                  <p className="text-green-400 text-sm">
+                    ✓ {completedCount}/{totalExercises} exercises completed
+                  </p>
+                </div>
+              )}
+              
+              <div className="space-y-3">
+                {/* Pause Option - Keep workout for later */}
+                <button
+                  onClick={() => {
+                    // Just close the modal - workout is already saved to localStorage
+                    setShowQuitConfirm(false);
+                    onQuit();
+                  }}
+                  className="w-full py-4 bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-600 hover:to-orange-700 rounded-xl text-white font-bold transition-colors flex items-center justify-center gap-2"
+                >
+                  <span>⏸️</span>
+                  Pause & Resume Later
+                </button>
+                <p className="text-white/40 text-xs text-center -mt-1">
+                  Your progress is saved. Continue anytime within 24 hours.
+                </p>
+                
+                {/* Save & Quit - Save to history as incomplete */}
+                {completedCount > 0 && (
+                  <>
+                    <button
+                      onClick={handleQuit}
+                      className="w-full py-3 bg-green-500/20 hover:bg-green-500/30 border border-green-500/40 rounded-xl text-green-400 font-bold transition-colors flex items-center justify-center gap-2"
+                    >
+                      <span>💾</span>
+                      Save to History & Quit
+                    </button>
+                    <p className="text-white/40 text-xs text-center -mt-1">
+                      Saves {completedCount} exercise{completedCount > 1 ? 's' : ''} to your workout history.
+                    </p>
+                  </>
+                )}
+                
+                {/* Cancel */}
                 <button
                   onClick={() => setShowQuitConfirm(false)}
-                  className="flex-1 py-3 bg-white/10 hover:bg-white/20 rounded-xl text-white font-medium transition-colors"
+                  className="w-full py-3 bg-white/10 hover:bg-white/20 rounded-xl text-white font-medium transition-colors"
                 >
-                  Cancel
-                </button>
-                <button
-                  onClick={handleQuit}
-                  className="flex-1 py-3 bg-red-500 hover:bg-red-600 rounded-xl text-white font-bold transition-colors"
-                >
-                  Quit
+                  Continue Workout
                 </button>
               </div>
             </div>
@@ -4504,8 +4639,24 @@ const LoggingScreenIntegrated = ({
   // Derive exercise name from either field
   const exerciseName = exercise.exercise || exercise.name || 'Exercise';
   
+  // Check if this is a bodyweight/home exercise (no weights needed)
+  const isBodyweightExercise = useMemo(() => {
+    for (const group of MUSCLE_GROUPS) {
+      if (group.exercises.home.some(ex => 
+        ex.toLowerCase() === exerciseName.toLowerCase() ||
+        exerciseName.toLowerCase().includes(ex.toLowerCase()) ||
+        ex.toLowerCase().includes(exerciseName.toLowerCase())
+      )) {
+        return true;
+      }
+    }
+    // Also check for common bodyweight exercise keywords
+    const bodyweightKeywords = ['push-up', 'pushup', 'pull-up', 'pullup', 'plank', 'bodyweight', 'dip', 'lunge', 'squat', 'crunch', 'burpee', 'mountain climber', 'flutter', 'leg raise', 'v-up', 'dead bug', 'bird dog', 'superman', 'glute bridge'];
+    return bodyweightKeywords.some(kw => exerciseName.toLowerCase().includes(kw));
+  }, [exerciseName]);
+  
   const [currentReps, setCurrentReps] = useState('');
-  const [currentWeight, setCurrentWeight] = useState('');
+  const [currentWeight, setCurrentWeight] = useState(isBodyweightExercise ? '0' : '');
   const [currentSetType, setCurrentSetType] = useState<'normal' | 'warmup' | 'drop' | 'failure'>('normal');
   const [lastWorkoutData, setLastWorkoutData] = useState<any>(null);
   
@@ -4550,20 +4701,22 @@ const LoggingScreenIntegrated = ({
   
   const addSet = () => {
     const reps = parseInt(currentReps);
-    const weight = parseFloat(currentWeight);
+    const weight = isBodyweightExercise ? 0 : parseFloat(currentWeight);
     
-    if (reps > 0 && weight >= 0) {
+    if (reps > 0 && (isBodyweightExercise || weight >= 0)) {
       onLogSet(weight, reps, currentSetType);
       setCurrentReps('');
-      setCurrentWeight('');
+      if (!isBodyweightExercise) {
+        setCurrentWeight('');
+      }
       setCurrentSetType('normal');
     } else {
-      swipeableToast.error('Enter valid reps and weight');
+      swipeableToast.error(isBodyweightExercise ? 'Enter valid reps' : 'Enter valid reps and weight');
     }
   };
   
   const quickAddSet = (weight: number, reps: number) => {
-    onLogSet(weight, reps, 'normal');
+    onLogSet(isBodyweightExercise ? 0 : weight, reps, 'normal');
   };
   
   const handleFinish = async () => {
@@ -4642,7 +4795,7 @@ const LoggingScreenIntegrated = ({
                   onClick={() => quickAddSet(set.weight, set.reps)}
                   className="px-3 py-2 bg-yellow-500/20 hover:bg-yellow-500/30 text-yellow-300 rounded-lg text-sm font-medium transition-colors flex items-center gap-1"
                 >
-                  <span>{set.weight}{weightUnit}×{set.reps}</span>
+                  <span>{isBodyweightExercise ? `${set.reps} reps` : `${set.weight}${weightUnit}×${set.reps}`}</span>
                   <span className="text-xs">+</span>
                 </button>
               ))}
@@ -4653,31 +4806,73 @@ const LoggingScreenIntegrated = ({
         
         {/* Input Form */}
         <div className="bg-white/5 rounded-2xl p-4 space-y-4">
-          <h3 className="text-white font-bold">Add Set #{existingSets.length + 1}</h3>
-          
-          {/* Weight & Reps Inputs */}
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="text-white/60 text-sm mb-2 block">Weight ({weightUnit})</label>
-              <input
-                type="number"
-                value={currentWeight}
-                onChange={(e) => setCurrentWeight(e.target.value)}
-                placeholder={lastWorkoutData?.sets?.[existingSets.length]?.weight?.toString() || (useMetric ? "60" : "135")}
-                className="w-full px-4 py-3 rounded-xl bg-white/10 border border-white/20 text-white text-center text-xl font-bold focus:border-indigo-500 focus:outline-none placeholder:text-white/20"
-              />
-            </div>
-            <div>
-              <label className="text-white/60 text-sm mb-2 block">Reps</label>
-              <input
-                type="number"
-                value={currentReps}
-                onChange={(e) => setCurrentReps(e.target.value)}
-                placeholder={lastWorkoutData?.sets?.[existingSets.length]?.reps?.toString() || "12"}
-                className="w-full px-4 py-3 rounded-xl bg-white/10 border border-white/20 text-white text-center text-xl font-bold focus:border-indigo-500 focus:outline-none placeholder:text-white/20"
-              />
-            </div>
+          <div className="flex items-center justify-between">
+            <h3 className="text-white font-bold">Add Set #{existingSets.length + 1}</h3>
+            {isBodyweightExercise && (
+              <span className="px-2 py-1 bg-green-500/20 text-green-400 text-xs font-medium rounded-full">
+                🏠 Bodyweight
+              </span>
+            )}
           </div>
+          
+          {/* Weight & Reps Inputs - Different layout for bodyweight */}
+          {isBodyweightExercise ? (
+            // Simplified bodyweight input - only reps
+            <div className="space-y-3">
+              <div>
+                <label className="text-white/60 text-sm mb-2 block text-center">How many reps?</label>
+                <input
+                  type="number"
+                  value={currentReps}
+                  onChange={(e) => setCurrentReps(e.target.value)}
+                  placeholder={lastWorkoutData?.sets?.[existingSets.length]?.reps?.toString() || "15"}
+                  className="w-full px-4 py-4 rounded-xl bg-white/10 border border-white/20 text-white text-center text-3xl font-bold focus:border-green-500 focus:outline-none placeholder:text-white/20"
+                  autoFocus
+                />
+              </div>
+              
+              {/* Quick rep buttons for bodyweight */}
+              <div className="flex gap-2 justify-center">
+                {[10, 15, 20, 25, 30].map((rep) => (
+                  <button
+                    key={rep}
+                    onClick={() => setCurrentReps(rep.toString())}
+                    className={`px-4 py-2 rounded-lg text-sm font-bold transition-all ${
+                      currentReps === rep.toString()
+                        ? 'bg-green-500 text-white'
+                        : 'bg-white/10 text-white/60 hover:bg-white/20'
+                    }`}
+                  >
+                    {rep}
+                  </button>
+                ))}
+              </div>
+            </div>
+          ) : (
+            // Standard weight + reps input for gym exercises
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="text-white/60 text-sm mb-2 block">Weight ({weightUnit})</label>
+                <input
+                  type="number"
+                  value={currentWeight}
+                  onChange={(e) => setCurrentWeight(e.target.value)}
+                  placeholder={lastWorkoutData?.sets?.[existingSets.length]?.weight?.toString() || (useMetric ? "60" : "135")}
+                  className="w-full px-4 py-3 rounded-xl bg-white/10 border border-white/20 text-white text-center text-xl font-bold focus:border-indigo-500 focus:outline-none placeholder:text-white/20"
+                />
+              </div>
+              <div>
+                <label className="text-white/60 text-sm mb-2 block">Reps</label>
+                <input
+                  type="number"
+                  value={currentReps}
+                  onChange={(e) => setCurrentReps(e.target.value)}
+                  placeholder={lastWorkoutData?.sets?.[existingSets.length]?.reps?.toString() || "12"}
+                  className="w-full px-4 py-3 rounded-xl bg-white/10 border border-white/20 text-white text-center text-xl font-bold focus:border-indigo-500 focus:outline-none placeholder:text-white/20"
+                />
+              </div>
+            </div>
+          )}
           
           {/* Set Type Selector */}
           <div className="flex gap-2">
@@ -4704,8 +4899,8 @@ const LoggingScreenIntegrated = ({
           {/* Add Set Button */}
           <button
             onClick={addSet}
-            disabled={!currentReps || !currentWeight}
-            className="w-full py-3 bg-gradient-to-r from-teal-500 to-emerald-600 hover:from-teal-600 hover:to-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed rounded-xl text-white font-bold transition-all"
+            disabled={!currentReps || (!isBodyweightExercise && !currentWeight)}
+            className={`w-full py-3 ${isBodyweightExercise ? 'bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700' : 'bg-gradient-to-r from-teal-500 to-emerald-600 hover:from-teal-600 hover:to-emerald-700'} disabled:opacity-50 disabled:cursor-not-allowed rounded-xl text-white font-bold transition-all`}
           >
             + Add Set
           </button>
@@ -4719,10 +4914,12 @@ const LoggingScreenIntegrated = ({
               {existingSets.map((set, idx) => (
                 <div key={idx} className="flex items-center justify-between bg-white/10 rounded-lg px-4 py-2">
                   <div className="flex items-center gap-3">
-                    <span className="w-6 h-6 bg-indigo-500 text-white rounded-full flex items-center justify-center text-xs font-bold">
+                    <span className={`w-6 h-6 ${isBodyweightExercise ? 'bg-green-500' : 'bg-indigo-500'} text-white rounded-full flex items-center justify-center text-xs font-bold`}>
                       {idx + 1}
                     </span>
-                    <span className="text-white font-semibold">{set.weight}{weightUnit} × {set.reps}</span>
+                    <span className="text-white font-semibold">
+                      {isBodyweightExercise ? `${set.reps} reps` : `${set.weight}${weightUnit} × ${set.reps}`}
+                    </span>
                   </div>
                   <button onClick={() => onRemoveSet(idx)} className="text-red-400 hover:text-red-500 p-1">
                     <X className="w-4 h-4" />
@@ -4731,11 +4928,14 @@ const LoggingScreenIntegrated = ({
               ))}
             </div>
             
-            {/* Volume Summary */}
+            {/* Volume Summary - different for bodyweight */}
             <div className="mt-3 pt-3 border-t border-white/10 flex items-center justify-between">
-              <span className="text-white/60 text-sm">Total Volume</span>
+              <span className="text-white/60 text-sm">{isBodyweightExercise ? 'Total Reps' : 'Total Volume'}</span>
               <span className="text-white font-bold">
-                {existingSets.reduce((sum, s) => sum + s.weight * s.reps, 0).toLocaleString()} {weightUnit}
+                {isBodyweightExercise 
+                  ? existingSets.reduce((sum, s) => sum + s.reps, 0).toLocaleString()
+                  : `${existingSets.reduce((sum, s) => sum + s.weight * s.reps, 0).toLocaleString()} ${weightUnit}`
+                }
               </span>
             </div>
           </div>
@@ -7978,14 +8178,26 @@ const DietPlanScreen = ({
                           )}
 
                           {/* Log This Meal Button */}
-                          <button
-                            onClick={() => logMeal({ name: meal.name, macros: adjustedMacros }, mealType.name)}
-                            className="w-full py-2 px-4 bg-gradient-to-r from-teal-500 to-emerald-500 hover:from-teal-600 hover:to-emerald-600 text-white text-xs font-semibold rounded-lg shadow-md transition flex items-center justify-center gap-2 mb-2"
-                            aria-label={`Log ${meal.name} to meal history`}
-                          >
-                            <span>✓</span>
-                            <span>Log This Meal</span>
-                          </button>
+                          {(() => {
+                            const today = new Date().toISOString().split('T')[0];
+                            const todaysMeals = loggedMeals[today] || [];
+                            const isAlreadyLogged = todaysMeals.some((m: any) => m.mealType === mealType.name);
+                            
+                            return (
+                              <button
+                                onClick={() => logMeal({ name: meal.name, macros: adjustedMacros }, mealType.name)}
+                                className={`w-full py-2 px-4 ${
+                                  isAlreadyLogged 
+                                    ? 'bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600' 
+                                    : 'bg-gradient-to-r from-teal-500 to-emerald-500 hover:from-teal-600 hover:to-emerald-600'
+                                } text-white text-xs font-semibold rounded-lg shadow-md transition flex items-center justify-center gap-2 mb-2`}
+                                aria-label={`Log ${meal.name} to meal history`}
+                              >
+                                <span>{isAlreadyLogged ? '🔄' : '✓'}</span>
+                                <span>{isAlreadyLogged ? 'Update Logged Meal' : 'Log This Meal'}</span>
+                              </button>
+                            );
+                          })()}
 
                           {/* Action Buttons Grid */}
                           <div className="grid grid-cols-2 gap-2 mb-2">
@@ -10228,6 +10440,63 @@ const ExerciseFinderScreen = ({
   // REFACTORED: Expanded muscle for inline exercise viewing in Library
   const [expandedMuscle, setExpandedMuscle] = useState<string | null>(null);
   const [currentExerciseIndex, setCurrentExerciseIndex] = useState(0);
+  
+  // Paused workout state - check for AURA_FOCUS_MODE on mount
+  const [pausedWorkout, setPausedWorkout] = useState<{
+    exercises: Array<{ exercise?: string; name?: string; sets: Array<{ reps: number; weight: number }> }>;
+    currentIndex: number;
+    startTime: number;
+    lastUpdated: number;
+  } | null>(null);
+  
+  // Check for paused Focus Mode workout on mount
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem('AURA_FOCUS_MODE');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        // Check if workout is less than 24 hours old and has exercises
+        const hoursSince = (Date.now() - parsed.lastUpdated) / (1000 * 60 * 60);
+        if (hoursSince < 24 && parsed.exercises && parsed.exercises.length > 0) {
+          // Check if any exercises have logged sets
+          const hasProgress = parsed.exercises.some((ex: any) => ex.sets && ex.sets.length > 0);
+          if (hasProgress || parsed.currentIndex > 0) {
+            setPausedWorkout(parsed);
+          } else {
+            // No progress, clear it
+            localStorage.removeItem('AURA_FOCUS_MODE');
+          }
+        } else {
+          // Stale workout, clear it
+          localStorage.removeItem('AURA_FOCUS_MODE');
+        }
+      }
+    } catch (error) {
+      console.error('Error loading paused workout:', error);
+      localStorage.removeItem('AURA_FOCUS_MODE');
+    }
+  }, []);
+  
+  // Resume paused workout
+  const handleResumePausedWorkout = useCallback(() => {
+    if (pausedWorkout) {
+      // Restore the workout state
+      setCurrentWorkout(pausedWorkout.exercises);
+      setCurrentExerciseIndex(pausedWorkout.currentIndex);
+      setWorkoutStartTime(pausedWorkout.startTime);
+      setGuidedWorkoutMode(true);
+      setExerciseTab('today');
+      setPausedWorkout(null);
+      swipeableToast.success('Resumed workout! 💪');
+    }
+  }, [pausedWorkout, setCurrentWorkout, setWorkoutStartTime, setGuidedWorkoutMode, setExerciseTab]);
+  
+  // Discard paused workout
+  const handleDiscardPausedWorkout = useCallback(() => {
+    localStorage.removeItem('AURA_FOCUS_MODE');
+    setPausedWorkout(null);
+    swipeableToast.success('Workout discarded');
+  }, []);
 
   // Reset program view when switching to Programs tab - always start with list
   useEffect(() => {
@@ -10695,6 +10964,37 @@ const ExerciseFinderScreen = ({
         {/* TODAY TAB */}
         {exerciseTab === 'today' && (
           <>
+            {/* Paused Workout Banner - Show if there's a paused Focus Mode workout */}
+            {pausedWorkout && !guidedWorkoutMode && (
+              <div className="bg-gradient-to-r from-amber-400/30 to-orange-500/30 dark:from-amber-900/50 dark:to-orange-900/50 p-4 rounded-xl border-2 border-amber-400 dark:border-amber-500/50 shadow-xl">
+                <div className="flex items-center gap-3 mb-3">
+                  <span className="text-3xl">⏸️</span>
+                  <div className="flex-1">
+                    <h4 className="font-bold text-gray-900 dark:text-white">Paused Workout</h4>
+                    <p className="text-xs text-gray-600 dark:text-gray-400">
+                      {pausedWorkout.exercises.filter((ex: any) => ex.sets && ex.sets.length > 0).length}/{pausedWorkout.exercises.length} exercises completed • 
+                      {' '}{Math.round((Date.now() - pausedWorkout.lastUpdated) / (1000 * 60))} min ago
+                    </p>
+                  </div>
+                </div>
+                <div className="flex gap-2">
+                  <button
+                    onClick={handleResumePausedWorkout}
+                    className="flex-1 py-3 bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-600 hover:to-orange-700 rounded-xl text-white font-bold transition duration-300 shadow-lg flex items-center justify-center gap-2"
+                  >
+                    <Play className="w-4 h-4" />
+                    Resume Workout
+                  </button>
+                  <button
+                    onClick={handleDiscardPausedWorkout}
+                    className="px-4 py-3 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 rounded-xl text-gray-700 dark:text-gray-300 font-bold transition duration-300 flex items-center justify-center gap-2"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+            )}
+            
             {/* Active Workout Indicator & Finish Button */}
             {currentWorkout.length > 0 && (
               <div className="bg-gradient-to-r from-emerald-300 to-teal-300 dark:from-emerald-900/40 dark:to-teal-900/40 p-4 rounded-xl border-2 border-emerald-400 dark:border-emerald-500/30 shadow-xl">
@@ -12424,6 +12724,37 @@ const WorkoutStatsDashboard = ({
   
   // Swipe handler for back navigation
   const swipeHandlers = useSwipe(onClose);
+  
+  // Helper function to categorize exercises into muscle groups
+  const countMuscleGroup = (exerciseName: string, muscleGroups: Record<string, number>) => {
+    const exerciseLower = exerciseName.toLowerCase();
+    
+    // First, try to find the exercise in MUSCLE_GROUPS for accurate categorization
+    for (const group of MUSCLE_GROUPS) {
+      const allExercises = [...group.exercises.gym, ...group.exercises.home];
+      if (allExercises.some(ex => ex.toLowerCase() === exerciseLower || exerciseLower.includes(ex.toLowerCase()))) {
+        muscleGroups[group.name] = (muscleGroups[group.name] || 0) + 1;
+        return;
+      }
+    }
+    
+    // Fallback to keyword matching
+    if (exerciseLower.includes('chest') || exerciseLower.includes('bench') || exerciseLower.includes('push up') || exerciseLower.includes('push-up') || exerciseLower.includes('fly') || exerciseLower.includes('pec')) {
+      muscleGroups['Chest'] = (muscleGroups['Chest'] || 0) + 1;
+    } else if (exerciseLower.includes('back') || exerciseLower.includes('row') || exerciseLower.includes('pull') || exerciseLower.includes('lat') || exerciseLower.includes('deadlift')) {
+      muscleGroups['Back'] = (muscleGroups['Back'] || 0) + 1;
+    } else if (exerciseLower.includes('leg') || exerciseLower.includes('squat') || exerciseLower.includes('lunge') || exerciseLower.includes('quad') || exerciseLower.includes('hamstring') || exerciseLower.includes('calf') || exerciseLower.includes('glute')) {
+      muscleGroups['Legs'] = (muscleGroups['Legs'] || 0) + 1;
+    } else if (exerciseLower.includes('shoulder') || exerciseLower.includes('delt') || exerciseLower.includes('overhead') || exerciseLower.includes('lateral raise') || exerciseLower.includes('arnold')) {
+      muscleGroups['Shoulders'] = (muscleGroups['Shoulders'] || 0) + 1;
+    } else if (exerciseLower.includes('arm') || exerciseLower.includes('bicep') || exerciseLower.includes('tricep') || exerciseLower.includes('curl') || exerciseLower.includes('extension')) {
+      muscleGroups['Arms'] = (muscleGroups['Arms'] || 0) + 1;
+    } else if (exerciseLower.includes('ab') || exerciseLower.includes('core') || exerciseLower.includes('plank') || exerciseLower.includes('crunch') || exerciseLower.includes('sit-up')) {
+      muscleGroups['Core'] = (muscleGroups['Core'] || 0) + 1;
+    } else {
+      muscleGroups['Other'] = (muscleGroups['Other'] || 0) + 1;
+    }
+  };
 
   useEffect(() => {
     const loadStats = async () => {
@@ -12456,14 +12787,18 @@ const WorkoutStatsDashboard = ({
         
         snapshot.docs.forEach(doc => {
           const data = doc.data();
-          totalWorkouts++;
           
           // Use date field (format: YYYY-MM-DD)
           const workoutDate = data.date || new Date(data.timestamp).toISOString().split('T')[0];
           workoutDates.add(workoutDate);
           
-          // Process exercises array (new structure)
+          // Handle both data structures:
+          // 1. New structure with exercises array (from finishWorkout)
+          // 2. Individual exercise documents (from logging each exercise separately)
+          
           if (data.exercises && Array.isArray(data.exercises)) {
+            // New structure with exercises array
+            totalWorkouts++;
             data.exercises.forEach((exercise: any) => {
               const exerciseName = exercise.exercise || exercise.name || 'Unknown';
               exerciseNames.add(exerciseName);
@@ -12480,23 +12815,31 @@ const WorkoutStatsDashboard = ({
               }
               
               // Count muscle groups
-              const exerciseLower = exerciseName.toLowerCase();
-              if (exerciseLower.includes('chest') || exerciseLower.includes('bench') || exerciseLower.includes('push up') || exerciseLower.includes('fly')) {
-                muscleGroups['Chest'] = (muscleGroups['Chest'] || 0) + 1;
-              } else if (exerciseLower.includes('back') || exerciseLower.includes('row') || exerciseLower.includes('pull') || exerciseLower.includes('lat') || exerciseLower.includes('deadlift')) {
-                muscleGroups['Back'] = (muscleGroups['Back'] || 0) + 1;
-              } else if (exerciseLower.includes('leg') || exerciseLower.includes('squat') || exerciseLower.includes('lunge') || exerciseLower.includes('quad') || exerciseLower.includes('hamstring') || exerciseLower.includes('calf')) {
-                muscleGroups['Legs'] = (muscleGroups['Legs'] || 0) + 1;
-              } else if (exerciseLower.includes('shoulder') || exerciseLower.includes('delt') || exerciseLower.includes('press') || exerciseLower.includes('raise')) {
-                muscleGroups['Shoulders'] = (muscleGroups['Shoulders'] || 0) + 1;
-              } else if (exerciseLower.includes('arm') || exerciseLower.includes('bicep') || exerciseLower.includes('tricep') || exerciseLower.includes('curl')) {
-                muscleGroups['Arms'] = (muscleGroups['Arms'] || 0) + 1;
-              } else if (exerciseLower.includes('ab') || exerciseLower.includes('core') || exerciseLower.includes('plank') || exerciseLower.includes('crunch')) {
-                muscleGroups['Abs'] = (muscleGroups['Abs'] || 0) + 1;
-              }
+              countMuscleGroup(exerciseName, muscleGroups);
             });
+          } else if (data.exercise && data.sets) {
+            // Individual exercise document structure
+            const exerciseName = data.exercise || 'Unknown';
+            exerciseNames.add(exerciseName);
+            
+            // Calculate volume from sets
+            if (Array.isArray(data.sets)) {
+              data.sets.forEach((set: any) => {
+                const setVolume = (set.weight || 0) * (set.reps || 0);
+                totalVolume += setVolume;
+                exerciseVolumes[exerciseName] = (exerciseVolumes[exerciseName] || 0) + setVolume;
+                volumesByDate[workoutDate] = (volumesByDate[workoutDate] || 0) + setVolume;
+                totalSets++;
+              });
+            }
+            
+            // Count muscle groups
+            countMuscleGroup(exerciseName, muscleGroups);
           }
         });
+        
+        // Count unique workout dates as total workouts (more accurate)
+        totalWorkouts = workoutDates.size;
 
         // Calculate streak
         let streak = 0;
@@ -14610,7 +14953,7 @@ const App = () => {
     loadLoggedMeals();
   }, [user?.uid]);
 
-  // Function to log a meal
+  // Function to log a meal (prevents duplicate meal types per day)
   const logMeal = async (mealData: any, mealType: string) => {
     if (!user?.uid) return;
     
@@ -14633,7 +14976,21 @@ const App = () => {
       if (!newLoggedMeals[today]) {
         newLoggedMeals[today] = [];
       }
-      newLoggedMeals[today].push(logEntry);
+      
+      // Check if this meal type is already logged for today
+      const existingIndex = newLoggedMeals[today].findIndex(
+        (meal: any) => meal.mealType === mealType
+      );
+      
+      if (existingIndex !== -1) {
+        // Replace existing meal of the same type
+        newLoggedMeals[today][existingIndex] = logEntry;
+        swipeableToast.success(`${mealType} updated! 🍽️`);
+      } else {
+        // Add new meal
+        newLoggedMeals[today].push(logEntry);
+        swipeableToast.success(`${mealType} logged! 🍽️`);
+      }
       
       setLoggedMeals(newLoggedMeals);
       
@@ -14641,8 +14998,6 @@ const App = () => {
       await updateDoc(doc(db, 'users', user.uid), {
         loggedMeals: newLoggedMeals
       });
-
-      swipeableToast.success(`${mealType} logged! 🍽️`);
     } catch (error) {
       console.error('Error logging meal:', error);
       swipeableToast.error('Failed to log meal');
