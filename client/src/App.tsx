@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import React from 'react';
 // Using lucide-react for modern, clean icons (assumed available in the environment)
-import { Home, Dumbbell, Soup, User, ArrowLeft, Heart, Target, TrendingUp, TrendingDown, Clock, Search, Mail, Lock, Eye, EyeOff, Edit, X, RefreshCw, Award, Trophy, ChevronRight, Play, Trash2 } from 'lucide-react';
+import { Home, Dumbbell, Soup, User, ArrowLeft, Heart, Target, TrendingUp, TrendingDown, Clock, Search, Mail, Lock, Eye, EyeOff, Edit, X, RefreshCw, Award, Trophy, ChevronRight, Play, Trash2, CheckCircle } from 'lucide-react';
 import { App as CapacitorApp } from '@capacitor/app';
 import { StatusBar, Style } from '@capacitor/status-bar';
 import { LocalNotifications } from '@capacitor/local-notifications';
@@ -79,36 +79,258 @@ const mealStyles = [
   { id: 'expensive', name: 'Premium', desc: 'High-end ingredients ($20-30/day)', icon: '💎', budget: 'high', cookingSkill: 'intermediate' },
 ];
 
-// Custom dismissible toast helper - shows toast with X button to close
+// Custom dismissible toast helper - shows toast with X button to close and swipe to dismiss
 const showDismissibleToast = (message: string, type: 'success' | 'error' | 'info' = 'info') => {
   return toast.custom(
-    (t) => (
-      <div
-        className={`${
-          t.visible ? 'animate-enter' : 'animate-leave'
-        } max-w-[90vw] w-full bg-gray-800 shadow-lg rounded-lg pointer-events-auto flex items-center justify-between ring-1 ring-black ring-opacity-5 p-3`}
-        style={{
-          background: type === 'success' ? '#065f46' : type === 'error' ? '#991b1b' : '#1f2937',
-          border: `1px solid ${type === 'success' ? '#10b981' : type === 'error' ? '#ef4444' : '#4f46e5'}`,
-        }}
-      >
-        <div className="flex items-center gap-2 flex-1">
-          <span className="text-lg">
-            {type === 'success' ? '✅' : type === 'error' ? '❌' : 'ℹ️'}
-          </span>
-          <p className="text-sm font-medium text-white">{message}</p>
-        </div>
-        <button
-          onClick={() => toast.dismiss(t.id)}
-          className="ml-3 flex-shrink-0 rounded-md p-1.5 inline-flex text-white hover:bg-white/20 focus:outline-none transition"
-          aria-label="Dismiss"
+    (t) => {
+      let startX = 0;
+      let currentX = 0;
+      let isDragging = false;
+      
+      const handleTouchStart = (e: React.TouchEvent<HTMLDivElement>) => {
+        startX = e.touches[0].clientX;
+        isDragging = true;
+        const el = e.currentTarget;
+        el.style.transition = 'none';
+      };
+      
+      const handleTouchMove = (e: React.TouchEvent<HTMLDivElement>) => {
+        if (!isDragging) return;
+        currentX = e.touches[0].clientX;
+        const deltaX = currentX - startX;
+        const el = e.currentTarget;
+        el.style.transform = `translateX(${deltaX}px)`;
+        el.style.opacity = `${1 - Math.abs(deltaX) / 200}`;
+      };
+      
+      const handleTouchEnd = (e: React.TouchEvent<HTMLDivElement>) => {
+        if (!isDragging) return;
+        isDragging = false;
+        const deltaX = currentX - startX;
+        const el = e.currentTarget;
+        
+        if (Math.abs(deltaX) > 80) {
+          // Swipe threshold met - dismiss
+          el.style.transition = 'transform 0.2s ease-out, opacity 0.2s ease-out';
+          el.style.transform = `translateX(${deltaX > 0 ? 300 : -300}px)`;
+          el.style.opacity = '0';
+          setTimeout(() => toast.dismiss(t.id), 200);
+        } else {
+          // Reset position
+          el.style.transition = 'transform 0.2s ease-out, opacity 0.2s ease-out';
+          el.style.transform = 'translateX(0)';
+          el.style.opacity = '1';
+        }
+      };
+      
+      return (
+        <div
+          className={`${
+            t.visible ? 'animate-enter' : 'animate-leave'
+          } max-w-[90vw] w-full bg-gray-800 shadow-lg rounded-lg pointer-events-auto flex items-center justify-between ring-1 ring-black ring-opacity-5 p-3 cursor-grab active:cursor-grabbing`}
+          style={{
+            background: type === 'success' ? '#065f46' : type === 'error' ? '#991b1b' : '#1f2937',
+            border: `1px solid ${type === 'success' ? '#10b981' : type === 'error' ? '#ef4444' : '#4f46e5'}`,
+          }}
+          onTouchStart={handleTouchStart}
+          onTouchMove={handleTouchMove}
+          onTouchEnd={handleTouchEnd}
         >
-          <X className="h-4 w-4" />
-        </button>
-      </div>
-    ),
+          <div className="flex items-center gap-2 flex-1">
+            <span className="text-lg">
+              {type === 'success' ? '✅' : type === 'error' ? '❌' : 'ℹ️'}
+            </span>
+            <p className="text-sm font-medium text-white">{message}</p>
+          </div>
+          <button
+            onClick={() => toast.dismiss(t.id)}
+            className="ml-3 flex-shrink-0 rounded-md p-1.5 inline-flex text-white hover:bg-white/20 focus:outline-none transition"
+            aria-label="Dismiss"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+      );
+    },
     { duration: 5000 }
   );
+};
+
+// Swipeable toast wrappers - these replace toast.success/error/info with swipeable versions
+const swipeableToast = {
+  success: (message: string, icon?: string) => {
+    return toast.custom(
+      (t) => {
+        let startX = 0;
+        let currentX = 0;
+        let isDragging = false;
+        
+        const handleTouchStart = (e: React.TouchEvent<HTMLDivElement>) => {
+          startX = e.touches[0].clientX;
+          isDragging = true;
+          const el = e.currentTarget;
+          el.style.transition = 'none';
+        };
+        
+        const handleTouchMove = (e: React.TouchEvent<HTMLDivElement>) => {
+          if (!isDragging) return;
+          currentX = e.touches[0].clientX;
+          const deltaX = currentX - startX;
+          const el = e.currentTarget;
+          el.style.transform = `translateX(${deltaX}px)`;
+          el.style.opacity = `${1 - Math.abs(deltaX) / 200}`;
+        };
+        
+        const handleTouchEnd = (e: React.TouchEvent<HTMLDivElement>) => {
+          if (!isDragging) return;
+          isDragging = false;
+          const deltaX = currentX - startX;
+          const el = e.currentTarget;
+          
+          if (Math.abs(deltaX) > 80) {
+            el.style.transition = 'transform 0.2s ease-out, opacity 0.2s ease-out';
+            el.style.transform = `translateX(${deltaX > 0 ? 300 : -300}px)`;
+            el.style.opacity = '0';
+            setTimeout(() => toast.dismiss(t.id), 200);
+          } else {
+            el.style.transition = 'transform 0.2s ease-out, opacity 0.2s ease-out';
+            el.style.transform = 'translateX(0)';
+            el.style.opacity = '1';
+          }
+        };
+        
+        return (
+          <div
+            className={`${t.visible ? 'animate-enter' : 'animate-leave'} max-w-[90vw] w-full shadow-lg rounded-lg pointer-events-auto flex items-center gap-2 p-3`}
+            style={{ background: '#065f46', border: '1px solid #10b981' }}
+            onTouchStart={handleTouchStart}
+            onTouchMove={handleTouchMove}
+            onTouchEnd={handleTouchEnd}
+          >
+            <span className="text-lg">{icon || '✅'}</span>
+            <p className="text-sm font-medium text-white flex-1">{message}</p>
+          </div>
+        );
+      },
+      { duration: 4000 }
+    );
+  },
+  
+  error: (message: string) => {
+    return toast.custom(
+      (t) => {
+        let startX = 0;
+        let currentX = 0;
+        let isDragging = false;
+        
+        const handleTouchStart = (e: React.TouchEvent<HTMLDivElement>) => {
+          startX = e.touches[0].clientX;
+          isDragging = true;
+          const el = e.currentTarget;
+          el.style.transition = 'none';
+        };
+        
+        const handleTouchMove = (e: React.TouchEvent<HTMLDivElement>) => {
+          if (!isDragging) return;
+          currentX = e.touches[0].clientX;
+          const deltaX = currentX - startX;
+          const el = e.currentTarget;
+          el.style.transform = `translateX(${deltaX}px)`;
+          el.style.opacity = `${1 - Math.abs(deltaX) / 200}`;
+        };
+        
+        const handleTouchEnd = (e: React.TouchEvent<HTMLDivElement>) => {
+          if (!isDragging) return;
+          isDragging = false;
+          const deltaX = currentX - startX;
+          const el = e.currentTarget;
+          
+          if (Math.abs(deltaX) > 80) {
+            el.style.transition = 'transform 0.2s ease-out, opacity 0.2s ease-out';
+            el.style.transform = `translateX(${deltaX > 0 ? 300 : -300}px)`;
+            el.style.opacity = '0';
+            setTimeout(() => toast.dismiss(t.id), 200);
+          } else {
+            el.style.transition = 'transform 0.2s ease-out, opacity 0.2s ease-out';
+            el.style.transform = 'translateX(0)';
+            el.style.opacity = '1';
+          }
+        };
+        
+        return (
+          <div
+            className={`${t.visible ? 'animate-enter' : 'animate-leave'} max-w-[90vw] w-full shadow-lg rounded-lg pointer-events-auto flex items-center gap-2 p-3`}
+            style={{ background: '#991b1b', border: '1px solid #ef4444' }}
+            onTouchStart={handleTouchStart}
+            onTouchMove={handleTouchMove}
+            onTouchEnd={handleTouchEnd}
+          >
+            <span className="text-lg">❌</span>
+            <p className="text-sm font-medium text-white flex-1">{message}</p>
+          </div>
+        );
+      },
+      { duration: 4000 }
+    );
+  },
+  
+  info: (message: string, icon?: string) => {
+    return toast.custom(
+      (t) => {
+        let startX = 0;
+        let currentX = 0;
+        let isDragging = false;
+        
+        const handleTouchStart = (e: React.TouchEvent<HTMLDivElement>) => {
+          startX = e.touches[0].clientX;
+          isDragging = true;
+          const el = e.currentTarget;
+          el.style.transition = 'none';
+        };
+        
+        const handleTouchMove = (e: React.TouchEvent<HTMLDivElement>) => {
+          if (!isDragging) return;
+          currentX = e.touches[0].clientX;
+          const deltaX = currentX - startX;
+          const el = e.currentTarget;
+          el.style.transform = `translateX(${deltaX}px)`;
+          el.style.opacity = `${1 - Math.abs(deltaX) / 200}`;
+        };
+        
+        const handleTouchEnd = (e: React.TouchEvent<HTMLDivElement>) => {
+          if (!isDragging) return;
+          isDragging = false;
+          const deltaX = currentX - startX;
+          const el = e.currentTarget;
+          
+          if (Math.abs(deltaX) > 80) {
+            el.style.transition = 'transform 0.2s ease-out, opacity 0.2s ease-out';
+            el.style.transform = `translateX(${deltaX > 0 ? 300 : -300}px)`;
+            el.style.opacity = '0';
+            setTimeout(() => toast.dismiss(t.id), 200);
+          } else {
+            el.style.transition = 'transform 0.2s ease-out, opacity 0.2s ease-out';
+            el.style.transform = 'translateX(0)';
+            el.style.opacity = '1';
+          }
+        };
+        
+        return (
+          <div
+            className={`${t.visible ? 'animate-enter' : 'animate-leave'} max-w-[90vw] w-full shadow-lg rounded-lg pointer-events-auto flex items-center gap-2 p-3`}
+            style={{ background: '#1f2937', border: '1px solid #4f46e5' }}
+            onTouchStart={handleTouchStart}
+            onTouchMove={handleTouchMove}
+            onTouchEnd={handleTouchEnd}
+          >
+            <span className="text-lg">{icon || 'ℹ️'}</span>
+            <p className="text-sm font-medium text-white flex-1">{message}</p>
+          </div>
+        );
+      },
+      { duration: 4000 }
+    );
+  }
 };
 
 // --- Custom Hooks ---
@@ -1087,14 +1309,22 @@ const EXERCISE_IMAGES: { [key: string]: string } = {
   "Plyometric Push-ups": "/exercises/chest/home/plyometric-push-ups.gif",
   "Incline Push-ups": "/exercises/chest/home/incline-pushups.gif",
   
-  // Shoulders - Old structure (no gym/home subfolders yet)
-  "Seated Dumbbell Overhead Press": "/exercises/shoulders/Seated-Dumbbell-Overhead-Press.gif",
-  "Standing Dumbbell Lateral Raise": "/exercises/shoulders/Standing-Dumbbell-Lateral-Raise.gif",
-  "Bent-Over Dumbbell Reverse Fly": "/exercises/shoulders/Bent-Over-Dumbbell-Reverse-Fly.gif",
-  "Front Plate Raise": "/exercises/shoulders/Front-Plate-Raise.gif",
-  "Barbell Shrugs (Behind the Back)": "/exercises/shoulders/Barbell-Shrugs-(Behind-the-Back).gif",
-  "Arnold Press": "/exercises/shoulders/Arnold-Press.gif",
-  "Cable External Rotation": "/exercises/shoulders/Cable-External-Rotation.gif",
+  // Shoulders - Gym (moved to gym subfolder)
+  "Seated Dumbbell Overhead Press": "/exercises/shoulders/gym/Seated-Dumbbell-Overhead-Press.gif",
+  "Standing Dumbbell Lateral Raise": "/exercises/shoulders/gym/Standing-Dumbbell-Lateral-Raise.gif",
+  "Bent-Over Dumbbell Reverse Fly": "/exercises/shoulders/gym/Bent-Over-Dumbbell-Reverse-Fly.gif",
+  "Front Plate Raise": "/exercises/shoulders/gym/Front-Plate-Raise.gif",
+  "Barbell Shrugs (Behind the Back)": "/exercises/shoulders/gym/Barbell-Shrugs-(Behind-the-Back).gif",
+  "Arnold Press": "/exercises/shoulders/gym/Arnold-Press.gif",
+  "Cable External Rotation": "/exercises/shoulders/gym/Cable-External-Rotation.gif",
+  
+  // Shoulders - Home
+  "Pike Pushups": "/exercises/shoulders/home/pike-push-up.gif",
+  "Handstand Push-ups (wall assisted)": "/exercises/shoulders/home/handstand-push-up.gif",
+  "Lateral Raises (with water bottles)": "/exercises/shoulders/home/lateral-raises.gif",
+  "Front Raises (with resistance)": "/exercises/shoulders/home/front-raises-with-resistance.gif",
+  "Shoulder Taps": "/exercises/shoulders/home/shoulder-taps.gif",
+  "Pseudo Planche Leans": "/exercises/shoulders/home/pseudo-planche-leans.gif",
   
   // Arms - Gym
   "Close-Grip Bench Press": "/exercises/arms/gym/Close-Grip-Bench-Press.gif",
@@ -1103,13 +1333,28 @@ const EXERCISE_IMAGES: { [key: string]: string } = {
   "Hammer Curls": "/exercises/arms/gym/Hammer-Curls.gif",
   "Rope Triceps Pushdown": "/exercises/arms/gym/Rope-Triceps-Pushdown.gif",
   
-  // Core - Old structure (no gym/home subfolders yet)
-  "Hanging Leg Raises": "/exercises/core/Hanging-Leg-Raises.gif",
-  "Ab Wheel Rollout": "/exercises/core/Ab-Wheel-Rollout.gif",
-  "Cable Crunch": "/exercises/core/cable-crunch.gif",
-  "Decline Sit-ups": "/exercises/core/decline-situps.gif",
-  "Russian Twists (weighted)": "/exercises/core/russian-twists.gif",
-  "Pallof Press": "/exercises/core/half-kneeling-pallof-press.gif",
+  // Arms - Home
+  "Triceps Dips (chair/couch)": "/exercises/arms/home/triceps-dips-chair.gif",
+  "Bicep Curls (backpack/water jugs)": "/exercises/arms/home/biceps-curls-water-bottle.gif",
+  "Overhead Tricep Extension": "/exercises/arms/home/overhead-tricep-extension.gif",
+  "Concentration Curls": "/exercises/arms/home/concentration-curls.gif",
+  
+  // Core - Gym
+  "Hanging Leg Raises": "/exercises/core/gym/Hanging-Leg-Raises.gif",
+  "Ab Wheel Rollout": "/exercises/core/gym/Ab-Wheel-Rollout.gif",
+  "Cable Crunch": "/exercises/core/gym/cable-crunch.gif",
+  "Decline Sit-ups": "/exercises/core/gym/decline-situps.gif",
+  "Russian Twists (weighted)": "/exercises/core/gym/russian-twists.gif",
+  "Pallof Press": "/exercises/core/gym/half-kneeling-pallof-press.gif",
+  
+  // Core - Home
+  "Plank Variations": "/exercises/core/home/dead-bug.gif",
+  "Mountain Climbers": "/exercises/core/home/mountain-climbers.gif",
+  "Bicycle Crunches": "/exercises/core/home/bicycle-crunches.gif",
+  "Flutter Kicks": "/exercises/core/home/flutter-kisks.gif",
+  "Leg Raises": "/exercises/core/home/leg-raises.gif",
+  "V-ups": "/exercises/core/home/v-ups.gif",
+  "Dead Bug": "/exercises/core/home/dead-bug.gif",
 };
 
 // Muscle Groups for Exercise Finder
@@ -1198,6 +1443,7 @@ const WORKOUT_PROGRAMS = [
     duration: '6 weeks',
     daysPerWeek: 6,
     level: 'intermediate',
+    location: 'gym',
     icon: '🔁',
     color: 'from-blue-400 to-indigo-500',
     schedule: [
@@ -1223,19 +1469,19 @@ const WORKOUT_PROGRAMS = [
         day: 4,
         name: 'Push Day',
         focus: ['Chest', 'Shoulders', 'Arms'],
-        exercises: ['Incline Barbell Press', 'Flat Dumbbell Press', 'Arnold Press', 'Cable Crossover (High-to-Low)', 'Close-Grip Bench Press']
+        exercises: ['Incline Dumbbell Press', 'Flat Barbell Bench Press', 'Arnold Press', 'Cable Crossover (High-to-Low)', 'Close-Grip Bench Press']
       },
       {
         day: 5,
         name: 'Pull Day',
         focus: ['Back', 'Arms'],
-        exercises: ['Barbell Deadlift', 'Close-Grip Lat Pulldown', 'Barbell Bent-Over Row', 'Dumbbell Shrugs', 'Hammer Curls']
+        exercises: ['Romanian Deadlift (RDL)', 'Close-Grip Lat Pulldown', 'Barbell Bent-Over Row', 'Dumbbell Shrugs', 'Hammer Curls']
       },
       {
         day: 6,
         name: 'Leg Day',
         focus: ['Legs', 'Core'],
-        exercises: ['Front Squat', 'Bulgarian Split Squats', 'Leg Extension', 'Lying Leg Curl', 'Seated Calf Raise', 'Cable Crunch']
+        exercises: ['Barbell Back Squat', 'Walking Lunges', 'Leg Extension', 'Lying Leg Curl', 'Seated Calf Raise', 'Cable Crunch']
       }
     ]
   },
@@ -1246,6 +1492,7 @@ const WORKOUT_PROGRAMS = [
     duration: '8 weeks',
     daysPerWeek: 4,
     level: 'beginner',
+    location: 'gym',
     icon: '⬆️',
     color: 'from-green-400 to-emerald-500',
     schedule: [
@@ -1259,7 +1506,7 @@ const WORKOUT_PROGRAMS = [
         day: 2,
         name: 'Lower Body A',
         focus: ['Legs', 'Core'],
-        exercises: ['Barbell Back Squat', 'Romanian Deadlift (RDL)', 'Walking Lunges', 'Leg Extension', 'Standing Calf Raise', 'Plank Variations']
+        exercises: ['Barbell Back Squat', 'Romanian Deadlift (RDL)', 'Walking Lunges', 'Leg Extension', 'Standing Calf Raise', 'Hanging Leg Raises']
       },
       {
         day: 3,
@@ -1271,7 +1518,7 @@ const WORKOUT_PROGRAMS = [
         day: 4,
         name: 'Lower Body B',
         focus: ['Legs', 'Core'],
-        exercises: ['Front Squat', 'Bulgarian Split Squats', 'Lying Leg Curl', 'Leg Extension', 'Seated Calf Raise', 'Hanging Leg Raises']
+        exercises: ['Barbell Back Squat', 'Walking Lunges', 'Lying Leg Curl', 'Leg Extension', 'Seated Calf Raise', 'Hanging Leg Raises']
       }
     ]
   },
@@ -1282,6 +1529,7 @@ const WORKOUT_PROGRAMS = [
     duration: '6 weeks',
     daysPerWeek: 3,
     level: 'beginner',
+    location: 'gym',
     icon: '💪',
     color: 'from-purple-400 to-fuchsia-500',
     schedule: [
@@ -1289,19 +1537,19 @@ const WORKOUT_PROGRAMS = [
         day: 1,
         name: 'Full Body A',
         focus: ['Chest', 'Back', 'Legs', 'Core'],
-        exercises: ['Barbell Back Squat', 'Flat Barbell Bench Press', 'Barbell Bent-Over Row', 'Seated Dumbbell Overhead Press', 'Romanian Deadlift (RDL)', 'Plank Variations']
+        exercises: ['Barbell Back Squat', 'Flat Barbell Bench Press', 'Barbell Bent-Over Row', 'Seated Dumbbell Overhead Press', 'Romanian Deadlift (RDL)', 'Cable Crunch']
       },
       {
         day: 2,
         name: 'Full Body B',
         focus: ['Legs', 'Chest', 'Back', 'Arms'],
-        exercises: ['Barbell Deadlift', 'Incline Dumbbell Press', 'Weighted Pull-ups', 'Walking Lunges', 'Barbell Curl', 'Rope Triceps Pushdown']
+        exercises: ['Romanian Deadlift (RDL)', 'Incline Dumbbell Press', 'Weighted Pull-ups', 'Walking Lunges', 'Barbell Curl', 'Rope Triceps Pushdown']
       },
       {
         day: 3,
         name: 'Full Body C',
         focus: ['Chest', 'Back', 'Legs', 'Shoulders'],
-        exercises: ['Front Squat', 'Dips (Chest Focus)', 'Close-Grip Lat Pulldown', 'Bulgarian Split Squats', 'Standing Dumbbell Lateral Raise', 'Hanging Leg Raises']
+        exercises: ['Barbell Back Squat', 'Dips (Chest Focus)', 'Close-Grip Lat Pulldown', 'Walking Lunges', 'Standing Dumbbell Lateral Raise', 'Hanging Leg Raises']
       }
     ]
   },
@@ -1312,6 +1560,7 @@ const WORKOUT_PROGRAMS = [
     duration: '8 weeks',
     daysPerWeek: 5,
     level: 'intermediate',
+    location: 'gym',
     icon: '🎯',
     color: 'from-red-400 to-pink-500',
     schedule: [
@@ -1325,7 +1574,7 @@ const WORKOUT_PROGRAMS = [
         day: 2,
         name: 'Back Day',
         focus: ['Back'],
-        exercises: ['Barbell Deadlift', 'Weighted Pull-ups', 'Barbell Bent-Over Row', 'Single-Arm Dumbbell Row', 'Close-Grip Lat Pulldown', 'Face Pulls']
+        exercises: ['Romanian Deadlift (RDL)', 'Weighted Pull-ups', 'Barbell Bent-Over Row', 'Single-Arm Dumbbell Row', 'Close-Grip Lat Pulldown', 'Face Pulls']
       },
       {
         day: 3,
@@ -1344,6 +1593,163 @@ const WORKOUT_PROGRAMS = [
         name: 'Arm + Core Day',
         focus: ['Arms', 'Core'],
         exercises: ['Close-Grip Bench Press', 'Barbell Curl', 'Skullcrushers (Lying Tricep Extension)', 'Hammer Curls', 'Rope Triceps Pushdown', 'Hanging Leg Raises', 'Cable Crunch']
+      }
+    ]
+  },
+  // ==========================================
+  // HOME WORKOUT PROGRAMS
+  // ==========================================
+  {
+    id: 'home-ppl',
+    name: 'Push/Pull/Legs',
+    description: '6-day bodyweight split for home training',
+    duration: '6 weeks',
+    daysPerWeek: 6,
+    level: 'intermediate',
+    location: 'home',
+    icon: '🏠',
+    color: 'from-blue-400 to-indigo-500',
+    schedule: [
+      {
+        day: 1,
+        name: 'Push Day',
+        focus: ['Chest', 'Shoulders', 'Arms'],
+        exercises: ['Push-ups (various angles)', 'Diamond Push-ups', 'Pike Pushups', 'Decline Push-ups', 'Triceps Dips (chair/couch)']
+      },
+      {
+        day: 2,
+        name: 'Pull Day',
+        focus: ['Back', 'Arms'],
+        exercises: ['Pull-ups/Chin-ups', 'Inverted Rows', 'Bodyweight Rows', 'Bicep Curls (backpack/water jugs)', 'Supermans']
+      },
+      {
+        day: 3,
+        name: 'Leg Day',
+        focus: ['Legs', 'Core'],
+        exercises: ['Bodyweight Squats', 'Lunges', 'Bulgarian Split Squats', 'Glute Bridges', 'Calf Raises on Steps', 'Mountain Climbers']
+      },
+      {
+        day: 4,
+        name: 'Push Day',
+        focus: ['Chest', 'Shoulders', 'Arms'],
+        exercises: ['Wide Push-ups', 'Incline Push-ups', 'Handstand Push-ups (wall assisted)', 'Plyometric Push-ups', 'Overhead Tricep Extension']
+      },
+      {
+        day: 5,
+        name: 'Pull Day',
+        focus: ['Back', 'Arms'],
+        exercises: ['Pull-ups/Chin-ups', 'Door Frame Rows', 'Reverse Snow Angels', 'Concentration Curls', 'Band Pull-aparts']
+      },
+      {
+        day: 6,
+        name: 'Leg Day',
+        focus: ['Legs', 'Core'],
+        exercises: ['Pistol Squats (assisted)', 'Single-Leg Deadlifts', 'Lunges', 'Glute Bridges', 'Bicycle Crunches', 'Leg Raises']
+      }
+    ]
+  },
+  {
+    id: 'home-upper-lower',
+    name: 'Upper/Lower Split',
+    description: '4-day home split alternating upper and lower body',
+    duration: '8 weeks',
+    daysPerWeek: 4,
+    level: 'beginner',
+    location: 'home',
+    icon: '🏡',
+    color: 'from-green-400 to-emerald-500',
+    schedule: [
+      {
+        day: 1,
+        name: 'Upper Body A',
+        focus: ['Chest', 'Back', 'Shoulders', 'Arms'],
+        exercises: ['Push-ups (various angles)', 'Inverted Rows', 'Pike Pushups', 'Diamond Push-ups', 'Bicep Curls (backpack/water jugs)', 'Triceps Dips (chair/couch)']
+      },
+      {
+        day: 2,
+        name: 'Lower Body A',
+        focus: ['Legs', 'Core'],
+        exercises: ['Bodyweight Squats', 'Lunges', 'Glute Bridges', 'Single-Leg Deadlifts', 'Calf Raises on Steps', 'Mountain Climbers']
+      },
+      {
+        day: 3,
+        name: 'Upper Body B',
+        focus: ['Chest', 'Back', 'Shoulders', 'Arms'],
+        exercises: ['Wide Push-ups', 'Pull-ups/Chin-ups', 'Shoulder Taps', 'Bodyweight Rows', 'Concentration Curls', 'Overhead Tricep Extension']
+      },
+      {
+        day: 4,
+        name: 'Lower Body B',
+        focus: ['Legs', 'Core'],
+        exercises: ['Bulgarian Split Squats', 'Pistol Squats (assisted)', 'Glute Bridges', 'Lunges', 'Bicycle Crunches', 'Leg Raises']
+      }
+    ]
+  },
+  {
+    id: 'home-full-body',
+    name: 'Full Body',
+    description: '3-day full body home workout with no equipment needed',
+    duration: '6 weeks',
+    daysPerWeek: 3,
+    level: 'beginner',
+    location: 'home',
+    icon: '🏠',
+    color: 'from-purple-400 to-fuchsia-500',
+    schedule: [
+      {
+        day: 1,
+        name: 'Full Body A',
+        focus: ['Chest', 'Back', 'Legs', 'Core'],
+        exercises: ['Bodyweight Squats', 'Push-ups (various angles)', 'Inverted Rows', 'Lunges', 'Pike Pushups', 'Mountain Climbers']
+      },
+      {
+        day: 2,
+        name: 'Full Body B',
+        focus: ['Legs', 'Chest', 'Back', 'Arms'],
+        exercises: ['Glute Bridges', 'Diamond Push-ups', 'Pull-ups/Chin-ups', 'Bulgarian Split Squats', 'Bicep Curls (backpack/water jugs)', 'Triceps Dips (chair/couch)']
+      },
+      {
+        day: 3,
+        name: 'Full Body C',
+        focus: ['Chest', 'Back', 'Legs', 'Shoulders'],
+        exercises: ['Lunges', 'Wide Push-ups', 'Bodyweight Rows', 'Single-Leg Deadlifts', 'Shoulder Taps', 'Bicycle Crunches']
+      }
+    ]
+  },
+  {
+    id: 'home-hiit',
+    name: 'HIIT Circuit',
+    description: '4-day high intensity interval training for fat burn',
+    duration: '4 weeks',
+    daysPerWeek: 4,
+    level: 'intermediate',
+    location: 'home',
+    icon: '🔥',
+    color: 'from-orange-400 to-red-500',
+    schedule: [
+      {
+        day: 1,
+        name: 'Upper Body HIIT',
+        focus: ['Chest', 'Back', 'Arms'],
+        exercises: ['Push-ups (various angles)', 'Diamond Push-ups', 'Plyometric Push-ups', 'Inverted Rows', 'Shoulder Taps', 'Mountain Climbers']
+      },
+      {
+        day: 2,
+        name: 'Lower Body HIIT',
+        focus: ['Legs', 'Core'],
+        exercises: ['Bodyweight Squats', 'Lunges', 'Glute Bridges', 'Calf Raises on Steps', 'Flutter Kicks', 'Bicycle Crunches']
+      },
+      {
+        day: 3,
+        name: 'Full Body Burn',
+        focus: ['Full Body', 'Core'],
+        exercises: ['Bodyweight Squats', 'Push-ups (various angles)', 'Lunges', 'Supermans', 'Mountain Climbers', 'V-ups']
+      },
+      {
+        day: 4,
+        name: 'Core & Cardio',
+        focus: ['Core', 'Legs'],
+        exercises: ['Mountain Climbers', 'Bicycle Crunches', 'Flutter Kicks', 'Leg Raises', 'Dead Bug', 'V-ups']
       }
     ]
   }
@@ -2088,7 +2494,7 @@ const HomeScreen = ({
     if (user) {
       try {
         await setDoc(doc(db, 'users', user.uid), { weight: newWeight }, { merge: true });
-        toast.success('Weight updated! 💪');
+        swipeableToast.success('Weight updated! 💪');
         
         // Update local storage
         const storedUserData = localStorage.getItem('userData');
@@ -2099,7 +2505,7 @@ const HomeScreen = ({
         }
       } catch (error) {
         console.error('Failed to update weight:', error);
-        toast.error('Failed to update weight');
+        swipeableToast.error('Failed to update weight');
       }
     }
   };
@@ -2122,7 +2528,7 @@ const HomeScreen = ({
         setStartingWeight(currentWeight); // Update local state
         
         await setDoc(doc(db, 'users', user.uid), updateData, { merge: true });
-        toast.success('Target weight updated! 🎯');
+        swipeableToast.success('Target weight updated! 🎯');
         
         // Update local storage
         const storedUserData = localStorage.getItem('userData');
@@ -2134,7 +2540,7 @@ const HomeScreen = ({
         }
       } catch (error) {
         console.error('Failed to update target weight:', error);
-        toast.error('Failed to update target weight');
+        swipeableToast.error('Failed to update target weight');
       }
     }
   };
@@ -2143,7 +2549,7 @@ const HomeScreen = ({
   const addWaterGlass = async () => {
     // Prevent adding water beyond reasonable limit (50 glasses)
     if (waterIntake >= 50) {
-      toast.error('Maximum water intake limit reached!');
+      swipeableToast.error('Maximum water intake limit reached!');
       return;
     }
     
@@ -2162,16 +2568,17 @@ const HomeScreen = ({
           [`waterIntake.${today}`]: newIntake
         });
         
-        if (newIntake >= waterGoal) {
-          toast.success('🎉 Daily water goal reached!');
-        } else if (newIntake === Math.floor(waterGoal / 2)) {
-          toast.success('💧 Halfway there! Keep hydrating!');
+        // Only show goal reached toast when crossing the threshold (not already above it)
+        if (newIntake >= waterGoal && waterIntake < waterGoal) {
+          swipeableToast.success('🎉 Daily water goal reached!');
+        } else if (newIntake === Math.floor(waterGoal / 2) && waterIntake < Math.floor(waterGoal / 2)) {
+          swipeableToast.success('💧 Halfway there! Keep hydrating!');
         }
       } catch (error) {
         console.error('Failed to update water intake:', error);
         // Revert on error
         setWaterIntake(waterIntake);
-        toast.error('Failed to save water intake');
+        swipeableToast.error('Failed to save water intake');
       }
     }
   };
@@ -2197,7 +2604,7 @@ const HomeScreen = ({
         console.error('Failed to update water intake:', error);
         // Revert on error
         setWaterIntake(waterIntake);
-        toast.error('Failed to save water intake');
+        swipeableToast.error('Failed to save water intake');
       }
     }
   };
@@ -2210,11 +2617,11 @@ const HomeScreen = ({
       
       if (!result.available) {
         if (result.status === 'update_required') {
-          toast.error('Please update Health Connect app from Play Store');
+          swipeableToast.error('Please update Health Connect app from Play Store');
         } else if (result.status === 'unavailable') {
-          toast.error('Health Connect is not available. Please install it from Play Store.');
+          swipeableToast.error('Health Connect is not available. Please install it from Play Store.');
         } else {
-          toast.error(`Health Connect status: ${result.status || 'unavailable'}`);
+          swipeableToast.error(`Health Connect status: ${result.status || 'unavailable'}`);
         }
         return;
       }
@@ -2233,15 +2640,15 @@ const HomeScreen = ({
           }, { merge: true });
         }
         
-        toast.success('✅ Connected to Health Connect!');
+        swipeableToast.success('✅ Connected to Health Connect!');
         await syncHealthData();
       } else {
-        toast.success('Opening Health Connect for permissions...');
+        swipeableToast.success('Opening Health Connect for permissions...');
         // Will open Health Connect app for user to grant permissions
       }
     } catch (error) {
       console.error('Failed to connect Health Connect:', error);
-      toast.error('Failed to connect Health Connect. Please try again.');
+      swipeableToast.error('Failed to connect Health Connect. Please try again.');
     }
   };
 
@@ -2272,13 +2679,13 @@ const HomeScreen = ({
           });
         }
 
-        toast.success('🔄 Health data synced!');
+        swipeableToast.success('🔄 Health data synced!');
       } else {
-        toast.error('Permissions not granted. Please connect to Health Connect first.');
+        swipeableToast.error('Permissions not granted. Please connect to Health Connect first.');
       }
     } catch (error) {
       console.error('Failed to sync health data:', error);
-      toast.error('Failed to sync health data. Please try again.');
+      swipeableToast.error('Failed to sync health data. Please try again.');
     }
   };
 
@@ -2349,7 +2756,7 @@ const HomeScreen = ({
     if (user) {
       try {
         await setDoc(doc(db, 'users', user.uid), { startingWeight: newStarting }, { merge: true });
-        toast.success('Starting weight updated! 📊');
+        swipeableToast.success('Starting weight updated! 📊');
         
         // Update local storage
         const storedUserData = localStorage.getItem('userData');
@@ -2360,7 +2767,7 @@ const HomeScreen = ({
         }
       } catch (error) {
         console.error('Failed to update starting weight:', error);
-        toast.error('Failed to update starting weight');
+        swipeableToast.error('Failed to update starting weight');
       }
     }
   };
@@ -2594,7 +3001,7 @@ const VerificationPendingScreen = ({
     setIsResending(true);
     try {
       await onResend();
-      toast.success('Verification email sent! Check your inbox and spam folder. 📧');
+      swipeableToast.success('Verification email sent! Check your inbox and spam folder. 📧');
       
       // Start 60-second countdown before allowing another resend
       setCanResend(false);
@@ -2612,7 +3019,7 @@ const VerificationPendingScreen = ({
       }, 1000);
     } catch (error: any) {
       console.error('Resend error:', error);
-      toast.error(error.message || 'Failed to resend verification email');
+      swipeableToast.error(error.message || 'Failed to resend verification email');
     } finally {
       setIsResending(false);
     }
@@ -2743,14 +3150,14 @@ const ProfileCompletionScreen = ({
       // Cache the data and clean up temp data
       localStorage.setItem('userData', JSON.stringify(userData));
       localStorage.removeItem('tempUserData');
-      toast.success('Profile completed! Welcome to FitTrack! 🎉');
+      swipeableToast.success('Profile completed! Welcome to FitTrack! 🎉');
       
       // Auth listener will automatically pick up the new data
       // No need to call anything - React will re-render
     } catch (err: any) {
       console.error('Error creating profile:', err);
       setError(err.message || 'Failed to create profile');
-      toast.error('Failed to create profile. Please try again.');
+      swipeableToast.error('Failed to create profile. Please try again.');
     } finally {
       setIsLoading(false);
     }
@@ -2899,7 +3306,7 @@ const ProfileSetupScreen = ({
       const emailValidation = isAuthenticEmail(email);
       if (!emailValidation.valid) {
         setError(emailValidation.message);
-        toast.error(emailValidation.message);
+        swipeableToast.error(emailValidation.message);
         setIsLoading(false);
         return;
       }
@@ -2922,10 +3329,10 @@ const ProfileSetupScreen = ({
       try {
         await sendEmailVerification(user);
         console.log('Verification email sent to:', email);
-        toast.success('Account created! Please check your email to verify. 📧');
+        swipeableToast.success('Account created! Please check your email to verify. 📧');
       } catch (verifyError: any) {
         console.error('Error sending verification email:', verifyError);
-        toast.error('Account created but failed to send verification email. Please try resending.');
+        swipeableToast.error('Account created but failed to send verification email. Please try resending.');
       }
       
       // Don't call onComplete - Auth Guard will automatically show verification screen
@@ -2935,7 +3342,7 @@ const ProfileSetupScreen = ({
       
       // Handle email already in use
       if (err.code === 'auth/email-already-in-use') {
-        toast.error('Account already exists. Please log in instead.');
+        swipeableToast.error('Account already exists. Please log in instead.');
         setError('This email is already registered. Please use the login form.');
       } else {
         setError(err.message || 'Failed to create account');
@@ -3006,7 +3413,7 @@ const AuthScreen = ({ onLogin }: { onLogin: () => void }) => {
   const handleForgotPassword = async () => {
     if (!email) {
       setError('Please enter your email address');
-      toast.error('Please enter your email address');
+      swipeableToast.error('Please enter your email address');
       return;
     }
     
@@ -3015,14 +3422,14 @@ const AuthScreen = ({ onLogin }: { onLogin: () => void }) => {
     
     try {
       await sendPasswordResetEmail(auth, email);
-      toast.success('Password reset email sent! Check your inbox.');
+      swipeableToast.success('Password reset email sent! Check your inbox.');
       setShowForgotPassword(false);
     } catch (error: any) {
       const errorMessage = error.code === 'auth/user-not-found' 
         ? 'No account found with this email'
         : 'Failed to send reset email. Please try again.';
       setError(errorMessage);
-      toast.error(errorMessage);
+      swipeableToast.error(errorMessage);
     } finally {
       setIsLoading(false);
     }
@@ -3037,7 +3444,7 @@ const AuthScreen = ({ onLogin }: { onLogin: () => void }) => {
       const emailValidation = isAuthenticEmail(email);
       if (!emailValidation.valid) {
         setError(emailValidation.message);
-        toast.error(emailValidation.message);
+        swipeableToast.error(emailValidation.message);
         return;
       }
       
@@ -3056,7 +3463,7 @@ const AuthScreen = ({ onLogin }: { onLogin: () => void }) => {
       // CHECK EMAIL VERIFICATION - CRITICAL STEP
       if (!user.emailVerified) {
         console.log('Login attempt with unverified email');
-        toast.error('Please verify your email before logging in. Check your inbox. 📧');
+        swipeableToast.error('Please verify your email before logging in. Check your inbox. 📧');
         setError('Email not verified. Please check your inbox for the verification link.');
         setIsLoading(false);
         // Don't sign out - Auth Guard will show verification screen
@@ -3070,7 +3477,7 @@ const AuthScreen = ({ onLogin }: { onLogin: () => void }) => {
       if (userDoc.exists()) {
         const userData = userDoc.data();
         localStorage.setItem('userData', JSON.stringify(userData));
-        toast.success(`Welcome back, ${userData.name}! 👋`);
+        swipeableToast.success(`Welcome back, ${userData.name}! 👋`);
       } else {
         // User data doesn't exist - this could be first login or data was lost
         console.log('No Firestore document found for existing user - will create on next auth check');
@@ -3084,13 +3491,13 @@ const AuthScreen = ({ onLogin }: { onLogin: () => void }) => {
       
       if (err.code === 'auth/user-not-found') {
         setError('No account found with this email. Please sign up.');
-        toast.error('Account not found. Please sign up first.');
+        swipeableToast.error('Account not found. Please sign up first.');
       } else if (err.code === 'auth/wrong-password') {
         setError('Incorrect password. Please try again.');
-        toast.error('Incorrect password');
+        swipeableToast.error('Incorrect password');
       } else {
         setError(err.message || 'Failed to login');
-        toast.error('Login failed. Please try again.');
+        swipeableToast.error('Login failed. Please try again.');
       }
     } finally {
       setIsLoading(false);
@@ -3661,7 +4068,7 @@ const ActiveWorkoutSession = ({
       setIsResting(true);
     }
     
-    toast.success(`Set logged: ${weight}${userData?.measurementUnit === 'imperial' ? 'lbs' : 'kg'} × ${reps} 💪`);
+    swipeableToast.success(`Set logged: ${weight}${userData?.measurementUnit === 'imperial' ? 'lbs' : 'kg'} × ${reps} 💪`);
   }, [currentIndex, exercises, onExerciseComplete, userData]);
   
   // Remove a set from current exercise
@@ -3687,15 +4094,13 @@ const ActiveWorkoutSession = ({
       setCurrentIndex(prev => prev + 1);
       setViewMode('FOCUS');
       
-      // Start rest timer
-      if (userData?.restTimerEnabled !== false) {
-        setIsResting(true);
-      }
+      // Don't start rest timer when advancing - user is ready to continue
+      // Rest timer only shows after logging a set
     } else {
       // Last exercise - finish workout
       handleFinishWorkout();
     }
-  }, [currentIndex, totalExercises, exercises, onExerciseComplete, userData]);
+  }, [currentIndex, totalExercises, exercises, onExerciseComplete]);
   
   // Skip to next exercise (no logging)
   const skipExercise = useCallback(() => {
@@ -3721,7 +4126,7 @@ const ActiveWorkoutSession = ({
       const validWorkoutData = finalWorkoutData.filter(ex => ex.sets && ex.sets.length > 0);
       
       if (validWorkoutData.length === 0) {
-        toast.error('No exercises with sets to save. Log at least one set!');
+        swipeableToast.error('No exercises with sets to save. Log at least one set!');
         return;
       }
       
@@ -3744,7 +4149,7 @@ const ActiveWorkoutSession = ({
       console.log('Focus Mode: Workout finish transaction completed');
     } catch (error) {
       console.error('Focus Mode: Error finishing workout:', error);
-      toast.error('Failed to save workout. Please try again.');
+      swipeableToast.error('Failed to save workout. Please try again.');
     }
   }, [exercises, onFinishWorkout]);
   
@@ -3838,7 +4243,7 @@ const ActiveWorkoutSession = ({
           )}
           
           {/* Exercise GIF/Visual with Loading State */}
-          <div className="relative w-64 h-64 bg-white/5 rounded-3xl overflow-hidden mb-4 shadow-2xl border-2 border-white/10">
+          <div className="relative w-full max-w-[420px] aspect-square bg-white/5 rounded-3xl overflow-hidden mb-4 shadow-2xl border-2 border-white/10">
             {gifLoading && EXERCISE_IMAGES[currentExerciseName] && (
               <div className="absolute inset-0 flex items-center justify-center bg-white/5">
                 <div className="w-12 h-12 border-4 border-white/20 border-t-white rounded-full animate-spin" />
@@ -3848,7 +4253,7 @@ const ActiveWorkoutSession = ({
               <img 
                 src={EXERCISE_IMAGES[currentExerciseName]} 
                 alt={currentExerciseName}
-                className={`w-full h-full object-cover transition-opacity duration-300 ${gifLoading ? 'opacity-0' : 'opacity-100'}`}
+                className={`w-full h-full object-contain p-2 transition-opacity duration-300 ${gifLoading ? 'opacity-0' : 'opacity-100'}`}
                 onLoad={() => setGifLoading(false)}
                 onError={(e) => {
                   setGifLoading(false);
@@ -4153,7 +4558,7 @@ const LoggingScreenIntegrated = ({
       setCurrentWeight('');
       setCurrentSetType('normal');
     } else {
-      toast.error('Enter valid reps and weight');
+      swipeableToast.error('Enter valid reps and weight');
     }
   };
   
@@ -4163,7 +4568,7 @@ const LoggingScreenIntegrated = ({
   
   const handleFinish = async () => {
     if (existingSets.length === 0) {
-      toast.error('Log at least one set before finishing');
+      swipeableToast.error('Log at least one set before finishing');
       return;
     }
     
@@ -4184,7 +4589,7 @@ const LoggingScreenIntegrated = ({
         console.log(`Saved exercise: ${exerciseName} with ${existingSets.length} sets`);
       } catch (error) {
         console.error('Error saving exercise:', error);
-        toast.error('Failed to save exercise data');
+        swipeableToast.error('Failed to save exercise data');
       }
     }
     
@@ -4428,16 +4833,16 @@ const LoggingScreen = ({
       setCurrentReps('');
       setCurrentWeight('');
       setCurrentSetType('normal');
-      toast.success(`Set ${sets.length + 1} logged! 💪`);
+      swipeableToast.success(`Set ${sets.length + 1} logged! 💪`);
     } else {
-      toast.error('Enter valid reps and weight');
+      swipeableToast.error('Enter valid reps and weight');
     }
   };
   
   const quickAddSet = (weight: number, reps: number) => {
     const newSet = { reps, weight, type: 'normal' as const };
     setSets([...sets, newSet]);
-    toast.success(`Set added: ${weight}${weightUnit} × ${reps}`);
+    swipeableToast.success(`Set added: ${weight}${weightUnit} × ${reps}`);
   };
   
   const removeSet = (index: number) => {
@@ -4446,7 +4851,7 @@ const LoggingScreen = ({
   
   const handleFinish = async () => {
     if (sets.length === 0) {
-      toast.error('Log at least one set before finishing');
+      swipeableToast.error('Log at least one set before finishing');
       return;
     }
     
@@ -4467,7 +4872,7 @@ const LoggingScreen = ({
         console.log(`Saved exercise: ${exerciseName} with ${sets.length} sets`);
       } catch (error) {
         console.error('Error saving exercise:', error);
-        toast.error('Failed to save exercise data');
+        swipeableToast.error('Failed to save exercise data');
       }
     }
     
@@ -4793,14 +5198,14 @@ const ExerciseLogger = ({
       setCurrentReps('');
       setCurrentWeight('');
       setCurrentSetType('normal');
-      toast.success(`Set ${sets.length + 1} added! 💪`);
+      swipeableToast.success(`Set ${sets.length + 1} added! 💪`);
       
       // AUTO-REST: Automatically trigger rest timer after completing a set
       if (userData?.restTimerEnabled !== false) {
         setShowRestTimer(true);
       }
     } else {
-      toast.error('Please enter valid reps and weight');
+      swipeableToast.error('Please enter valid reps and weight');
     }
   };
 
@@ -4823,7 +5228,7 @@ const ExerciseLogger = ({
 
   const removeSet = (index: number) => {
     setSets(sets.filter((_, i) => i !== index));
-    toast.success('Set removed');
+    swipeableToast.success('Set removed');
   };
 
   // Calculate plate breakdown
@@ -4831,13 +5236,13 @@ const ExerciseLogger = ({
 
   const handleSave = async () => {
     if (sets.length === 0) {
-      toast.error('Please add at least one set');
+      swipeableToast.error('Please add at least one set');
       return;
     }
 
     const user = auth.currentUser;
     if (!user) {
-      toast.error('Not authenticated');
+      swipeableToast.error('Not authenticated');
       return;
     }
 
@@ -4925,14 +5330,14 @@ const ExerciseLogger = ({
       }
 
       onSaveWorkout(allSetsSimple);
-      toast.success(isNewPR ? '🏆 NEW PR! Workout saved!' : 'Workout logged successfully! 🏋️');
+      swipeableToast.success(isNewPR ? '🏆 NEW PR! Workout saved!' : 'Workout logged successfully! 🏋️');
       
       if (!isNewPR) {
         onBack();
       }
     } catch (error) {
       console.error('Error saving workout:', error);
-      toast.error('Failed to save workout');
+      swipeableToast.error('Failed to save workout');
     }
   };
 
@@ -5210,11 +5615,11 @@ const ExerciseLogger = ({
           exerciseName={exercise}
           onComplete={() => {
             setShowRestTimer(false);
-            toast.success('Rest complete! Ready for next set 💪', { icon: '✅', duration: 2000 });
+            swipeableToast.success('Rest complete! Ready for next set 💪');
           }}
           onSkip={() => {
             setShowRestTimer(false);
-            toast('Rest skipped', { icon: '⏭️' });
+            swipeableToast.info('Rest skipped', '⏭️');
           }}
         />
       )}
@@ -5400,7 +5805,7 @@ const EditProfileModal = ({ onClose, userData }: { onClose: () => void; userData
     
     const user = auth.currentUser;
     if (!user) {
-      toast.error('Not authenticated');
+      swipeableToast.error('Not authenticated');
       return;
     }
     
@@ -5413,11 +5818,11 @@ const EditProfileModal = ({ onClose, userData }: { onClose: () => void; userData
         heightInches: parseInt(heightInches)
       });
       
-      toast.success('Profile updated successfully! ✅');
+      swipeableToast.success('Profile updated successfully! ✅');
       onClose();
     } catch (error) {
       console.error('Error updating profile:', error);
-      toast.error('Failed to update profile');
+      swipeableToast.error('Failed to update profile');
     } finally {
       setIsLoading(false);
     }
@@ -5649,19 +6054,53 @@ const DietSurveyScreen = ({ onComplete, userData, initialStep }: { onComplete: (
   ];
 
   const foodPreferences = [
-    { id: 'chicken', name: 'Chicken', icon: '🍗' },
-    { id: 'beef', name: 'Beef', icon: '🥩' },
-    { id: 'fish', name: 'Fish', icon: '🐟' },
-    { id: 'eggs', name: 'Eggs', icon: '🥚' },
-    { id: 'dairy', name: 'Dairy', icon: '🥛' },
-    { id: 'rice', name: 'Rice', icon: '🍚' },
-    { id: 'bread', name: 'Bread', icon: '🍞' },
-    { id: 'pasta', name: 'Pasta', icon: '🍝' },
-    { id: 'vegetables', name: 'Vegetables', icon: '🥦' },
-    { id: 'fruits', name: 'Fruits', icon: '🍎' },
-    { id: 'nuts', name: 'Nuts', icon: '🥜' },
-    { id: 'beans', name: 'Beans/Lentils', icon: '🫘' },
+    { id: 'chicken', name: 'Chicken', icon: '🍗', category: 'meat' },
+    { id: 'beef', name: 'Beef', icon: '🥩', category: 'meat' },
+    { id: 'lamb', name: 'Lamb/Mutton', icon: '🍖', category: 'meat' },
+    { id: 'fish', name: 'Fish', icon: '🐟', category: 'seafood' },
+    { id: 'eggs', name: 'Eggs', icon: '🥚', category: 'animal-product' },
+    { id: 'dairy', name: 'Dairy', icon: '🥛', category: 'animal-product' },
+    { id: 'rice', name: 'Rice', icon: '🍚', category: 'grain' },
+    { id: 'bread', name: 'Bread', icon: '🍞', category: 'grain' },
+    { id: 'pasta', name: 'Pasta', icon: '🍝', category: 'grain' },
+    { id: 'vegetables', name: 'Vegetables', icon: '🥦', category: 'plant' },
+    { id: 'fruits', name: 'Fruits', icon: '🍎', category: 'plant' },
+    { id: 'nuts', name: 'Nuts', icon: '🥜', category: 'plant' },
+    { id: 'beans', name: 'Beans/Lentils', icon: '🫘', category: 'plant' },
+    { id: 'tofu', name: 'Tofu/Soy', icon: '🧈', category: 'plant' },
   ];
+
+  // Smart filtering of food preferences based on diet type and religion
+  const getFilteredFoodPreferences = useMemo(() => {
+    const { dietType, religion } = surveyData;
+    
+    return foodPreferences.filter(food => {
+      // Vegetarian diets - no meat or seafood
+      if (dietType === 'vegetarian' || religion === 'hindu' || religion === 'buddhist') {
+        if (food.category === 'meat' || food.category === 'seafood') return false;
+      }
+      
+      // Vegan - no animal products at all
+      if (dietType === 'vegan') {
+        if (['meat', 'seafood', 'animal-product'].includes(food.category)) return false;
+      }
+      
+      // Pescatarian - no meat, but fish is okay
+      if (dietType === 'pescatarian') {
+        if (food.category === 'meat') return false;
+      }
+      
+      // Keto - limit grains
+      if (dietType === 'keto') {
+        // Don't filter grains out completely, but they're still shown (user can choose)
+      }
+      
+      // Muslim (Halal) - no pork (we don't have pork in our list, beef/chicken/lamb are halal)
+      // Jewish (Kosher) - complex rules, we show all and they can select
+      
+      return true;
+    });
+  }, [surveyData.dietType, surveyData.religion]);
 
   const allergies = [
     { id: 'none', name: 'No Allergies', icon: '✅' },
@@ -5700,7 +6139,7 @@ const DietSurveyScreen = ({ onComplete, userData, initialStep }: { onComplete: (
     try {
       const user = auth.currentUser;
       if (!user) {
-        toast.error('Not logged in');
+        swipeableToast.error('Not logged in');
         setIsSaving(false);
         return;
       }
@@ -5714,11 +6153,11 @@ const DietSurveyScreen = ({ onComplete, userData, initialStep }: { onComplete: (
       }, { merge: true });
       
       console.log('Diet preferences saved successfully');
-      toast.success('Diet preferences saved! 🎉');
+      swipeableToast.success('Diet preferences saved! 🎉');
       onComplete();
     } catch (error: any) {
       console.error('Error saving survey:', error);
-      toast.error(`Failed to save preferences: ${error.message || 'Unknown error'}`);
+      swipeableToast.error(`Failed to save preferences: ${error.message || 'Unknown error'}`);
     } finally {
       setIsSaving(false);
     }
@@ -5799,7 +6238,24 @@ const DietSurveyScreen = ({ onComplete, userData, initialStep }: { onComplete: (
               {religions.map(religion => (
                 <button
                   key={religion.id}
-                  onClick={() => setSurveyData(prev => ({ ...prev, religion: religion.id }))}
+                  onClick={() => {
+                    // Clear incompatible food preferences for vegetarian religions
+                    const meatFoods = ['chicken', 'beef', 'lamb'];
+                    const seafoodFoods = ['fish'];
+                    
+                    let newFoodPrefs = surveyData.foodPreferences;
+                    
+                    if (religion.id === 'hindu' || religion.id === 'buddhist') {
+                      // Remove meat and seafood for vegetarian religions
+                      newFoodPrefs = newFoodPrefs.filter((f: string) => !meatFoods.includes(f) && !seafoodFoods.includes(f));
+                    }
+                    
+                    setSurveyData(prev => ({ 
+                      ...prev, 
+                      religion: religion.id,
+                      foodPreferences: newFoodPrefs
+                    }));
+                  }}
                   className={`p-4 rounded-xl border-2 transition ${
                     surveyData.religion === religion.id
                       ? 'border-indigo-500 bg-indigo-500/20'
@@ -5822,7 +6278,33 @@ const DietSurveyScreen = ({ onComplete, userData, initialStep }: { onComplete: (
               {dietTypes.map(diet => (
                 <button
                   key={diet.id}
-                  onClick={() => setSurveyData(prev => ({ ...prev, dietType: diet.id }))}
+                  onClick={() => {
+                    // Clear incompatible food preferences when changing diet type
+                    const meatFoods = ['chicken', 'beef', 'lamb'];
+                    const seafoodFoods = ['fish'];
+                    const animalProducts = ['eggs', 'dairy'];
+                    
+                    let newFoodPrefs = surveyData.foodPreferences;
+                    
+                    if (diet.id === 'vegetarian') {
+                      // Remove meat and seafood
+                      newFoodPrefs = newFoodPrefs.filter((f: string) => !meatFoods.includes(f) && !seafoodFoods.includes(f));
+                    } else if (diet.id === 'vegan') {
+                      // Remove all animal products
+                      newFoodPrefs = newFoodPrefs.filter((f: string) => 
+                        !meatFoods.includes(f) && !seafoodFoods.includes(f) && !animalProducts.includes(f)
+                      );
+                    } else if (diet.id === 'pescatarian') {
+                      // Remove meat only
+                      newFoodPrefs = newFoodPrefs.filter((f: string) => !meatFoods.includes(f));
+                    }
+                    
+                    setSurveyData(prev => ({ 
+                      ...prev, 
+                      dietType: diet.id,
+                      foodPreferences: newFoodPrefs
+                    }));
+                  }}
                   className={`p-4 rounded-xl border-2 transition ${
                     surveyData.dietType === diet.id
                       ? 'border-indigo-500 bg-indigo-500/20'
@@ -5841,9 +6323,17 @@ const DietSurveyScreen = ({ onComplete, userData, initialStep }: { onComplete: (
         {currentStep === 4 && (
           <div className="space-y-4">
             <h3 className="text-xl font-semibold text-gray-900 dark:text-white">What foods do you like?</h3>
-            <p className="text-gray-600 dark:text-white/80 text-sm">Select all that apply</p>
+            <p className="text-gray-600 dark:text-white/80 text-sm">
+              {surveyData.dietType === 'vegetarian' || surveyData.religion === 'hindu' || surveyData.religion === 'buddhist'
+                ? 'Showing vegetarian-friendly options'
+                : surveyData.dietType === 'vegan'
+                ? 'Showing vegan-friendly options'
+                : surveyData.dietType === 'pescatarian'
+                ? 'Showing pescatarian-friendly options'
+                : 'Select all that apply'}
+            </p>
             <div className="grid grid-cols-3 gap-2">
-              {foodPreferences.map(food => (
+              {getFilteredFoodPreferences.map(food => (
                 <button
                   key={food.id}
                   onClick={() => handleTogglePreference(food.id)}
@@ -7740,7 +8230,7 @@ const DietPlanScreen = ({
           featureName="4-Week Rotating Meal Plans" 
           onUpgrade={() => {
             setShowPremiumLock(false);
-            toast.success('Redirecting to subscription...');
+            swipeableToast.success('Redirecting to subscription...');
             // Google Play Billing will be integrated here
           }}
         />
@@ -7758,6 +8248,12 @@ const PremiumWeeklyPlansScreen = ({ onBack, userData, isPremium }: { onBack: () 
   const [selectedMeal, setSelectedMeal] = useState<any>(null);
   const [currentWeek, setCurrentWeek] = useState(1);
   const [showShoppingList, setShowShoppingList] = useState(false);
+
+  // Swipe handlers for nested views
+  const swipeHandlersMealDetail = useSwipe(() => setSelectedMeal(null));
+  const swipeHandlersDayDetail = useSwipe(() => setSelectedDay(null));
+  const swipeHandlersShoppingList = useSwipe(() => setShowShoppingList(false));
+  const swipeHandlersMain = useSwipe(onBack);
 
   const weekDays = [
     { day: 1, name: 'Monday', emoji: '💪' },
@@ -8252,7 +8748,7 @@ const PremiumWeeklyPlansScreen = ({ onBack, userData, isPremium }: { onBack: () 
 
   if (selectedMeal) {
     return (
-      <div className="fixed inset-0 bg-white dark:bg-gray-900 z-50 overflow-y-auto">
+      <div className="fixed inset-0 bg-white dark:bg-gray-900 z-50 overflow-y-auto" {...swipeHandlersMealDetail}>
         <div className="p-6 space-y-6">
           {/* Header */}
           <div className="flex items-center justify-between border-b border-gray-200 dark:border-indigo-500/50 pb-3">
@@ -8349,7 +8845,7 @@ const PremiumWeeklyPlansScreen = ({ onBack, userData, isPremium }: { onBack: () 
   }
 
   return (
-    <div className="fixed inset-0 bg-white dark:bg-gray-900 z-50 overflow-y-auto">
+    <div className="fixed inset-0 bg-white dark:bg-gray-900 z-50 overflow-y-auto" {...swipeHandlersMain}>
       <div className="p-6 space-y-6">
         {/* Header */}
         <div className="flex items-center justify-between border-b border-gray-200 dark:border-indigo-500/50 pb-3">
@@ -8433,7 +8929,7 @@ const PremiumWeeklyPlansScreen = ({ onBack, userData, isPremium }: { onBack: () 
 
       {/* Shopping List Modal */}
       {showShoppingList && (
-        <div className="fixed inset-0 bg-white dark:bg-gray-900 z-50 overflow-y-auto">
+        <div className="fixed inset-0 bg-white dark:bg-gray-900 z-50 overflow-y-auto" {...swipeHandlersShoppingList}>
           <div className="p-6 space-y-6">
             {/* Header */}
             <div className="flex items-center justify-between border-b border-gray-200 dark:border-indigo-500/50 pb-3">
@@ -8501,7 +8997,7 @@ const PremiumWeeklyPlansScreen = ({ onBack, userData, isPremium }: { onBack: () 
 
       {/* Day Detail Modal */}
       {selectedDay && (
-        <div className="fixed inset-0 bg-white dark:bg-gray-900 z-50 overflow-y-auto">
+        <div className="fixed inset-0 bg-white dark:bg-gray-900 z-50 overflow-y-auto" {...swipeHandlersDayDetail}>
           <div className="p-6 space-y-6">
             {/* Header */}
             <div className="flex items-center justify-between border-b border-gray-200 dark:border-indigo-500/50 pb-3">
@@ -8674,17 +9170,67 @@ const ExerciseDetailScreen = ({
       if (!user) return;
 
       try {
-        // Load exercise history
-        const historyQuery = query(
+        // Load exercise history from BOTH individual logs AND batch workout entries
+        const allHistory: any[] = [];
+        
+        // 1. Query individual exercise logs (where exercise field matches directly)
+        const individualQuery = query(
           collection(db, 'workoutHistory'),
           where('userId', '==', user.uid),
           where('exercise', '==', exercise),
           orderBy('timestamp', 'desc'),
           limit(10)
         );
-        const historySnapshot = await getDocs(historyQuery);
-        const history = historySnapshot.docs.map(doc => doc.data());
-        setExerciseHistory(history);
+        const individualSnapshot = await getDocs(individualQuery);
+        individualSnapshot.docs.forEach(doc => {
+          allHistory.push(doc.data());
+        });
+        
+        // 2. Also query batch workouts and extract matching exercises
+        // These are workouts with 'exercises' array containing multiple exercises
+        const batchQuery = query(
+          collection(db, 'workoutHistory'),
+          where('userId', '==', user.uid),
+          orderBy('timestamp', 'desc'),
+          limit(50) // Check more to find matching exercises
+        );
+        const batchSnapshot = await getDocs(batchQuery);
+        batchSnapshot.docs.forEach(doc => {
+          const data = doc.data();
+          // Check if this is a batch workout entry (has exercises array)
+          if (data.exercises && Array.isArray(data.exercises)) {
+            // Find the exercise in the batch
+            const matchingExercise = data.exercises.find((ex: any) => 
+              ex.exercise === exercise || ex.name === exercise
+            );
+            if (matchingExercise) {
+              // Create a history entry from the batch data
+              const bestSet = matchingExercise.sets?.reduce((best: any, s: any) => {
+                if (!best || (s.weight * s.reps) > (best.weight * best.reps)) return s;
+                return best;
+              }, null);
+              
+              allHistory.push({
+                exercise: exercise,
+                sets: matchingExercise.sets,
+                timestamp: data.timestamp,
+                date: data.date,
+                bestSet: bestSet,
+                isFromBatch: true
+              });
+            }
+          }
+        });
+        
+        // Sort by timestamp and remove duplicates (same timestamp)
+        const uniqueHistory = allHistory
+          .sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0))
+          .filter((item, index, arr) => 
+            index === 0 || item.timestamp !== arr[index - 1].timestamp
+          )
+          .slice(0, 10);
+        
+        setExerciseHistory(uniqueHistory);
 
         // Load PR
         const prQuery = query(
@@ -9039,7 +9585,11 @@ const WorkoutProgramsScreen = ({
   onStartTodaysWorkout,
   // Props controlled by parent ExerciseFinderScreen
   programView,
-  setProgramView
+  setProgramView,
+  pendingWorkout,
+  onResumePendingWorkout,
+  onDiscardPendingWorkout,
+  location
 }: {
   userData: any;
   onBack: () => void;
@@ -9047,7 +9597,17 @@ const WorkoutProgramsScreen = ({
   onStartTodaysWorkout?: (exercises: string[], programId: string) => void;
   programView: { mode: 'list' | 'detail'; programId: string | null };
   setProgramView: (view: { mode: 'list' | 'detail'; programId: string | null }) => void;
+  pendingWorkout?: any;
+  onResumePendingWorkout?: () => void;
+  onDiscardPendingWorkout?: () => void;
+  location?: 'gym' | 'home' | null;
 }) => {
+  // Filter programs by location - defaults to 'gym' if no location selected
+  const filteredPrograms = useMemo(() => {
+    const filterLocation = location || 'gym';
+    return WORKOUT_PROGRAMS.filter(p => p.location === filterLocation);
+  }, [location]);
+  
   // Get the selected program from props
   const programData = useMemo(() => {
     if (!programView.programId) return null;
@@ -9055,6 +9615,13 @@ const WorkoutProgramsScreen = ({
   }, [programView.programId]);
   
   const userProgram = userData?.activeProgram || null;
+  
+  // Check if today's workout is already completed
+  const isTodayCompleted = useMemo(() => {
+    if (!userProgram?.lastWorkoutDate) return false;
+    const today = new Date().toISOString().split('T')[0];
+    return userProgram.lastWorkoutDate === today;
+  }, [userProgram?.lastWorkoutDate]);
   
   // Day names for display
   const dayNames = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
@@ -9138,10 +9705,10 @@ const WorkoutProgramsScreen = ({
       
       // Navigate to detail view
       setProgramView({ mode: 'detail', programId });
-      toast.success('Program started! Let\'s begin your journey. 💪');
+      swipeableToast.success('Program started! Let\'s begin your journey. 💪');
     } catch (error) {
       console.error('Error starting program:', error);
-      toast.error('Failed to start program');
+      swipeableToast.error('Failed to start program');
     }
   };
   
@@ -9155,10 +9722,10 @@ const WorkoutProgramsScreen = ({
       });
       
       setProgramView({ mode: 'list', programId: null });
-      toast.success('Program reset successfully');
+      swipeableToast.success('Program reset successfully');
     } catch (error) {
       console.error('Error resetting program:', error);
-      toast.error('Failed to reset program');
+      swipeableToast.error('Failed to reset program');
     }
   };
   
@@ -9188,28 +9755,36 @@ const WorkoutProgramsScreen = ({
         
         <div className="space-y-4">
           {/* Active Program Banner */}
-          {userProgram && (
-            <div className="bg-gradient-to-r from-green-500 to-emerald-600 rounded-xl p-4 shadow-lg">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-white/80 text-xs font-medium">ACTIVE PROGRAM</p>
-                  <p className="text-white font-bold text-lg">
-                    {WORKOUT_PROGRAMS.find(p => p.id === userProgram.programId)?.name || 'Unknown'}
-                  </p>
-                  <p className="text-white/70 text-sm">
-                    Week {userProgram.currentWeek || 1} • {calendarDayName}
-                    {isRestDay() && ' (Rest Day)'}
-                  </p>
+          {userProgram && (() => {
+            const activeProgram = WORKOUT_PROGRAMS.find(p => p.id === userProgram.programId);
+            return (
+              <div className="bg-gradient-to-r from-green-500 to-emerald-600 rounded-xl p-4 shadow-lg">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <p className="text-white/80 text-xs font-medium">ACTIVE PROGRAM</p>
+                      <span className="px-2 py-0.5 bg-white/20 text-white text-xs rounded-full">
+                        {activeProgram?.location === 'gym' ? '🏋️ Gym' : '🏠 Home'}
+                      </span>
+                    </div>
+                    <p className="text-white font-bold text-lg">
+                      {activeProgram?.name || 'Unknown'}
+                    </p>
+                    <p className="text-white/70 text-sm">
+                      Week {userProgram.currentWeek || 1} • {calendarDayName}
+                      {isRestDay() && ' (Rest Day)'}
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => setProgramView({ mode: 'detail', programId: userProgram.programId })}
+                    className="bg-white/20 hover:bg-white/30 text-white px-4 py-2 rounded-xl font-semibold transition"
+                  >
+                    Continue →
+                  </button>
                 </div>
-                <button
-                  onClick={() => setProgramView({ mode: 'detail', programId: userProgram.programId })}
-                  className="bg-white/20 hover:bg-white/30 text-white px-4 py-2 rounded-xl font-semibold transition"
-                >
-                  Continue →
-                </button>
               </div>
-            </div>
-          )}
+            );
+          })()}
           
           <div className="bg-gradient-to-r from-indigo-500/20 to-purple-500/20 dark:from-indigo-900/40 dark:to-purple-900/40 p-4 rounded-xl border border-indigo-300 dark:border-indigo-500/30">
             <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-2">Choose Your Path</h3>
@@ -9218,7 +9793,18 @@ const WorkoutProgramsScreen = ({
             </p>
           </div>
           
-          {WORKOUT_PROGRAMS.map((program) => {
+          {/* Location indicator */}
+          <div className="flex items-center gap-2 px-1">
+            <span className="text-lg">{(location || 'gym') === 'gym' ? '🏋️' : '🏠'}</span>
+            <span className="text-sm font-semibold text-gray-700 dark:text-gray-300">
+              {(location || 'gym') === 'gym' ? 'Gym' : 'Home'} Programs
+            </span>
+            <span className="text-xs text-gray-500 dark:text-gray-400">
+              (Use toggle above to switch)
+            </span>
+          </div>
+          
+          {filteredPrograms.map((program) => {
             const isActive = userProgram?.programId === program.id;
             
             return (
@@ -9422,15 +10008,65 @@ const WorkoutProgramsScreen = ({
             </div>
           </div>
           
-          {/* Start Workout Button - FIXED: Now actually starts workout */}
-          {isActive && onStartTodaysWorkout && (
-            <button
-              onClick={handleStartWorkout}
-              className="w-full mt-4 py-4 bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700 rounded-xl text-white font-bold text-lg transition duration-300 shadow-lg flex items-center justify-center gap-2"
-            >
-              <Play className="w-5 h-5" />
-              Start Today's Workout
-            </button>
+          {/* Pending Workout Banner - Show if there's an unfinished workout */}
+          {isActive && pendingWorkout && onResumePendingWorkout && onDiscardPendingWorkout && (
+            <div className="mt-4 bg-gradient-to-r from-amber-500/20 to-orange-500/20 dark:from-amber-900/40 dark:to-orange-900/40 p-4 rounded-xl border-2 border-amber-400 dark:border-amber-500/50">
+              <div className="flex items-center gap-3 mb-3">
+                <span className="text-2xl">⏸️</span>
+                <div>
+                  <h4 className="font-bold text-gray-900 dark:text-white">Unfinished Workout</h4>
+                  <p className="text-xs text-gray-600 dark:text-gray-400">
+                    You have {pendingWorkout.exercises?.length || 0} exercise(s) in progress
+                  </p>
+                </div>
+              </div>
+              <div className="flex gap-2">
+                <button
+                  onClick={onResumePendingWorkout}
+                  className="flex-1 py-3 bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-600 hover:to-orange-700 rounded-xl text-white font-bold transition duration-300 shadow-lg flex items-center justify-center gap-2"
+                >
+                  <Play className="w-4 h-4" />
+                  Continue
+                </button>
+                <button
+                  onClick={onDiscardPendingWorkout}
+                  className="px-4 py-3 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 rounded-xl text-gray-700 dark:text-gray-300 font-bold transition duration-300 flex items-center justify-center gap-2"
+                >
+                  <Trash2 className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+          )}
+          
+          {/* Start Workout Button - Shows different states based on completion */}
+          {isActive && onStartTodaysWorkout && !pendingWorkout && (
+            <>
+              {isTodayCompleted ? (
+                <div className="mt-4 space-y-3">
+                  {/* Completed State */}
+                  <div className="py-4 bg-gradient-to-r from-green-400/20 to-emerald-500/20 dark:from-green-900/40 dark:to-emerald-900/40 rounded-xl border-2 border-green-400 dark:border-green-500/50 flex items-center justify-center gap-3">
+                    <CheckCircle className="w-6 h-6 text-green-600 dark:text-green-400" />
+                    <span className="text-green-700 dark:text-green-300 font-bold text-lg">Today's Workout Complete!</span>
+                  </div>
+                  {/* Start Again Option */}
+                  <button
+                    onClick={handleStartWorkout}
+                    className="w-full py-3 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 rounded-xl text-gray-700 dark:text-gray-300 font-semibold transition duration-300 flex items-center justify-center gap-2"
+                  >
+                    <RefreshCw className="w-4 h-4" />
+                    Start Again (Extra Session)
+                  </button>
+                </div>
+              ) : (
+                <button
+                  onClick={handleStartWorkout}
+                  className="w-full mt-4 py-4 bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700 rounded-xl text-white font-bold text-lg transition duration-300 shadow-lg flex items-center justify-center gap-2"
+                >
+                  <Play className="w-5 h-5" />
+                  Start Today's Workout
+                </button>
+              )}
+            </>
           )}
           
           {!isActive && (
@@ -9539,7 +10175,10 @@ const ExerciseFinderScreen = ({
   workoutStartTime,
   setWorkoutStartTime,
   workoutSummary,
-  setWorkoutSummary
+  setWorkoutSummary,
+  pendingWorkout,
+  onResumePendingWorkout,
+  onDiscardPendingWorkout
 }: {
   selectedMuscle: string | null;
   setSelectedMuscle: (muscle: string | null) => void;
@@ -9570,6 +10209,9 @@ const ExerciseFinderScreen = ({
     newPRs: { exercise: string; weight: number; reps: number }[];
   } | null;
   setWorkoutSummary: (summary: any) => void;
+  pendingWorkout?: any;
+  onResumePendingWorkout?: () => void;
+  onDiscardPendingWorkout?: () => void;
 }) => {
   const [_showRoutineConfirm, _setShowRoutineConfirm] = useState(false);
   const [showStats, setShowStats] = useState(false);
@@ -9599,7 +10241,7 @@ const ExerciseFinderScreen = ({
   // Handle starting today's workout from a program
   const handleStartTodaysWorkout = useCallback((exercises: string[], _programId: string) => {
     if (exercises.length === 0) {
-      toast.error('No exercises in today\'s workout');
+      swipeableToast.error('No exercises in today\'s workout');
       return;
     }
     
@@ -9624,7 +10266,7 @@ const ExerciseFinderScreen = ({
         setWorkoutStartTime(Date.now());
       }
       
-      toast.success(`Starting guided workout with ${exercises.length} exercises! 🚀`);
+      swipeableToast.success(`Starting guided workout with ${exercises.length} exercises! 🚀`);
     });
   }, [workoutStartTime, setCurrentWorkout, setWorkoutStartTime]);
 
@@ -10332,6 +10974,10 @@ const ExerciseFinderScreen = ({
               setSelectedExerciseForDetail(exercise);
             }}
             onStartTodaysWorkout={handleStartTodaysWorkout}
+            pendingWorkout={pendingWorkout}
+            onResumePendingWorkout={onResumePendingWorkout}
+            onDiscardPendingWorkout={onDiscardPendingWorkout}
+            location={location}
           />
         )}
         
@@ -11900,7 +12546,7 @@ const WorkoutStatsDashboard = ({
         });
       } catch (error) {
         console.error('Error loading stats:', error);
-        toast.error('Failed to load statistics');
+        swipeableToast.error('Failed to load statistics');
       } finally {
         setLoading(false);
       }
@@ -12751,7 +13397,7 @@ const WorkoutHistoryScreen = ({ onBack }: { onBack: () => void }) => {
         setWorkoutHistory(workouts);
       } catch (error) {
         console.error('Error fetching workout history:', error);
-        toast.error('Failed to load workout history');
+        swipeableToast.error('Failed to load workout history');
       } finally {
         setLoading(false);
       }
@@ -13044,11 +13690,11 @@ const ManageGoalsScreen = ({ userData, onBack }: { userData: any; onBack: () => 
         await updateDoc(doc(db, 'users', user.uid), {
           targetWeight: parseFloat(targetWeight)
         });
-        toast.success('Goal updated successfully!');
+        swipeableToast.success('Goal updated successfully!');
       }
     } catch (error) {
       console.error('Error updating goal:', error);
-      toast.error('Failed to update goal');
+      swipeableToast.error('Failed to update goal');
     } finally {
       setIsSaving(false);
     }
@@ -13143,11 +13789,11 @@ const AppPreferencesScreen = ({ onBack, userData }: { onBack: () => void; userDa
         await updateDoc(doc(db, 'users', user.uid), {
           [`appPreferences.${key}`]: value
         });
-        toast.success('Preference updated!');
+        swipeableToast.success('Preference updated!');
       }
     } catch (error) {
       console.error('Error updating preferences:', error);
-      toast.error('Failed to update preference');
+      swipeableToast.error('Failed to update preference');
     } finally {
       setIsSaving(false);
     }
@@ -13299,10 +13945,10 @@ const AccountScreen = ({ onLogout, userData: propUserData, onNavigateToSettings 
       
       try {
         await signOut(auth);
-        toast.success('Logged out successfully');
+        swipeableToast.success('Logged out successfully');
       } catch (error) {
         console.error('Logout error:', error);
-        toast.error('Logout failed');
+        swipeableToast.error('Logout failed');
       }
       
       // Clear all app-related localStorage
@@ -13317,7 +13963,7 @@ const AccountScreen = ({ onLogout, userData: propUserData, onNavigateToSettings 
       try {
         const user = auth.currentUser;
         if (!user) {
-          toast.error('No user logged in');
+          swipeableToast.error('No user logged in');
           return;
         }
 
@@ -13340,14 +13986,14 @@ const AccountScreen = ({ onLogout, userData: propUserData, onNavigateToSettings 
         localStorage.removeItem('userData');
         localStorage.removeItem('tempUserData');
         
-        toast.success('Account deleted successfully');
+        swipeableToast.success('Account deleted successfully');
         onLogout();
       } catch (error: any) {
         console.error('Delete account error:', error);
         if (error.code === 'auth/requires-recent-login') {
-          toast.error('Please log out and log back in, then try deleting your account again for security reasons.');
+          swipeableToast.error('Please log out and log back in, then try deleting your account again for security reasons.');
         } else {
-          toast.error('Failed to delete account. Please try again.');
+          swipeableToast.error('Failed to delete account. Please try again.');
         }
       } finally {
         setDeleteLoading(false);
@@ -13765,7 +14411,7 @@ const App = () => {
   const [userData, setUserData] = useState<any>(null);
   const [user, setUser] = useState<any>(null);
   const [selectedMuscle, setSelectedMuscle] = useState<string | null>(null);
-  const [location, setLocation] = useState<'gym' | 'home' | null>(null);
+  const [location, setLocation] = useState<'gym' | 'home' | null>('gym');
   const [goal, setGoal] = useState<string | null>('loss'); // Default to 'loss' for free users to see sample meals
   const [selectedExercise, setSelectedExercise] = useState<any>(null);
   const [showPlanModal, setShowPlanModal] = useState(false);
@@ -13773,6 +14419,21 @@ const App = () => {
   
   // Ref for main scroll container
   const mainScrollRef = useRef<HTMLElement>(null);
+  
+  // Disable context menu on long press (mobile native feel)
+  useEffect(() => {
+    const preventContextMenu = (e: Event) => {
+      // Allow context menu only on input and textarea elements
+      const target = e.target as HTMLElement;
+      if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable) {
+        return;
+      }
+      e.preventDefault();
+    };
+    
+    document.addEventListener('contextmenu', preventContextMenu);
+    return () => document.removeEventListener('contextmenu', preventContextMenu);
+  }, []);
   
   // Scroll to top when tab changes
   useEffect(() => {
@@ -13981,10 +14642,10 @@ const App = () => {
         loggedMeals: newLoggedMeals
       });
 
-      toast.success(`${mealType} logged! 🍽️`);
+      swipeableToast.success(`${mealType} logged! 🍽️`);
     } catch (error) {
       console.error('Error logging meal:', error);
-      toast.error('Failed to log meal');
+      swipeableToast.error('Failed to log meal');
     }
   };
 
@@ -14008,10 +14669,10 @@ const App = () => {
         loggedMeals: newLoggedMeals
       });
 
-      toast.success('Meal removed');
+      swipeableToast.success('Meal removed');
     } catch (error) {
       console.error('Error removing meal:', error);
-      toast.error('Failed to remove meal');
+      swipeableToast.error('Failed to remove meal');
     }
   };
 
@@ -14073,12 +14734,12 @@ const App = () => {
         swappedMeals: newSwappedMeals
       });
 
-      toast.success('Meals swapped successfully! 🔄');
+      swipeableToast.success('Meals swapped successfully! 🔄');
       setShowSwapModal(false);
       setSelectedMealForSwap(null);
     } catch (error) {
       console.error('Error swapping meals:', error);
-      toast.error('Failed to swap meals');
+      swipeableToast.error('Failed to swap meals');
     }
   };
 
@@ -14105,10 +14766,10 @@ const App = () => {
         swappedMeals: newSwappedMeals
       });
 
-      toast.success('Swap reset!');
+      swipeableToast.success('Swap reset!');
     } catch (error) {
       console.error('Error resetting swap:', error);
-      toast.error('Failed to reset swap');
+      swipeableToast.error('Failed to reset swap');
     }
   };
 
@@ -14129,12 +14790,12 @@ const App = () => {
         customizedMeals: newCustomizedMeals
       });
 
-      toast.success('Meal customized! ✨');
+      swipeableToast.success('Meal customized! ✨');
       setShowSubstitutionModal(false);
       setSelectedMealForSub(null);
     } catch (error) {
       console.error('Error customizing meal:', error);
-      toast.error('Failed to customize meal');
+      swipeableToast.error('Failed to customize meal');
     }
   };
 
@@ -14155,10 +14816,10 @@ const App = () => {
         customizedMeals: newCustomizedMeals
       });
 
-      toast.success('Customization reset!');
+      swipeableToast.success('Customization reset!');
     } catch (error) {
       console.error('Error resetting customization:', error);
-      toast.error('Failed to reset customization');
+      swipeableToast.error('Failed to reset customization');
     }
   };
 
@@ -14335,7 +14996,7 @@ const App = () => {
           warn('Loading timeout - forcing loading to stop');
           setLoading(false);
           if (!cachedData) {
-            toast.error('Slow connection. Some data may not be loaded.');
+            swipeableToast.error('Slow connection. Some data may not be loaded.');
           }
         }, 3000);
         
@@ -14360,7 +15021,7 @@ const App = () => {
             // Check if user is logged in on a different device
             if (data.activeDeviceId && data.activeDeviceId !== deviceId) {
               console.warn('User was logged in on another device. Taking over session...');
-              toast('Logging in... Previous session will be terminated.', { icon: '🔐' });
+              swipeableToast.info('Logging in... Previous session will be terminated.', '🔐');
             }
             
             // Always update active device ID to this device (claim the session)
@@ -14409,12 +15070,12 @@ const App = () => {
                 // Set user data and cache it
                 setUserData(userData);
                 localStorage.setItem('userData', JSON.stringify(userData));
-                toast.success('Welcome! Your profile has been created. 🎉');
+                swipeableToast.success('Welcome! Your profile has been created. 🎉');
                 setLoading(false);
                 if (loadingTimeout) clearTimeout(loadingTimeout);
               } catch (error) {
                 console.error('Error creating user document from temp data:', error);
-                toast.error('Failed to create profile. Please contact support.');
+                swipeableToast.error('Failed to create profile. Please contact support.');
                 setLoading(false);
                 if (loadingTimeout) clearTimeout(loadingTimeout);
               }
@@ -14441,7 +15102,7 @@ const App = () => {
             // Check if device ID has changed (user logged in on another device)
             if (data.activeDeviceId && data.activeDeviceId !== deviceId) {
               warn('Device ID changed - user logged in on another device');
-              toast.error('Your account was logged in on another device. Logging out...');
+              swipeableToast.error('Your account was logged in on another device. Logging out...');
               signOut(auth);
               localStorage.removeItem('userData');
               localStorage.removeItem('tempUserData');
@@ -14633,7 +15294,7 @@ const App = () => {
     
     if (!workoutData || workoutData.length === 0) {
       console.error('Attempted to finish workout, but no workout data available.');
-      toast.error('No workout to save');
+      swipeableToast.error('No workout to save');
       return;
     }
     
@@ -14642,14 +15303,14 @@ const App = () => {
     
     if (workoutToSave.length === 0) {
       console.error('Attempted to finish workout, but no exercises have logged sets.');
-      toast.error('No exercises with sets to save. Log at least one set!');
+      swipeableToast.error('No exercises with sets to save. Log at least one set!');
       return;
     }
 
     const user = auth.currentUser;
     if (!user) {
       console.error('Attempted to finish workout, but user is not authenticated.');
-      toast.error('Not authenticated. Please log in and try again.');
+      swipeableToast.error('Not authenticated. Please log in and try again.');
       return;
     }
 
@@ -14838,7 +15499,7 @@ const App = () => {
           }
         } catch (progError) {
           console.error('Error advancing program:', progError);
-          toast.error('Workout saved, but failed to update program progress.');
+          swipeableToast.error('Workout saved, but failed to update program progress.');
           // Don't fail the workout save if program advancement fails
         }
       }
@@ -14886,7 +15547,7 @@ const App = () => {
         ? `Workout complete! 🎉 ${newPRs.length} new PR${newPRs.length > 1 ? 's' : ''}!`
         : 'Workout saved successfully! 💪';
       
-      toast.success(successMessage);
+      swipeableToast.success(successMessage);
       console.log('=== FINISH WORKOUT TRANSACTION COMPLETED ===');
 
       // ==========================================
@@ -14917,7 +15578,7 @@ const App = () => {
 
     } catch (error) {
       console.error('=== FINISH WORKOUT TRANSACTION FAILED ===', error);
-      toast.error('Failed to save workout. Please try again.');
+      swipeableToast.error('Failed to save workout. Please try again.');
       
       // Even on error, try to preserve the workout data in localStorage for recovery
       try {
@@ -14959,7 +15620,7 @@ const App = () => {
         email={user.email || ''}
         onClose={async () => {
           await signOut(auth);
-          toast.success('Logged out. Please verify your email to continue.');
+          swipeableToast.success('Logged out. Please verify your email to continue.');
         }}
         onResend={async () => {
           await sendEmailVerification(user);
@@ -15072,6 +15733,9 @@ const App = () => {
           setWorkoutStartTime={setWorkoutStartTime}
           workoutSummary={workoutSummary}
           setWorkoutSummary={setWorkoutSummary}
+          pendingWorkout={pendingWorkout}
+          onResumePendingWorkout={resumeWorkout}
+          onDiscardPendingWorkout={discardPendingWorkout}
         />;
       case 'account':
         return <AccountScreen onLogout={handleLogout} userData={userData} onNavigateToSettings={setActiveSettingsScreen} />;
@@ -15167,7 +15831,7 @@ const App = () => {
               <button
                 onClick={() => {
                   discardPendingWorkout();
-                  toast.success('Previous workout discarded');
+                  swipeableToast.success('Previous workout discarded');
                 }}
                 className="flex-1 py-3 bg-gray-700 hover:bg-gray-600 rounded-xl text-white font-semibold transition-colors"
               >
@@ -15177,7 +15841,7 @@ const App = () => {
                 onClick={() => {
                   resumeWorkout();
                   setActiveTab('exercise');
-                  toast.success('Workout resumed!');
+                  swipeableToast.success('Workout resumed!');
                 }}
                 className="flex-1 py-3 bg-gradient-to-r from-indigo-500 to-purple-600 hover:from-indigo-600 hover:to-purple-700 rounded-xl text-white font-semibold transition-colors"
               >
