@@ -79,9 +79,35 @@ const mealStyles = [
   { id: 'expensive', name: 'Premium', desc: 'High-end ingredients ($20-30/day)', icon: '💎', budget: 'high', cookingSkill: 'intermediate' },
 ];
 
+// Toast limiter - tracks active toast IDs and dismisses oldest to keep max 2 visible
+const MAX_VISIBLE_TOASTS = 2;
+const activeToastIds: string[] = [];
+
+const limitToasts = () => {
+  // If we have too many toasts, dismiss the oldest ones
+  while (activeToastIds.length >= MAX_VISIBLE_TOASTS) {
+    const oldestId = activeToastIds.shift();
+    if (oldestId) {
+      toast.dismiss(oldestId);
+    }
+  }
+};
+
+const trackToast = (id: string) => {
+  activeToastIds.push(id);
+  // Auto-remove from tracking after duration
+  setTimeout(() => {
+    const index = activeToastIds.indexOf(id);
+    if (index > -1) {
+      activeToastIds.splice(index, 1);
+    }
+  }, 4500); // Slightly longer than toast duration
+};
+
 // Custom dismissible toast helper - shows toast with X button to close and swipe to dismiss
 const showDismissibleToast = (message: string, type: 'success' | 'error' | 'info' = 'info') => {
-  return toast.custom(
+  limitToasts();
+  const id = toast.custom(
     (t) => {
       let startX = 0;
       let currentX = 0;
@@ -154,12 +180,15 @@ const showDismissibleToast = (message: string, type: 'success' | 'error' | 'info
     },
     { duration: 5000 }
   );
+  trackToast(id);
+  return id;
 };
 
 // Swipeable toast wrappers - these replace toast.success/error/info with swipeable versions
 const swipeableToast = {
   success: (message: string, icon?: string) => {
-    return toast.custom(
+    limitToasts();
+    const id = toast.custom(
       (t) => {
         let startX = 0;
         let currentX = 0;
@@ -214,10 +243,13 @@ const swipeableToast = {
       },
       { duration: 4000 }
     );
+    trackToast(id);
+    return id;
   },
   
   error: (message: string) => {
-    return toast.custom(
+    limitToasts();
+    const id = toast.custom(
       (t) => {
         let startX = 0;
         let currentX = 0;
@@ -272,10 +304,13 @@ const swipeableToast = {
       },
       { duration: 4000 }
     );
+    trackToast(id);
+    return id;
   },
   
   info: (message: string, icon?: string) => {
-    return toast.custom(
+    limitToasts();
+    const id = toast.custom(
       (t) => {
         let startX = 0;
         let currentX = 0;
@@ -330,6 +365,8 @@ const swipeableToast = {
       },
       { duration: 4000 }
     );
+    trackToast(id);
+    return id;
   }
 };
 
@@ -3354,8 +3391,8 @@ const ProfileSetupScreen = ({
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-50 to-indigo-50 dark:from-gray-900 dark:via-indigo-900 dark:to-gray-900 flex items-center justify-center p-4 transition-colors duration-300">
-      <div className="w-full max-w-md">
+    <div className="min-h-screen bg-gradient-to-br from-gray-50 to-indigo-50 dark:from-gray-900 dark:via-indigo-900 dark:to-gray-900 overflow-y-auto p-4 transition-colors duration-300" style={{ paddingTop: 'calc(1.5rem + var(--safe-area-top))', paddingBottom: 'calc(2rem + var(--safe-area-bottom))' }}>
+      <div className="w-full max-w-md mx-auto min-h-full flex flex-col justify-center">
         <div className="text-center mb-8">
           <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">Almost There! 🎉</h1>
           <p className="text-gray-600 dark:text-white/70">Click below to create your account</p>
@@ -3521,8 +3558,8 @@ const AuthScreen = ({ onLogin }: { onLogin: () => void }) => {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-50 to-indigo-50 dark:from-gray-900 dark:via-indigo-900 dark:to-gray-900 flex items-center justify-center p-4 transition-colors duration-200" style={{ paddingTop: 'var(--safe-area-top)', paddingBottom: 'calc(1.25rem + var(--safe-area-bottom))' }}>
-      <div className="w-full max-w-md">
+    <div className="min-h-screen bg-gradient-to-br from-gray-50 to-indigo-50 dark:from-gray-900 dark:via-indigo-900 dark:to-gray-900 overflow-y-auto p-4 transition-colors duration-200" style={{ paddingTop: 'calc(1.5rem + var(--safe-area-top))', paddingBottom: 'calc(2rem + var(--safe-area-bottom))' }}>
+      <div className="w-full max-w-md mx-auto min-h-full flex flex-col justify-center">
         {/* Logo/Header */}
         <div className="text-center mb-6 sm:mb-8">
           <div className="inline-flex items-center justify-center w-14 h-14 sm:w-16 sm:h-16 bg-indigo-600 dark:bg-indigo-600 rounded-full mb-3 sm:mb-4">
@@ -3918,6 +3955,7 @@ const ActiveWorkoutSession = ({
   onExerciseComplete,
   onFinishWorkout,
   onQuit,
+  onPause,
   userData,
   workoutStartTime
 }: {
@@ -3926,6 +3964,7 @@ const ActiveWorkoutSession = ({
   onExerciseComplete: (exerciseIndex: number, sets: Array<{ reps: number; weight: number }>) => void;
   onFinishWorkout: (workoutData?: Array<{ name?: string; exercise?: string; sets: Array<{ reps: number; weight: number }> }>) => void;
   onQuit: () => void;
+  onPause?: (pauseData: { exercises: any[]; currentIndex: number; startTime: number; lastUpdated: number }) => void;
   userData: any;
   workoutStartTime: number | null;
 }) => {
@@ -4416,8 +4455,8 @@ const ActiveWorkoutSession = ({
           )}
         </div>
         
-        {/* BOTTOM: Action Area */}
-        <div className="px-6 pb-8 space-y-3" style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 100px)' }}>
+        {/* BOTTOM: Action Area - with gradient backdrop for separation */}
+        <div className="mt-auto pt-6 px-6 pb-8 space-y-3 bg-gradient-to-t from-black/90 via-black/60 to-transparent" style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 100px)' }}>
           {/* If exercise has logged sets, show Next Exercise button */}
           {currentExercise.sets && currentExercise.sets.length > 0 ? (
             <>
@@ -4520,7 +4559,15 @@ const ActiveWorkoutSession = ({
                 {/* Pause Option - Keep workout for later */}
                 <button
                   onClick={() => {
-                    // Just close the modal - workout is already saved to localStorage
+                    // Notify parent about the pause with workout data
+                    if (onPause) {
+                      onPause({
+                        exercises,
+                        currentIndex,
+                        startTime: workoutStartTime || Date.now(),
+                        lastUpdated: Date.now()
+                      });
+                    }
                     setShowQuitConfirm(false);
                     onQuit();
                   }}
@@ -7368,6 +7415,7 @@ const DietPlanScreen = ({
 
   const [showSurvey, setShowSurvey] = useState(false);
   const [editStep, setEditStep] = useState<number | null>(null);
+  const [preferencesExpanded, setPreferencesExpanded] = useState(false);
 
   // Check if user has completed diet survey
   const hasDietPreferences = userData?.dietSurveyCompleted;
@@ -7405,103 +7453,138 @@ const DietPlanScreen = ({
         <DietSurveyScreen onComplete={() => setShowSurvey(false)} userData={userData} />
       ) : (
         <>
-          {/* User Preferences Summary with Quick Edit */}
+          {/* User Preferences Summary with Quick Edit - Collapsible */}
           {hasDietPreferences && (
-            <div className="bg-gradient-to-br from-purple-400 via-pink-400 to-purple-500 dark:from-purple-600 dark:via-pink-600 dark:to-purple-700 rounded-2xl p-6 shadow-xl" style={{ boxShadow: '0 10px 25px rgba(167, 139, 250, 0.3)' }}>
-              {/* Header */}
-              <div className="flex items-center justify-between mb-5">
-                <h3 className="text-lg font-bold text-white" style={{ opacity: 0.95 }}>Your Diet Profile</h3>
-                <button
-                  onClick={() => setShowSurvey(true)}
-                  className="text-xs px-4 py-2 bg-white/20 backdrop-blur-sm text-white rounded-xl hover:bg-white hover:text-purple-500 font-semibold shadow-md transition-all flex-shrink-0 border border-white/30"
-                >
-                  Edit All
-                </button>
-              </div>
-              
-              {/* Main Goal - Highlighted */}
-              {userData.dietPreferences?.fitnessGoal && (
-                <div className="bg-white/95 rounded-2xl p-4 flex items-center gap-3 mb-4 shadow-md">
+            <div className="bg-gradient-to-br from-purple-400 via-pink-400 to-purple-500 dark:from-purple-600 dark:via-pink-600 dark:to-purple-700 rounded-2xl shadow-xl overflow-hidden" style={{ boxShadow: '0 10px 25px rgba(167, 139, 250, 0.3)' }}>
+              {/* Collapsible Header */}
+              <button
+                onClick={() => setPreferencesExpanded(!preferencesExpanded)}
+                className="w-full p-4 flex items-center justify-between hover:bg-white/10 transition-all"
+              >
+                <div className="flex items-center gap-3">
                   <span className="text-2xl">
-                    {userData.dietPreferences.fitnessGoal === 'weight-loss' ? '🔥' :
-                     userData.dietPreferences.fitnessGoal === 'muscle-gain' ? '💪' :
+                    {userData.dietPreferences?.fitnessGoal === 'weight-loss' ? '🔥' :
+                     userData.dietPreferences?.fitnessGoal === 'muscle-gain' ? '💪' :
                      '⚖️'}
                   </span>
-                  <div className="flex flex-col">
-                    <span className="text-[10px] uppercase text-gray-500 font-bold tracking-wide">Current Goal</span>
-                    <span className={`text-base font-extrabold ${
-                      userData.dietPreferences.fitnessGoal === 'weight-loss' ? 'text-pink-600' :
-                      userData.dietPreferences.fitnessGoal === 'muscle-gain' ? 'text-green-600' :
-                      'text-blue-600'
-                    }`}>
-                      {userData.dietPreferences.fitnessGoal === 'weight-loss' ? 'Weight Loss' :
-                       userData.dietPreferences.fitnessGoal === 'muscle-gain' ? 'Muscle Gain' :
+                  <div className="text-left">
+                    <h3 className="text-base font-bold text-white">Your Diet Profile</h3>
+                    <span className="text-xs text-white/80">
+                      {userData.dietPreferences?.fitnessGoal === 'weight-loss' ? 'Weight Loss' :
+                       userData.dietPreferences?.fitnessGoal === 'muscle-gain' ? 'Muscle Gain' :
                        'Maintenance'}
+                      {userData.dietPreferences?.religion && userData.dietPreferences.religion !== 'none' && 
+                        ` • ${userData.dietPreferences.religion === 'muslim' ? 'Halal' : 
+                              userData.dietPreferences.religion === 'hindu' ? 'Hindu' :
+                              userData.dietPreferences.religion === 'jewish' ? 'Kosher' : 
+                              userData.dietPreferences.religion}`}
+                      {userData.dietPreferences?.dietType && ` • ${userData.dietPreferences.dietType}`}
                     </span>
                   </div>
                 </div>
-              )}
-
-              {/* Details Grid - 2x2 Layout */}
-              <div className="grid grid-cols-2 gap-2.5">
-                {userData.dietPreferences?.religion && (
-                  <button
-                    onClick={() => setEditStep(2)}
-                    className="bg-white/25 backdrop-blur-sm border border-white/30 rounded-xl p-3 flex flex-col justify-center hover:bg-white/35 transition-all cursor-pointer"
-                  >
-                    <div className="flex items-center justify-between text-white">
-                      <span className="text-sm font-semibold">
-                        {userData.dietPreferences.religion === 'muslim' ? '🌙 Halal' : 
-                         userData.dietPreferences.religion === 'hindu' ? '🕉️ Hindu' :
-                         userData.dietPreferences.religion === 'jewish' ? '✡️ Kosher' :
-                         userData.dietPreferences.religion === 'none' ? '🌍 None' : '📿 ' + userData.dietPreferences.religion}
+                <span className="text-white transform transition-transform duration-300" style={{ transform: preferencesExpanded ? 'rotate(180deg)' : 'rotate(0deg)' }}>
+                  ▼
+                </span>
+              </button>
+              
+              {/* Collapsible Content */}
+              {preferencesExpanded && (
+                <div className="px-4 pb-4 border-t border-white/20 pt-4 space-y-4">
+                  {/* Edit All Button */}
+                  <div className="flex justify-end">
+                    <button
+                      onClick={() => setShowSurvey(true)}
+                      className="text-xs px-4 py-2 bg-white/20 backdrop-blur-sm text-white rounded-xl hover:bg-white hover:text-purple-500 font-semibold shadow-md transition-all flex-shrink-0 border border-white/30"
+                    >
+                      Edit All
+                    </button>
+                  </div>
+                  
+                  {/* Main Goal - Highlighted */}
+                  {userData.dietPreferences?.fitnessGoal && (
+                    <div className="bg-white/95 rounded-2xl p-4 flex items-center gap-3 shadow-md">
+                      <span className="text-2xl">
+                        {userData.dietPreferences.fitnessGoal === 'weight-loss' ? '🔥' :
+                         userData.dietPreferences.fitnessGoal === 'muscle-gain' ? '💪' :
+                         '⚖️'}
                       </span>
-                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className="opacity-60">
-                        <path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"></path>
-                      </svg>
+                      <div className="flex flex-col">
+                        <span className="text-[10px] uppercase text-gray-500 font-bold tracking-wide">Current Goal</span>
+                        <span className={`text-base font-extrabold ${
+                          userData.dietPreferences.fitnessGoal === 'weight-loss' ? 'text-pink-600' :
+                          userData.dietPreferences.fitnessGoal === 'muscle-gain' ? 'text-green-600' :
+                          'text-blue-600'
+                        }`}>
+                          {userData.dietPreferences.fitnessGoal === 'weight-loss' ? 'Weight Loss' :
+                           userData.dietPreferences.fitnessGoal === 'muscle-gain' ? 'Muscle Gain' :
+                           'Maintenance'}
+                        </span>
+                      </div>
                     </div>
-                  </button>
-                )}
-                {userData.dietPreferences?.dietType && (
-                  <button
-                    onClick={() => setEditStep(3)}
-                    className="bg-white/25 backdrop-blur-sm border border-white/30 rounded-xl p-3 flex flex-col justify-center hover:bg-white/35 transition-all cursor-pointer"
-                  >
-                    <div className="flex items-center justify-between text-white">
-                      <span className="text-sm font-semibold">🥩 {userData.dietPreferences.dietType}</span>
-                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className="opacity-60">
-                        <path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"></path>
-                      </svg>
-                    </div>
-                  </button>
-                )}
-                {userData.dietPreferences?.mealsPerDay && (
-                  <button
-                    onClick={() => setEditStep(6)}
-                    className="bg-white/25 backdrop-blur-sm border border-white/30 rounded-xl p-3 flex flex-col justify-center hover:bg-white/35 transition-all cursor-pointer"
-                  >
-                    <div className="flex items-center justify-between text-white">
-                      <span className="text-sm font-semibold">🍽️ {userData.dietPreferences.mealsPerDay}/day</span>
-                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className="opacity-60">
-                        <path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"></path>
-                      </svg>
-                    </div>
-                  </button>
-                )}
-                {userData.dietPreferences?.mealStyle && (
-                  <button
-                    onClick={() => setEditStep(6)}
-                    className="bg-white/25 backdrop-blur-sm border border-white/30 rounded-xl p-3 flex flex-col justify-center hover:bg-white/35 transition-all cursor-pointer"
-                  >
-                    <div className="flex items-center justify-between text-white">
-                      <span className="text-sm font-semibold truncate">{mealStyles.find(s => s.id === userData.dietPreferences?.mealStyle)?.icon || '💰'} {mealStyles.find(s => s.id === userData.dietPreferences?.mealStyle)?.name || 'Style'}</span>
-                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className="opacity-60">
-                        <path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"></path>
-                      </svg>
-                    </div>
-                  </button>
-                )}
-              </div>
+                  )}
+
+                  {/* Details Grid - 2x2 Layout */}
+                  <div className="grid grid-cols-2 gap-2.5">
+                    {userData.dietPreferences?.religion && (
+                      <button
+                        onClick={() => setEditStep(2)}
+                        className="bg-white/25 backdrop-blur-sm border border-white/30 rounded-xl p-3 flex flex-col justify-center hover:bg-white/35 transition-all cursor-pointer"
+                      >
+                        <div className="flex items-center justify-between text-white">
+                          <span className="text-sm font-semibold">
+                            {userData.dietPreferences.religion === 'muslim' ? '🌙 Halal' : 
+                             userData.dietPreferences.religion === 'hindu' ? '🕉️ Hindu' :
+                             userData.dietPreferences.religion === 'jewish' ? '✡️ Kosher' :
+                             userData.dietPreferences.religion === 'none' ? '🌍 None' : '📿 ' + userData.dietPreferences.religion}
+                          </span>
+                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className="opacity-60">
+                            <path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"></path>
+                          </svg>
+                        </div>
+                      </button>
+                    )}
+                    {userData.dietPreferences?.dietType && (
+                      <button
+                        onClick={() => setEditStep(3)}
+                        className="bg-white/25 backdrop-blur-sm border border-white/30 rounded-xl p-3 flex flex-col justify-center hover:bg-white/35 transition-all cursor-pointer"
+                      >
+                        <div className="flex items-center justify-between text-white">
+                          <span className="text-sm font-semibold">🥩 {userData.dietPreferences.dietType}</span>
+                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className="opacity-60">
+                            <path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"></path>
+                          </svg>
+                        </div>
+                      </button>
+                    )}
+                    {userData.dietPreferences?.mealsPerDay && (
+                      <button
+                        onClick={() => setEditStep(6)}
+                        className="bg-white/25 backdrop-blur-sm border border-white/30 rounded-xl p-3 flex flex-col justify-center hover:bg-white/35 transition-all cursor-pointer"
+                      >
+                        <div className="flex items-center justify-between text-white">
+                          <span className="text-sm font-semibold">🍽️ {userData.dietPreferences.mealsPerDay}/day</span>
+                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className="opacity-60">
+                            <path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"></path>
+                          </svg>
+                        </div>
+                      </button>
+                    )}
+                    {userData.dietPreferences?.mealStyle && (
+                      <button
+                        onClick={() => setEditStep(6)}
+                        className="bg-white/25 backdrop-blur-sm border border-white/30 rounded-xl p-3 flex flex-col justify-center hover:bg-white/35 transition-all cursor-pointer"
+                      >
+                        <div className="flex items-center justify-between text-white">
+                          <span className="text-sm font-semibold truncate">{mealStyles.find(s => s.id === userData.dietPreferences?.mealStyle)?.icon || '💰'} {mealStyles.find(s => s.id === userData.dietPreferences?.mealStyle)?.name || 'Style'}</span>
+                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className="opacity-60">
+                            <path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"></path>
+                          </svg>
+                        </div>
+                      </button>
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
           )}
       
@@ -9898,8 +9981,7 @@ const WorkoutProgramsScreen = ({
     }
   }, [programView.mode, setProgramView, onBack]);
   
-  // Swipe handler for back navigation
-  const swipeHandlers = useSwipe(handleBack);
+  // Note: Swipe handling is done by parent ExerciseContent to avoid double-handling
   
   const handleStartProgram = async (programId: string) => {
     try {
@@ -9956,7 +10038,7 @@ const WorkoutProgramsScreen = ({
   // Program List View
   if (programView.mode === 'list') {
     return (
-      <div {...swipeHandlers}>
+      <div>
         {/* Header - now inline, not sticky (main header handles sticky) */}
         <div className="mb-4">
           <button onClick={handleBack} className="flex items-center text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 dark:hover:text-indigo-300 transition duration-200 mb-2">
@@ -10091,7 +10173,7 @@ const WorkoutProgramsScreen = ({
   const isActive = userProgram?.programId === programData.id;
   
   return (
-    <div {...swipeHandlers}>
+    <div>
       {/* Header - now inline, not sticky (main header handles sticky) */}
       <div className="mb-4">
         <button onClick={handleBack} className="flex items-center text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 dark:hover:text-indigo-300 transition duration-200 mb-2">
@@ -10766,6 +10848,10 @@ const ExerciseFinderScreen = ({
           setWorkoutStartTime(null);
           // localStorage is already cleared by ActiveWorkoutSession.handleQuit
         }}
+        onPause={(pauseData) => {
+          // Update pausedWorkout state immediately so the banner shows
+          setPausedWorkout(pauseData);
+        }}
         userData={userData}
         workoutStartTime={workoutStartTime}
       />
@@ -11135,12 +11221,13 @@ const ExerciseFinderScreen = ({
                       
                       <div className="flex gap-2 flex-wrap">
                         {suggestedExercises.map((ex, i) => (
-                          <span 
+                          <button 
                             key={i}
-                            className="text-xs px-2 py-1 bg-indigo-100 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 rounded-full"
+                            onClick={() => setSelectedExerciseForDetail(ex)}
+                            className="text-xs px-2 py-1 bg-indigo-100 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 rounded-full hover:bg-indigo-200 dark:hover:bg-indigo-800/50 transition-colors cursor-pointer"
                           >
                             {ex}
-                          </span>
+                          </button>
                         ))}
                       </div>
                     </div>
@@ -11428,7 +11515,17 @@ const ExerciseFinderScreen = ({
                       : [...group.exercises.gym, ...group.exercises.home].filter((v, i, a) => a.indexOf(v) === i);
                     
                     return (
-                      <div key={group.name} className="bg-white dark:bg-gray-800 rounded-xl shadow-lg border border-gray-200 dark:border-indigo-500/30 overflow-hidden">
+                      <div 
+                        key={group.name} 
+                        id={`muscle-group-${group.name.toLowerCase().replace(/\s+/g, '-')}`}
+                        ref={isExpanded ? (el) => {
+                          if (el) {
+                            setTimeout(() => {
+                              el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                            }, 100);
+                          }
+                        } : undefined}
+                        className="bg-white dark:bg-gray-800 rounded-xl shadow-lg border border-gray-200 dark:border-indigo-500/30 overflow-hidden">
                         <button
                           onClick={() => setExpandedMuscle(isExpanded ? null : group.name)}
                           className={`w-full p-4 flex items-center justify-between transition ${isExpanded ? 'bg-indigo-50 dark:bg-indigo-900/30' : ''}`}
@@ -12767,12 +12864,11 @@ const WorkoutStatsDashboard = ({
         startDate.setDate(startDate.getDate() - days);
         const startTimestamp = startDate.getTime();
 
-        // Query using timestamp (our new data structure)
+        // Query only by userId to avoid composite index requirement
+        // Filter by timestamp on the client side
         const workoutsQuery = query(
           collection(db, 'workoutHistory'),
-          where('userId', '==', user.uid),
-          where('timestamp', '>=', startTimestamp),
-          orderBy('timestamp', 'desc')
+          where('userId', '==', user.uid)
         );
         const snapshot = await getDocs(workoutsQuery);
         
@@ -12787,6 +12883,12 @@ const WorkoutStatsDashboard = ({
         
         snapshot.docs.forEach(doc => {
           const data = doc.data();
+          
+          // Client-side timestamp filter
+          const docTimestamp = data.timestamp || 0;
+          if (docTimestamp < startTimestamp) {
+            return; // Skip documents outside the time range
+          }
           
           // Use date field (format: YYYY-MM-DD)
           const workoutDate = data.date || new Date(data.timestamp).toISOString().split('T')[0];
