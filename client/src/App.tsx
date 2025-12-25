@@ -10521,6 +10521,7 @@ const ExerciseFinderScreen = ({
   const [showWarmupCooldown, setShowWarmupCooldown] = useState<'warmup' | 'cooldown' | null>(null);
   // REFACTORED: Expanded muscle for inline exercise viewing in Library
   const [expandedMuscle, setExpandedMuscle] = useState<string | null>(null);
+  const [shouldScrollToMuscle, setShouldScrollToMuscle] = useState(false); // Track if we should scroll to expanded muscle
   const [currentExerciseIndex, setCurrentExerciseIndex] = useState(0);
   
   // Paused workout state - check for AURA_FOCUS_MODE on mount
@@ -11327,6 +11328,7 @@ const ExerciseFinderScreen = ({
                     onClick={() => {
                       // REFACTORED: Go directly to Library tab with muscle expanded
                       setExpandedMuscle(group.name);
+                      setShouldScrollToMuscle(true); // Flag to scroll once in Library
                       setExerciseTab('library');
                     }}
                     className={`relative p-5 ${group.color} rounded-xl shadow-2xl border-2 border-white/30 flex flex-col items-center justify-center transform transition duration-300 hover:scale-[1.05] hover:shadow-2xl active:scale-95 h-32`}
@@ -11518,10 +11520,11 @@ const ExerciseFinderScreen = ({
                       <div 
                         key={group.name} 
                         id={`muscle-group-${group.name.toLowerCase().replace(/\s+/g, '-')}`}
-                        ref={isExpanded ? (el) => {
+                        ref={isExpanded && shouldScrollToMuscle ? (el) => {
                           if (el) {
                             setTimeout(() => {
                               el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                              setShouldScrollToMuscle(false); // Clear flag after scrolling
                             }, 100);
                           }
                         } : undefined}
@@ -13006,8 +13009,8 @@ const WorkoutStatsDashboard = ({
   const maxVolume = Math.max(...volumeByDay.map(d => d.volume as number), 1);
 
   return (
-    <div className="fixed inset-0 bg-gradient-to-br from-gray-50 to-gray-100 dark:from-gray-900 dark:to-gray-800 z-[70] overflow-y-auto" {...swipeHandlers}>
-      <div style={{ paddingTop: 'var(--safe-area-top)', paddingBottom: 'var(--safe-area-bottom)' }} className="min-h-screen pb-24">
+    <div className="fixed inset-0 bg-gradient-to-br from-gray-50 to-gray-100 dark:from-gray-900 dark:to-gray-800 z-[70] overflow-y-auto overflow-x-hidden" {...swipeHandlers}>
+      <div style={{ paddingTop: 'var(--safe-area-top)', paddingBottom: 'var(--safe-area-bottom)' }} className="min-h-screen pb-24 max-w-full">
         {/* Header */}
         <div className="sticky top-0 z-40 bg-gradient-to-br from-indigo-500 via-purple-500 to-pink-500 backdrop-blur-md px-4 py-4 shadow-lg">
           <button onClick={onClose} className="flex items-center text-white mb-2">
@@ -13017,7 +13020,7 @@ const WorkoutStatsDashboard = ({
           <p className="text-white/80 text-sm">Your training analytics</p>
         </div>
 
-        <div className="px-4 pt-4 space-y-4">
+        <div className="px-4 pt-4 space-y-4 overflow-x-hidden">
           {/* Time Range Selector */}
           <div className="flex gap-2">
             <button
